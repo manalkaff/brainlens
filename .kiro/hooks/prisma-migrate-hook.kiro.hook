@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Prisma Schema Migration",
+  "description": "Automatically runs wasp db migrate-dev when the schema.prisma file is changed and saved",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "app/schema.prisma"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The schema.prisma file has been modified. Please run the command `wasp db migrate-dev --name \"migration name here\"` in the terminal to apply the database schema changes."
+  }
+}
