@@ -18,3 +18,10 @@ export const demoNavigationitems: NavigationItem[] = [
   { name: 'File Upload', to: routes.FileUploadRoute.to },
   ...staticNavigationItems,
 ] as const;
+
+export const learningNavigationItems: NavigationItem[] = [
+  { name: 'Learn', to: '/learn' },
+  { name: 'AI Scheduler', to: routes.DemoAppRoute.to },
+  { name: 'File Upload', to: routes.FileUploadRoute.to },
+  ...staticNavigationItems,
+] as const;

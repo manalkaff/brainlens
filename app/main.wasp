@@ -101,6 +101,11 @@ page LandingPage {
   component: import LandingPage from "@src/landing-page/LandingPage"
 }
 
+route HomePageRoute { path: "/home", to: HomePage }
+page HomePage {
+  component: import HomePage from "@src/landing-page/HomePage"
+}
+
 //#region Auth Pages
 route LoginRoute { path: "/login", to: LoginPage }
 page LoginPage {
@@ -303,4 +308,52 @@ page AdminMessagesPage {
   authRequired: true,
   component: import AdminMessages from "@src/messages/MessagesPage"
 }
+//#endregion
+
+//#region Learning Research Platform
+
+// Learning Routes
+route TopicSearchRoute { path: "/learn", to: TopicSearchPage }
+page TopicSearchPage {
+  authRequired: true,
+  component: import TopicSearchPage from "@src/learning/TopicSearchPage"
+}
+
+route TopicPageRoute { path: "/learn/:slug", to: TopicPage }
+page TopicPage {
+  authRequired: true,
+  component: import TopicPage from "@src/learning/TopicPage"
+}
+
+// Topic Management Operations
+action createTopic {
+  fn: import { createTopic } from "@src/learning/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
+query getTopic {
+  fn: import { getTopic } from "@src/learning/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
+query getTopicTree {
+  fn: import { getTopicTree } from "@src/learning/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
+action updateTopicProgress {
+  fn: import { updateTopicProgress } from "@src/learning/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+query getUserProgressStats {
+  fn: import { getUserProgressStats } from "@src/learning/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+query getTopicProgressSummary {
+  fn: import { getTopicProgressSummary } from "@src/learning/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
 //#endregion

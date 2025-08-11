@@ -54,3 +54,4 @@ More info on all of Wasp's features can be found in the Wasp documentation (NOTE
 - Links to Wasp documentation sections (LLM-optimized): https://wasp.sh/llms.txt
 - Complete Wasp documentation (LLM-optimized): https://wasp.sh/llms-full.txt
 - Wasp Docs homepage (human-readable): https://wasp.sh/docs
+- for testing please use testing steering doc at #[[file:.kiro/steering/writing-test.md]]

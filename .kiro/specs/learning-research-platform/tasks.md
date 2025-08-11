@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Database Schema and Core Models Setup
+- [x] 1. Database Schema and Core Models Setup
   - Extend the existing Prisma schema with new models for Topic, UserTopicProgress, ChatThread, Message, Quiz, QuizQuestion, and VectorDocument
   - Add necessary enums (TopicStatus, MessageRole, QuestionType) to support the learning platform
   - Create database migration to add new tables and relationships to existing User model
@@ -8,22 +8,22 @@
   - _Requirements: 8.1, 8.2, 9.1, 9.2_
 
 - [ ] 2. Basic Topic Management Operations
-  - [ ] 2.1 Implement core topic CRUD operations
+  - [x] 2.1 Implement core topic CRUD operations
     - Create `createTopic` action to initialize new learning topics with slug generation
     - Implement `getTopic` query to fetch topic details with user progress
     - Build `getTopicTree` query to retrieve hierarchical topic structure
     - Write unit tests for all topic management operations
     - _Requirements: 1.1, 1.2, 9.1_
 
-  - [ ] 2.2 Implement user progress tracking operations
+  - [x] 2.2 Implement user progress tracking operations
     - Create `updateTopicProgress` action to track completion status and time spent
     - Implement progress calculation logic for nested topic hierarchies
     - Add bookmark functionality for saving interesting content sections
     - Write tests for progress tracking accuracy and data integrity
     - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 3. Landing Page Redesign and Topic Creation Interface
-  - [ ] 3.1 Redesign main landing page for topic input
+- [x] 3. Landing Page Redesign and Topic Creation Interface
+  - [x] 3.1 Redesign main landing page for topic input
     - Move existing landing page content to `/home` route with new HomePage component
     - Create new main landing page (`/`) with centered textarea input for topic research
     - Design clean, focused interface that immediately communicates the platform's purpose
@@ -31,7 +31,7 @@
     - Style the new landing page with existing Tailwind CSS theme for consistency
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 3.2 Create topic routing and navigation
+  - [x] 3.2 Create topic routing and navigation
     - Add Wasp routes for `/home` (original landing), `/learn` (search), and `/learn/:slug` (topic page)
     - Update main landing page route (`/`) to use new topic input interface
     - Implement proper authentication requirements for learning features

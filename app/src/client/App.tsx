@@ -3,7 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { routes } from 'wasp/client/router';
 import './Main.css';
 import NavBar from './components/NavBar/NavBar';
-import { demoNavigationitems, marketingNavigationItems } from './components/NavBar/constants';
+import { demoNavigationitems, learningNavigationItems, marketingNavigationItems } from './components/NavBar/constants';
 import CookieConsentBanner from './components/cookie-consent/Banner';
 
 /**
@@ -13,10 +13,18 @@ import CookieConsentBanner from './components/cookie-consent/Banner';
 export default function App() {
   const location = useLocation();
   const isMarketingPage = useMemo(() => {
-    return location.pathname === '/' || location.pathname.startsWith('/pricing');
+    return location.pathname === '/' || location.pathname.startsWith('/pricing') || location.pathname === '/home';
   }, [location]);
 
-  const navigationItems = isMarketingPage ? marketingNavigationItems : demoNavigationitems;
+  const isLearningPage = useMemo(() => {
+    return location.pathname.startsWith('/learn');
+  }, [location]);
+
+  const navigationItems = useMemo(() => {
+    if (isMarketingPage) return marketingNavigationItems;
+    if (isLearningPage) return learningNavigationItems;
+    return demoNavigationitems;
+  }, [isMarketingPage, isLearningPage]);
 
   const shouldDisplayAppNavBar = useMemo(() => {
     return (
