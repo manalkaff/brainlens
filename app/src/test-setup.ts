@@ -1,5 +1,9 @@
 import { vi } from 'vitest';
 
+// Set up environment variables for testing
+process.env.NODE_ENV = 'development';
+process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+
 // Mock wasp/server module
 vi.mock('wasp/server', () => ({
   HttpError: class HttpError extends Error {
@@ -11,6 +15,12 @@ vi.mock('wasp/server', () => ({
     }
   },
 }));
+
+// Mock wasp/server/operations
+vi.mock('wasp/server/operations', () => ({}));
+
+// Mock wasp/entities
+vi.mock('wasp/entities', () => ({}));
 
 // Mock @prisma/client
 vi.mock('@prisma/client', () => ({

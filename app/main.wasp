@@ -356,4 +356,65 @@ query getTopicProgressSummary {
   entities: [Topic, UserTopicProgress]
 }
 
+// Research Operations
+action startTopicResearch {
+  fn: import { startTopicResearch } from "@src/learning/research/operations",
+  entities: [Topic, VectorDocument, UserTopicProgress]
+}
+
+action cancelTopicResearch {
+  fn: import { cancelTopicResearch } from "@src/learning/research/operations",
+  entities: [Topic]
+}
+
+query getResearchStatus {
+  fn: import { getResearchStatus } from "@src/learning/research/operations",
+  entities: [Topic]
+}
+
+query getResearchResults {
+  fn: import { getResearchResults } from "@src/learning/research/operations",
+  entities: [Topic, VectorDocument]
+}
+
+// Research Pipeline API
+api researchTopic {
+  fn: import { researchTopicHandler } from "@src/learning/research/api",
+  entities: [Topic, VectorDocument, UserTopicProgress],
+  httpRoute: (POST, "/api/research")
+}
+
+// Learning Content Generation API
+api generateLearningContent {
+  fn: import { generateContentHandler } from "@src/learning/api/generateContent",
+  entities: [Topic, UserTopicProgress],
+  httpRoute: (POST, "/api/learning/generate-content")
+}
+
+// Chat Operations
+action createChatThread {
+  fn: import { createChatThread } from "@src/learning/chat/operations",
+  entities: [ChatThread, Topic]
+}
+
+query getChatThread {
+  fn: import { getChatThread } from "@src/learning/chat/operations",
+  entities: [ChatThread, Message, Topic]
+}
+
+query getChatThreads {
+  fn: import { getChatThreads } from "@src/learning/chat/operations",
+  entities: [ChatThread, Message, Topic]
+}
+
+action sendMessage {
+  fn: import { sendMessage } from "@src/learning/chat/operations",
+  entities: [ChatThread, Message, Topic, UserTopicProgress, VectorDocument]
+}
+
+action updateChatThread {
+  fn: import { updateChatThread } from "@src/learning/chat/operations",
+  entities: [ChatThread]
+}
+
 //#endregion

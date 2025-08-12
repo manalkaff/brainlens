@@ -1,219 +1,232 @@
-import { useParams } from 'react-router-dom';
+import React, { Suspense } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { Link as WaspRouterLink, routes } from 'wasp/client/router';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
+import { Tabs, TabsContent } from '../components/ui/tabs';
+import { TopicProvider, useTopicContext } from './context/TopicContext';
+import { ProgressIndicator } from './components/ui/ProgressIndicator';
+import { TabNavigation, TabStatusIndicator } from './components/ui/TabNavigation';
+import { LearnTab } from './components/tabs/LearnTab';
+import { ExploreTab } from './components/tabs/ExploreTab';
+import { AskTab } from './components/tabs/AskTab';
+import { MindMapTab } from './components/tabs/MindMapTab';
+import { QuizTab } from './components/tabs/QuizTab';
 
-export default function TopicPage() {
-  const { slug } = useParams<{ slug: string }>();
-  const { data: user } = useAuth();
+// Loading component for tab content
+function TabContentLoader() {
+  return (
+    <div className="space-y-6">
+      <div className="animate-pulse space-y-4">
+        <div className="h-4 bg-muted rounded w-3/4" />
+        <div className="h-4 bg-muted rounded w-1/2" />
+        <div className="h-32 bg-muted rounded" />
+      </div>
+    </div>
+  );
+}
 
-  // Convert slug back to readable title
-  const topicTitle = slug
-    ? slug
-        .split('-')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ')
-    : 'Unknown Topic';
+// Topic header component
+function TopicHeader() {
+  const { topic, isLoading, error } = useTopicContext();
+
+  if (isLoading) {
+    return (
+      <div className="mb-8 animate-pulse">
+        <div className="h-8 bg-muted rounded w-1/2 mb-4" />
+        <div className="h-4 bg-muted rounded w-3/4" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-destructive mb-4">Error Loading Topic</h1>
+        <p className="text-lg text-muted-foreground">{error}</p>
+      </div>
+    );
+  }
+
+  if (!topic) {
+    return (
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-muted-foreground mb-4">Topic Not Found</h1>
+        <p className="text-lg text-muted-foreground">
+          The requested topic could not be found.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className='min-h-screen bg-background'>
-      {/* Header with Breadcrumb */}
-      <header className='border-b'>
-        <div className='container mx-auto px-4 py-4'>
-          <nav className='flex items-center justify-between'>
-            <div className='flex items-center space-x-2 text-sm'>
-              <WaspRouterLink 
-                to={routes.LandingPageRoute.to} 
-                className='text-xl font-bold text-gradient-primary'
-              >
-                LearnAI
-              </WaspRouterLink>
-              <span className='text-muted-foreground'>/</span>
-              <WaspRouterLink 
-                to="/learn" 
-                className='text-muted-foreground hover:text-foreground transition-colors'
-              >
-                Learn
-              </WaspRouterLink>
-              <span className='text-muted-foreground'>/</span>
-              <span className='text-foreground font-medium'>{topicTitle}</span>
-            </div>
-            <div className='flex items-center space-x-4'>
-              <Button variant='ghost' asChild>
-                <WaspRouterLink to="/learn">← Back to Search</WaspRouterLink>
-              </Button>
-              <Button variant='ghost' asChild>
-                <WaspRouterLink to={routes.AccountRoute.to}>Account</WaspRouterLink>
-              </Button>
-            </div>
-          </nav>
+    <div className="mb-8">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <h1 className="text-4xl font-bold text-foreground mb-2">{topic.title}</h1>
+          {topic.summary && (
+            <p className="text-lg text-muted-foreground mb-4">{topic.summary}</p>
+          )}
+          {topic.description && (
+            <p className="text-muted-foreground">{topic.description}</p>
+          )}
         </div>
-      </header>
-
-      <main className='container mx-auto px-4 py-8'>
-        <div className='max-w-6xl mx-auto'>
-          {/* Topic Header */}
-          <div className='mb-8'>
-            <h1 className='text-4xl font-bold text-foreground mb-4'>{topicTitle}</h1>
-            <p className='text-lg text-muted-foreground'>
-              AI-powered comprehensive learning experience
-            </p>
-          </div>
-
-          {/* Research Status */}
-          <Card className='mb-8'>
-            <CardHeader>
-              <CardTitle className='flex items-center'>
-                <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2'></div>
-                Researching Topic
-              </CardTitle>
-              <CardDescription>
-                Our AI agents are researching and organizing content for your learning experience
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className='space-y-3'>
-                <div className='flex items-center text-sm'>
-                  <div className='w-2 h-2 rounded-full bg-primary mr-3'></div>
-                  Analyzing topic scope and complexity
-                </div>
-                <div className='flex items-center text-sm text-muted-foreground'>
-                  <div className='w-2 h-2 rounded-full bg-muted mr-3'></div>
-                  Gathering information from multiple sources
-                </div>
-                <div className='flex items-center text-sm text-muted-foreground'>
-                  <div className='w-2 h-2 rounded-full bg-muted mr-3'></div>
-                  Creating structured learning path
-                </div>
-                <div className='flex items-center text-sm text-muted-foreground'>
-                  <div className='w-2 h-2 rounded-full bg-muted mr-3'></div>
-                  Generating interactive content
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Coming Soon - Learning Tabs */}
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-            <Card className='opacity-50'>
-              <CardHeader>
-                <CardTitle className='text-lg'>Learn Tab</CardTitle>
-                <CardDescription>Guided, personalized learning experience</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className='text-sm text-muted-foreground mb-4'>
-                  Interactive learning with knowledge assessment and adaptive content
-                </p>
-                <Button disabled size='sm' className='w-full'>
-                  Coming Soon
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className='opacity-50'>
-              <CardHeader>
-                <CardTitle className='text-lg'>Explore Tab</CardTitle>
-                <CardDescription>Tree navigation and structured content</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className='text-sm text-muted-foreground mb-4'>
-                  Browse through hierarchical topic structure with rich content
-                </p>
-                <Button disabled size='sm' className='w-full'>
-                  Coming Soon
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className='opacity-50'>
-              <CardHeader>
-                <CardTitle className='text-lg'>Ask Tab</CardTitle>
-                <CardDescription>Conversational learning with AI</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className='text-sm text-muted-foreground mb-4'>
-                  Ask questions and get contextual answers about the topic
-                </p>
-                <Button disabled size='sm' className='w-full'>
-                  Coming Soon
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className='opacity-50'>
-              <CardHeader>
-                <CardTitle className='text-lg'>MindMap Tab</CardTitle>
-                <CardDescription>Visual knowledge representation</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className='text-sm text-muted-foreground mb-4'>
-                  Interactive mind map showing topic relationships
-                </p>
-                <Button disabled size='sm' className='w-full'>
-                  Coming Soon
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className='opacity-50'>
-              <CardHeader>
-                <CardTitle className='text-lg'>Quiz Tab</CardTitle>
-                <CardDescription>Adaptive assessment system</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className='text-sm text-muted-foreground mb-4'>
-                  Test your knowledge with AI-generated quizzes
-                </p>
-                <Button disabled size='sm' className='w-full'>
-                  Coming Soon
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className='border-primary/50'>
-              <CardHeader>
-                <CardTitle className='text-lg'>Progress</CardTitle>
-                <CardDescription>Track your learning journey</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className='space-y-3'>
-                  <div className='flex justify-between text-sm'>
-                    <span>Overall Progress</span>
-                    <span>0%</span>
-                  </div>
-                  <div className='w-full bg-muted rounded-full h-2'>
-                    <div className='bg-primary h-2 rounded-full w-0 transition-all duration-300'></div>
-                  </div>
-                  <p className='text-xs text-muted-foreground'>
-                    Start learning to track your progress
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Temporary Message */}
-          <Card className='mt-8 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950'>
-            <CardContent className='p-6'>
-              <div className='flex items-start'>
-                <svg className='h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 mr-3 flex-shrink-0' fill='none' viewBox='0 0 24 24' strokeWidth={1.5} stroke='currentColor'>
-                  <path strokeLinecap='round' strokeLinejoin='round' d='M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z' />
-                </svg>
-                <div>
-                  <h3 className='text-sm font-medium text-amber-800 dark:text-amber-200'>
-                    Development in Progress
-                  </h3>
-                  <p className='text-sm text-amber-700 dark:text-amber-300 mt-1'>
-                    This is a placeholder page. The full learning experience with AI research, 
-                    content generation, and interactive tabs will be implemented in upcoming tasks.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+      </div>
+      
+      {/* Progress Indicator */}
+      <ProgressIndicator className="mb-6" />
+      
+      {/* Topic Metadata */}
+      <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+        <span>Depth: Level {topic.depth + 1}</span>
+        <span>•</span>
+        <span>Status: {topic.status}</span>
+        {topic.parent && (
+          <>
+            <span>•</span>
+            <span>Parent: {topic.parent.title}</span>
+          </>
+        )}
+        {topic.children.length > 0 && (
+          <>
+            <span>•</span>
+            <span>{topic.children.length} subtopics</span>
+          </>
+        )}
+      </div>
     </div>
+  );
+}
+
+// Lazy tab content component
+function LazyTabContent({ tabId, children }: { tabId: string; children: React.ReactNode }) {
+  const { isTabLoaded } = useTopicContext();
+  
+  if (!isTabLoaded(tabId as any)) {
+    return <TabContentLoader />;
+  }
+  
+  return (
+    <Suspense fallback={<TabContentLoader />}>
+      {children}
+    </Suspense>
+  );
+}
+
+// Main topic page content with tabs
+function TopicPageContent() {
+  const { activeTab, setActiveTab, isLoading, error } = useTopicContext();
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-destructive mb-2">Error Loading Topic</h3>
+            <p className="text-muted-foreground mb-4">{error}</p>
+            <Button onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <TopicHeader />
+      
+      {/* Tab Navigation */}
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4">
+          <TabNavigation />
+          <TabStatusIndicator />
+        </div>
+
+        {/* Tab Content with Lazy Loading */}
+        <div className="mt-6">
+          <TabsContent value="learn" className="mt-0">
+            <Suspense fallback={<TabContentLoader />}>
+              <LearnTab />
+            </Suspense>
+          </TabsContent>
+          
+          <TabsContent value="explore" className="mt-0">
+            <LazyTabContent tabId="explore">
+              <ExploreTab />
+            </LazyTabContent>
+          </TabsContent>
+          
+          <TabsContent value="ask" className="mt-0">
+            <LazyTabContent tabId="ask">
+              <AskTab />
+            </LazyTabContent>
+          </TabsContent>
+          
+          <TabsContent value="mindmap" className="mt-0">
+            <LazyTabContent tabId="mindmap">
+              <MindMapTab />
+            </LazyTabContent>
+          </TabsContent>
+          
+          <TabsContent value="quiz" className="mt-0">
+            <LazyTabContent tabId="quiz">
+              <QuizTab />
+            </LazyTabContent>
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
+
+// Main TopicPage component
+export default function TopicPage() {
+  const { data: user } = useAuth();
+
+  return (
+    <TopicProvider>
+      <div className="min-h-screen bg-background">
+        {/* Header with Breadcrumb */}
+        <header className="border-b">
+          <div className="container mx-auto px-4 py-4">
+            <nav className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-sm">
+                <WaspRouterLink 
+                  to={routes.LandingPageRoute.to} 
+                  className="text-xl font-bold text-primary hover:text-primary/80 transition-colors"
+                >
+                  LearnAI
+                </WaspRouterLink>
+                <span className="text-muted-foreground">/</span>
+                <WaspRouterLink 
+                  to="/learn" 
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Learn
+                </WaspRouterLink>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-foreground font-medium">Topic</span>
+              </div>
+              <div className="flex items-center space-x-4">
+                <Button variant="ghost" asChild>
+                  <WaspRouterLink to="/learn">← Back to Search</WaspRouterLink>
+                </Button>
+                <Button variant="ghost" asChild>
+                  <WaspRouterLink to={routes.AccountRoute.to}>Account</WaspRouterLink>
+                </Button>
+              </div>
+            </nav>
+          </div>
+        </header>
+
+        <main className="container mx-auto px-4 py-8">
+          <div className="max-w-6xl mx-auto">
+            <TopicPageContent />
+          </div>
+        </main>
+      </div>
+    </TopicProvider>
   );
 }

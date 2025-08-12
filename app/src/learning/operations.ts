@@ -345,7 +345,7 @@ async function updateParentProgress(userId: string, parentTopicId: string, conte
     }
 
     // Calculate completion percentage based on children
-    const completedChildren = parentTopic.children.filter(child => 
+    const completedChildren = parentTopic.children.filter((child: any) => 
       child.userProgress.length > 0 && child.userProgress[0].completed
     ).length;
 
@@ -353,7 +353,7 @@ async function updateParentProgress(userId: string, parentTopicId: string, conte
     const isParentCompleted = completedChildren === totalChildren;
 
     // Calculate total time spent on all children
-    const totalTimeSpent = parentTopic.children.reduce((total, child) => {
+    const totalTimeSpent = parentTopic.children.reduce((total: number, child: any) => {
       return total + (child.userProgress.length > 0 ? child.userProgress[0].timeSpent : 0);
     }, 0);
 
