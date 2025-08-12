@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { useCompletion } from 'ai/react';
 
 interface StreamingContentOptions {
   topic: string;
@@ -14,6 +13,10 @@ interface ContentSection {
   title: string;
   content: string;
   isComplete: boolean;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  estimatedTime: number;
+  concepts: string[];
+  isExpanded: boolean;
 }
 
 export function useStreamingContent() {
@@ -21,13 +24,48 @@ export function useStreamingContent() {
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const { complete, completion, isLoading, error } = useCompletion({
-    api: '/api/learning/generate-content',
-    onFinish: (prompt, completion) => {
+  const [completion, setCompletion] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const complete = useCallback(async (prompt: string) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/learning/generate-content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate content');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      let content = '';
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        content += chunk;
+        setCompletion(content);
+      }
+
       // Mark current section as complete and move to next
       setSections(prev => prev.map((section, index) => 
         index === currentSectionIndex 
-          ? { ...section, content: completion, isComplete: true }
+          ? { ...section, content, isComplete: true }
           : section
       ));
       
@@ -36,12 +74,16 @@ export function useStreamingContent() {
       } else {
         setIsGenerating(false);
       }
-    },
-    onError: (error) => {
+
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Unknown error');
+      setError(error);
       console.error('Streaming content generation error:', error);
       setIsGenerating(false);
+    } finally {
+      setIsLoading(false);
     }
-  });
+  }, [currentSectionIndex, sections.length]);
 
   const generateContent = useCallback(async (options: StreamingContentOptions) => {
     setIsGenerating(true);
@@ -53,19 +95,31 @@ export function useStreamingContent() {
         id: 'introduction',
         title: 'Introduction and Overview',
         content: '',
-        isComplete: false
+        isComplete: false,
+        difficulty: 'beginner',
+        estimatedTime: 10,
+        concepts: [],
+        isExpanded: false
       },
       {
         id: 'core-concepts',
         title: 'Core Concepts',
         content: '',
-        isComplete: false
+        isComplete: false,
+        difficulty: 'intermediate',
+        estimatedTime: 15,
+        concepts: [],
+        isExpanded: false
       },
       {
         id: 'practical-applications',
         title: 'Practical Applications',
         content: '',
-        isComplete: false
+        isComplete: false,
+        difficulty: 'intermediate',
+        estimatedTime: 20,
+        concepts: [],
+        isExpanded: false
       }
     ];
 
@@ -75,7 +129,11 @@ export function useStreamingContent() {
         id: 'visual-representations',
         title: 'Visual Models and Diagrams',
         content: '',
-        isComplete: false
+        isComplete: false,
+        difficulty: 'intermediate',
+        estimatedTime: 12,
+        concepts: [],
+        isExpanded: false
       });
     }
 
@@ -84,7 +142,11 @@ export function useStreamingContent() {
         id: 'interactive-examples',
         title: 'Interactive Examples',
         content: '',
-        isComplete: false
+        isComplete: false,
+        difficulty: 'advanced',
+        estimatedTime: 25,
+        concepts: [],
+        isExpanded: false
       });
     }
 

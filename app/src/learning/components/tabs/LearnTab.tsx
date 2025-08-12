@@ -6,7 +6,7 @@ import { KnowledgeAssessment, AssessmentResult } from '../ui/KnowledgeAssessment
 import { StartingPointRecommendation, LearningPath } from '../ui/StartingPointRecommendation';
 import { StreamingContent } from '../ui/StreamingContent';
 import { ConceptExpansion } from '../ui/ConceptExpansion';
-import { updateTopicProgress } from '../../operations';
+import { updateTopicProgress } from 'wasp/client/operations';
 import { useAuth } from 'wasp/client/auth';
 
 type LearningPhase = 'assessment' | 'recommendation' | 'learning';
@@ -59,7 +59,7 @@ export function LearnTab() {
 
       setAssessment(result);
       setCurrentPhase('recommendation');
-      await refreshTopic();
+      refreshTopic();
     } catch (error) {
       console.error('Failed to save assessment:', error);
       // TODO: Show error toast
@@ -74,7 +74,7 @@ export function LearnTab() {
     setIsSaving(true);
     try {
       // Store selected learning path
-      const currentPrefs = userProgress?.preferences || {};
+      const currentPrefs = (userProgress?.preferences as Record<string, any>) || {};
       const updatedPreferences = {
         ...currentPrefs,
         selectedPath: path,
@@ -88,7 +88,7 @@ export function LearnTab() {
 
       setSelectedPath(path);
       setCurrentPhase('learning');
-      await refreshTopic();
+      refreshTopic();
     } catch (error) {
       console.error('Failed to save learning path:', error);
       // TODO: Show error toast
@@ -232,8 +232,12 @@ export function LearnTab() {
       {/* Streaming Learning Content */}
       {selectedPath && (
         <StreamingContent
-          topic={topic}
-          assessment={assessment}
+          topic={{
+            id: topic.id,
+            title: topic.title,
+            summary: topic.summary || undefined
+          }}
+          assessment={assessment!}
           selectedPath={selectedPath}
           onProgressUpdate={handleProgressUpdate}
           onConceptExpand={handleConceptExpand}

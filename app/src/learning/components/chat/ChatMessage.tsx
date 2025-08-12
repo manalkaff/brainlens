@@ -57,11 +57,11 @@ export function ChatMessage({ message, onCopy, onFeedback }: ChatMessageProps) {
           {/* Metadata for assistant messages */}
           {isAssistant && message.metadata && (
             <div className="mt-2 pt-2 border-t border-muted text-xs text-muted-foreground">
-              {message.metadata.confidence && (
-                <div>Confidence: {Math.round(message.metadata.confidence * 100)}%</div>
+              {(message.metadata as any).confidence && (
+                <div>Confidence: {Math.round((message.metadata as any).confidence * 100)}%</div>
               )}
-              {message.metadata.sources && message.metadata.sources.length > 0 && (
-                <div>Sources: {message.metadata.sources.length} references</div>
+              {(message.metadata as any).sources && (message.metadata as any).sources.length > 0 && (
+                <div>Sources: {(message.metadata as any).sources.length} references</div>
               )}
             </div>
           )}

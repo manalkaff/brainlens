@@ -1,10 +1,12 @@
-import { vi } from 'vitest';
-
 // Set up environment variables for testing
 process.env.NODE_ENV = 'development';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 
-// Mock wasp/server module
+// Mock Wasp modules to avoid compilation issues
+import { vi } from 'vitest';
+import '@testing-library/jest-dom';
+
+// Mock wasp/server
 vi.mock('wasp/server', () => ({
   HttpError: class HttpError extends Error {
     statusCode: number;
@@ -16,29 +18,24 @@ vi.mock('wasp/server', () => ({
   },
 }));
 
-// Mock wasp/server/operations
-vi.mock('wasp/server/operations', () => ({}));
-
 // Mock wasp/entities
 vi.mock('wasp/entities', () => ({}));
 
-// Mock @prisma/client
-vi.mock('@prisma/client', () => ({
-  TopicStatus: {
-    RESEARCHING: 'RESEARCHING',
-    COMPLETED: 'COMPLETED',
-    ERROR: 'ERROR',
-    PENDING: 'PENDING',
-  },
-  MessageRole: {
-    USER: 'USER',
-    ASSISTANT: 'ASSISTANT',
-    SYSTEM: 'SYSTEM',
-  },
-  QuestionType: {
-    MULTIPLE_CHOICE: 'MULTIPLE_CHOICE',
-    TRUE_FALSE: 'TRUE_FALSE',
-    FILL_BLANK: 'FILL_BLANK',
-    CODE_CHALLENGE: 'CODE_CHALLENGE',
-  },
+// Mock wasp/client/operations
+vi.mock('wasp/client/operations', () => ({
+  useQuery: vi.fn(),
+}));
+
+// Mock wasp/client/auth
+vi.mock('wasp/client/auth', () => ({
+  useAuth: vi.fn(),
+}));
+
+// Mock wasp/client/router
+vi.mock('wasp/client/router', () => ({
+  useParams: vi.fn(),
+  Link: vi.fn(({ children, ...props }: any) => {
+    // Mock Link component as a simple function that returns children
+    return children;
+  }),
 }));

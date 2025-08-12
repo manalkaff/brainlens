@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import type { Request, Response } from 'express';
 
-export async function generateContentHandler(req: Request, res: Response) {
+export async function generateContentHandler(req: Request, res: Response, context: any) {
   try {
     const { prompt } = req.body;
 
@@ -14,7 +14,6 @@ export async function generateContentHandler(req: Request, res: Response) {
       model: openai('gpt-4-turbo-preview'),
       prompt,
       temperature: 0.7,
-      maxTokens: 1000,
     });
 
     // Set headers for streaming

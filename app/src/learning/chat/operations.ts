@@ -291,9 +291,10 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
     });
 
     // Extract user preferences from progress
-    const userPreferences = userProgress?.preferences ? {
-      knowledgeLevel: userProgress.preferences.knowledgeLevel || 'intermediate',
-      learningStyle: userProgress.preferences.learningStyle || 'reading'
+    const preferences = userProgress?.preferences as any;
+    const userPreferences = preferences ? {
+      knowledgeLevel: preferences.knowledgeLevel || 'intermediate',
+      learningStyle: preferences.learningStyle || 'reading'
     } : undefined;
 
     await conversationManager.startConversation(
@@ -446,7 +447,7 @@ async function generateSmartQuestionSuggestions(
     });
 
     // Find unexplored or lightly explored subtopics
-    const unexploredTopics = topicTree.filter(topic => {
+    const unexploredTopics = topicTree.filter((topic: any) => {
       const progress = topic.userProgress[0];
       return !progress || progress.timeSpent < 300; // Less than 5 minutes
     });
@@ -519,7 +520,7 @@ export const exportChatThread = async (args: ExportChatThreadInput, context: any
       topic: chatThread.topic?.title,
       createdAt: chatThread.createdAt,
       messageCount: chatThread.messages.length,
-      messages: chatThread.messages.map(msg => ({
+      messages: chatThread.messages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
         timestamp: msg.createdAt,

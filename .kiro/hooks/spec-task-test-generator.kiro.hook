@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Spec Task Test Generator",
+  "description": "When a task is marked as done in specs, automatically generate test files using the wasp testing guide",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      ".kiro/specs/**/tasks.md"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A task has been updated in the specs. Please check if any tasks have been marked as done (changed from [ ] to [x]) and if so, write comprehensive test files for the completed functionality using the wasp testing guide at .kiro/steering/wasp-testing-guide.md. Follow these steps:\n\n1. Identify which tasks were just completed by examining the changes\n2. For each completed task, determine what functionality needs testing\n2.1. No need to write test for every task. only what is needed.\n2.2. If it is required to write test, please run git commit -m \"mesasge\" first to make a checkpoint\n3. Create appropriate test files in the relevant __tests__ directories\n4. Write unit tests, integration tests, and operations tests as needed\n5. Follow the patterns and best practices outlined in the wasp testing guide .kiro/steering/wasp-testing-guide.md\n6. Ensure tests cover error handling, authentication requirements, and edge cases\n7. Use proper mocking for server-side code and Wasp operations\n\nFocus on creating tests that validate the core functionality described in the completed tasks."
+  }
+}

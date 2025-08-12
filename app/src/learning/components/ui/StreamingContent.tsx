@@ -28,7 +28,7 @@ interface ContentSection {
   estimatedTime: number; // in minutes
   concepts: string[];
   isExpanded: boolean;
-  isCompleted: boolean;
+  isComplete: boolean;
 }
 
 export function StreamingContent({ 
@@ -67,7 +67,7 @@ export function StreamingContent({
           estimatedTime: 15,
           concepts: ['definition', 'core principles', 'importance'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         },
         {
           id: 'core-concepts',
@@ -77,7 +77,7 @@ export function StreamingContent({
           estimatedTime: 20,
           concepts: ['terminology', 'key concepts', 'relationships'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         },
         {
           id: 'practical-examples',
@@ -87,7 +87,7 @@ export function StreamingContent({
           estimatedTime: 25,
           concepts: ['examples', 'applications', 'use cases'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         }
       );
     } else if (selectedPath.id === 'practical') {
@@ -100,7 +100,7 @@ export function StreamingContent({
           estimatedTime: 20,
           concepts: ['use cases', 'applications', 'scenarios'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         },
         {
           id: 'best-practices',
@@ -110,7 +110,7 @@ export function StreamingContent({
           estimatedTime: 25,
           concepts: ['best practices', 'methodologies', 'implementation'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         }
       );
     } else if (selectedPath.id === 'comprehensive') {
@@ -123,7 +123,7 @@ export function StreamingContent({
           estimatedTime: 30,
           concepts: ['theory', 'advanced concepts', 'research'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         },
         {
           id: 'technical-details',
@@ -133,7 +133,7 @@ export function StreamingContent({
           estimatedTime: 35,
           concepts: ['implementation', 'architecture', 'technical details'],
           isExpanded: false,
-          isCompleted: false
+          isComplete: false
         }
       );
     }
@@ -148,7 +148,7 @@ export function StreamingContent({
         estimatedTime: 15,
         concepts: ['diagrams', 'models', 'visualizations'],
         isExpanded: false,
-        isCompleted: false
+        isComplete: false
       });
     }
 
@@ -161,7 +161,7 @@ export function StreamingContent({
         estimatedTime: 20,
         concepts: ['exercises', 'practice', 'hands-on'],
         isExpanded: false,
-        isCompleted: false
+        isComplete: false
       });
     }
 
@@ -275,7 +275,7 @@ export function StreamingContent({
 
             {error && (
               <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive">{error}</p>
+                <p className="text-sm text-destructive">{error.message}</p>
                 <Button variant="outline" size="sm" onClick={startStreaming} className="mt-2">
                   Try Again
                 </Button>

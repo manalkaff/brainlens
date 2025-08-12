@@ -1,3 +1,8 @@
+---
+description: 
+inclusion: manual
+---
+
 # Wasp Testing Guide: Common Issues and Solutions
 
 This guide covers common testing issues encountered when writing tests for Wasp applications and their solutions.
