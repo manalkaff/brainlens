@@ -109,15 +109,15 @@
     - Implement adaptive difficulty adjustment based on user interactions
     - _Requirements: 3.4, 3.5, 4.3, 4.4_
 
-- [ ] 8. Explore Tab - Tree Navigation and Content
-  - [ ] 8.1 Build hierarchical topic tree component
+- [x] 8. Explore Tab - Tree Navigation and Content
+  - [x] 8.1 Build hierarchical topic tree component
     - Create expandable tree view with topic hierarchy visualization
     - Implement search functionality within the topic tree structure
     - Add visual indicators for read/unread content and completion status
     - Build lazy loading for unexplored subtopics with on-demand generation
     - _Requirements: 2.2, 9.4_
 
-  - [ ] 8.2 Implement MDX content rendering
+  - [x] 8.2 Implement MDX content rendering
     - Set up MDX processing for rich content display with code blocks and diagrams
     - Create clickable header navigation for quick content jumping
     - Add export functionality for PDF and Markdown formats
