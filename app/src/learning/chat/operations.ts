@@ -56,6 +56,17 @@ type SendMessageResponse = {
   };
 };
 
+type ExportChatThreadInput = {
+  threadId: string;
+  format: 'text' | 'json' | 'markdown';
+};
+
+type ExportChatThreadResponse = {
+  content: string;
+  filename: string;
+  mimeType: string;
+};
+
 /**
  * Create a new chat thread for a topic
  */
@@ -269,11 +280,28 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
       throw new HttpError(400, 'Chat thread topic not found');
     }
 
+    // Get user's topic progress for personalization
+    const userProgress = await context.entities.UserTopicProgress.findUnique({
+      where: {
+        userId_topicId: {
+          userId: context.user.id,
+          topicId: chatThread.topicId
+        }
+      }
+    });
+
+    // Extract user preferences from progress
+    const userPreferences = userProgress?.preferences ? {
+      knowledgeLevel: userProgress.preferences.knowledgeLevel || 'intermediate',
+      learningStyle: userProgress.preferences.learningStyle || 'reading'
+    } : undefined;
+
     await conversationManager.startConversation(
       threadId,
       chatThread.topicId,
       chatThread.topic.title,
-      context.user.id
+      context.user.id,
+      userPreferences
     );
 
     // Process the message and get AI response
@@ -282,6 +310,21 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
       content.trim(),
       context
     );
+
+    // Generate smart question suggestions based on reading history
+    const smartSuggestions = await generateSmartQuestionSuggestions(
+      context.user.id,
+      chatThread.topicId,
+      content,
+      result.assistantMessage.content,
+      context
+    );
+
+    // Combine AI-generated suggestions with smart suggestions
+    const allSuggestions = [
+      ...result.suggestedQuestions,
+      ...smartSuggestions
+    ].slice(0, 4); // Limit to 4 suggestions
 
     // Update thread's updatedAt timestamp
     await context.entities.ChatThread.update({
@@ -295,7 +338,7 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
     return {
       userMessage: result.userMessage,
       assistantMessage: result.assistantMessage,
-      suggestedQuestions: result.suggestedQuestions,
+      suggestedQuestions: allSuggestions,
       metadata: {
         confidence: result.assistantMessage.confidence || 0,
         processingTime: result.assistantMessage.processingTime || 0,
@@ -365,6 +408,205 @@ export const updateChatThread: UpdateChatThread<UpdateChatThreadInput, ChatThrea
     throw new HttpError(500, 'Failed to update chat thread');
   }
 };
+
+/**
+ * Generate smart question suggestions based on user's reading history
+ */
+async function generateSmartQuestionSuggestions(
+  userId: string,
+  topicId: string,
+  userQuestion: string,
+  assistantResponse: string,
+  context: any
+): Promise<string[]> {
+  try {
+    // Get user's bookmarks and reading history
+    const userProgress = await context.entities.UserTopicProgress.findUnique({
+      where: {
+        userId_topicId: {
+          userId,
+          topicId
+        }
+      }
+    });
+
+    // Get related subtopics that user hasn't explored much
+    const topicTree = await context.entities.Topic.findMany({
+      where: {
+        OR: [
+          { parentId: topicId },
+          { id: topicId }
+        ]
+      },
+      include: {
+        userProgress: {
+          where: { userId }
+        }
+      }
+    });
+
+    // Find unexplored or lightly explored subtopics
+    const unexploredTopics = topicTree.filter(topic => {
+      const progress = topic.userProgress[0];
+      return !progress || progress.timeSpent < 300; // Less than 5 minutes
+    });
+
+    // Generate suggestions based on unexplored areas
+    const suggestions: string[] = [];
+
+    if (unexploredTopics.length > 0) {
+      const randomTopic = unexploredTopics[Math.floor(Math.random() * unexploredTopics.length)];
+      suggestions.push(`Tell me more about ${randomTopic.title}`);
+    }
+
+    // Add bookmark-based suggestions
+    if (userProgress?.bookmarks && userProgress.bookmarks.length > 0) {
+      suggestions.push('Can you explain something from my bookmarked content?');
+    }
+
+    // Add difficulty progression suggestions
+    const knowledgeLevel = userProgress?.preferences?.knowledgeLevel || 'intermediate';
+    if (knowledgeLevel === 'beginner') {
+      suggestions.push('What are some practical examples of this?');
+    } else if (knowledgeLevel === 'advanced') {
+      suggestions.push('What are the advanced applications or edge cases?');
+    }
+
+    return suggestions.slice(0, 2); // Return max 2 smart suggestions
+
+  } catch (error) {
+    console.error('Failed to generate smart question suggestions:', error);
+    return [];
+  }
+}
+
+/**
+ * Export conversation thread as text or JSON
+ */
+export const exportChatThread = async (args: ExportChatThreadInput, context: any): Promise<ExportChatThreadResponse> => {
+  if (!context.user) {
+    throw new HttpError(401, 'Authentication required');
+  }
+
+  const { threadId, format } = args;
+
+  try {
+    // Verify thread exists and user owns it
+    const chatThread = await context.entities.ChatThread.findUnique({
+      where: { 
+        id: threadId,
+        userId: context.user.id
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' }
+        },
+        topic: {
+          select: {
+            title: true,
+            slug: true
+          }
+        }
+      }
+    });
+
+    if (!chatThread) {
+      throw new HttpError(404, 'Chat thread not found');
+    }
+
+    const exportData = {
+      title: chatThread.title,
+      topic: chatThread.topic?.title,
+      createdAt: chatThread.createdAt,
+      messageCount: chatThread.messages.length,
+      messages: chatThread.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.createdAt,
+        metadata: msg.metadata
+      }))
+    };
+
+    switch (format) {
+      case 'json':
+        return {
+          content: JSON.stringify(exportData, null, 2),
+          filename: `chat-${chatThread.topic?.slug || 'conversation'}-${new Date().toISOString().split('T')[0]}.json`,
+          mimeType: 'application/json'
+        };
+
+      case 'markdown':
+        const markdownContent = generateMarkdownExport(exportData);
+        return {
+          content: markdownContent,
+          filename: `chat-${chatThread.topic?.slug || 'conversation'}-${new Date().toISOString().split('T')[0]}.md`,
+          mimeType: 'text/markdown'
+        };
+
+      case 'text':
+      default:
+        const textContent = generateTextExport(exportData);
+        return {
+          content: textContent,
+          filename: `chat-${chatThread.topic?.slug || 'conversation'}-${new Date().toISOString().split('T')[0]}.txt`,
+          mimeType: 'text/plain'
+        };
+    }
+
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    console.error('Failed to export chat thread:', error);
+    throw new HttpError(500, 'Failed to export conversation');
+  }
+};
+
+/**
+ * Generate markdown export format
+ */
+function generateMarkdownExport(data: any): string {
+  let markdown = `# ${data.title}\n\n`;
+  markdown += `**Topic:** ${data.topic}\n`;
+  markdown += `**Created:** ${new Date(data.createdAt).toLocaleString()}\n`;
+  markdown += `**Messages:** ${data.messageCount}\n\n`;
+  markdown += `---\n\n`;
+
+  for (const message of data.messages) {
+    const role = message.role === 'USER' ? '👤 **You**' : '🤖 **AI Assistant**';
+    const timestamp = new Date(message.timestamp).toLocaleTimeString();
+    
+    markdown += `## ${role} *(${timestamp})*\n\n`;
+    markdown += `${message.content}\n\n`;
+    
+    if (message.metadata?.confidence) {
+      markdown += `*Confidence: ${Math.round(message.metadata.confidence * 100)}%*\n\n`;
+    }
+  }
+
+  return markdown;
+}
+
+/**
+ * Generate plain text export format
+ */
+function generateTextExport(data: any): string {
+  let text = `${data.title}\n`;
+  text += `Topic: ${data.topic}\n`;
+  text += `Created: ${new Date(data.createdAt).toLocaleString()}\n`;
+  text += `Messages: ${data.messageCount}\n`;
+  text += `${'='.repeat(50)}\n\n`;
+
+  for (const message of data.messages) {
+    const role = message.role === 'USER' ? 'You' : 'AI Assistant';
+    const timestamp = new Date(message.timestamp).toLocaleTimeString();
+    
+    text += `[${timestamp}] ${role}:\n`;
+    text += `${message.content}\n\n`;
+  }
+
+  return text;
+}
 
 /**
  * Helper function to update topic progress from chat activity

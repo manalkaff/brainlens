@@ -124,15 +124,15 @@
     - Implement bookmarking system for saving interesting content sections
     - _Requirements: 9.3, 9.5_
 
-- [ ] 9. Ask Tab - Conversational Learning Interface
-  - [ ] 9.1 Build chat interface components
+- [x] 9. Ask Tab - Conversational Learning Interface
+  - [x] 9.1 Build chat interface components
     - Create chat message components with user and assistant message styling
     - Implement chat thread management with sidebar for conversation history
     - Add "New Chat" functionality to reset conversation context
     - Build message input with auto-resize and send functionality
     - _Requirements: 5.1, 5.5_
 
-  - [ ] 9.2 Implement RAG-powered chat operations
+  - [x] 9.2 Implement RAG-powered chat operations
     - Create `sendMessage` action with vector search and AI response generation
     - Implement conversation context management and history persistence
     - Add smart question suggestions based on user's reading history

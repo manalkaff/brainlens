@@ -417,4 +417,9 @@ action updateChatThread {
   entities: [ChatThread]
 }
 
+action exportChatThread {
+  fn: import { exportChatThread } from "@src/learning/chat/operations",
+  entities: [ChatThread, Message, Topic]
+}
+
 //#endregion
