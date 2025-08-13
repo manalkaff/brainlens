@@ -384,6 +384,27 @@ api researchTopic {
   httpRoute: (POST, "/api/research")
 }
 
+// Enhanced Research API with Streaming
+api enhancedResearch {
+  fn: import { enhancedResearchHandler } from "@src/learning/research/streamingApi",
+  entities: [Topic, VectorDocument, UserTopicProgress],
+  httpRoute: (POST, "/api/research/enhanced")
+}
+
+// Research Streaming API (Server-Sent Events)
+api researchStream {
+  fn: import { researchStreamingHandler } from "@src/learning/research/streamingApi",
+  entities: [Topic, UserTopicProgress],
+  httpRoute: (GET, "/api/research/stream")
+}
+
+// Streaming Status API
+api streamingStatus {
+  fn: import { getStreamingStatusHandler } from "@src/learning/research/streamingApi",
+  entities: [Topic],
+  httpRoute: (GET, "/api/research/streaming-status")
+}
+
 // Learning Content Generation API
 api generateLearningContent {
   fn: import { generateContentHandler } from "@src/learning/api/generateContent",
@@ -420,6 +441,22 @@ action updateChatThread {
 action exportChatThread {
   fn: import { exportChatThread } from "@src/learning/chat/operations",
   entities: [ChatThread, Message, Topic]
+}
+
+// Quiz Operations
+action generateQuiz {
+  fn: import { generateQuiz } from "@src/learning/quiz/operations",
+  entities: [User, Topic, Quiz, QuizQuestion, UserTopicProgress, VectorDocument]
+}
+
+action submitQuizAnswer {
+  fn: import { submitQuizAnswer } from "@src/learning/quiz/operations",
+  entities: [Quiz, QuizQuestion, UserTopicProgress]
+}
+
+query getUserQuizzes {
+  fn: import { getUserQuizzes } from "@src/learning/quiz/operations",
+  entities: [Quiz, QuizQuestion, Topic]
 }
 
 //#endregion

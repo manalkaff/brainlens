@@ -1,448 +1,438 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
-import { Button } from '../../../components/ui/button';
-import { Progress } from '../../../components/ui/progress';
-import { Badge } from '../../../components/ui/badge';
-import { ChevronRight, ChevronDown, BookOpen, Lightbulb, Target, Clock, RefreshCw } from 'lucide-react';
-import { AssessmentResult } from './KnowledgeAssessment';
-import { LearningPath } from './StartingPointRecommendation';
-import { useStreamingContent } from '../../hooks/useStreamingContent';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@src/components/ui/card';
+import { Button } from '@src/components/ui/button';
+import { Progress } from '@src/components/ui/progress';
+import { Badge } from '@src/components/ui/badge';
+import { Alert, AlertDescription } from '@src/components/ui/alert';
+import { 
+  Loader2, 
+  Play, 
+  Pause, 
+  RotateCcw, 
+  AlertCircle, 
+  CheckCircle2, 
+  Clock,
+  Zap,
+  Brain,
+  Search,
+  BookOpen
+} from 'lucide-react';
 
+// Types for streaming content
 interface StreamingContentProps {
-  topic: {
-    id: string;
-    title: string;
-    summary?: string;
-  };
-  assessment: AssessmentResult;
-  selectedPath: LearningPath;
-  onProgressUpdate?: (progress: number) => void;
-  onConceptExpand?: (concept: string) => void;
-}
-
-interface ContentSection {
-  id: string;
-  title: string;
   content: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  estimatedTime: number; // in minutes
-  concepts: string[];
-  isExpanded: boolean;
+  isStreaming: boolean;
   isComplete: boolean;
+  error?: string | null;
+  title?: string;
+  subtitle?: string;
+  agent?: string;
+  progress?: number;
+  estimatedTime?: number;
+  onRetry?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
+  className?: string;
+  showTypewriter?: boolean;
+  typewriterSpeed?: number;
+  showProgress?: boolean;
+  showAgent?: boolean;
 }
 
-export function StreamingContent({ 
-  topic, 
-  assessment, 
-  selectedPath, 
-  onProgressUpdate,
-  onConceptExpand 
-}: StreamingContentProps) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [staticSections, setStaticSections] = useState<ContentSection[]>([]);
+interface TypewriterTextProps {
+  text: string;
+  speed: number;
+  isActive: boolean;
+  onComplete?: () => void;
+  className?: string;
+}
 
-  const {
-    sections: streamingSections,
-    currentSectionIndex,
-    isGenerating,
-    error,
-    completion,
-    progress,
-    generateContent,
-    regenerateSection
-  } = useStreamingContent();
+// Typewriter effect component
+const TypewriterText: React.FC<TypewriterTextProps> = ({
+  text,
+  speed = 50,
+  isActive = true,
+  onComplete,
+  className = '',
+}) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isTyping, setIsTyping] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Generate static content sections based on assessment and selected path
-  const generateStaticSections = (): ContentSection[] => {
-    const baseSections: ContentSection[] = [];
+  const startTyping = useCallback(() => {
+    if (!isActive || currentIndex >= text.length) return;
 
-    // Customize sections based on selected learning path
-    if (selectedPath.id === 'fundamentals') {
-      baseSections.push(
-        {
-          id: 'introduction',
-          title: 'Introduction and Overview',
-          content: '',
-          difficulty: 'beginner',
-          estimatedTime: 15,
-          concepts: ['definition', 'core principles', 'importance'],
-          isExpanded: false,
-          isComplete: false
-        },
-        {
-          id: 'core-concepts',
-          title: 'Core Concepts and Terminology',
-          content: '',
-          difficulty: 'beginner',
-          estimatedTime: 20,
-          concepts: ['terminology', 'key concepts', 'relationships'],
-          isExpanded: false,
-          isComplete: false
-        },
-        {
-          id: 'practical-examples',
-          title: 'Practical Examples and Applications',
-          content: '',
-          difficulty: 'intermediate',
-          estimatedTime: 25,
-          concepts: ['examples', 'applications', 'use cases'],
-          isExpanded: false,
-          isComplete: false
+    setIsTyping(true);
+    intervalRef.current = setInterval(() => {
+      setCurrentIndex(prev => {
+        const nextIndex = prev + 1;
+        if (nextIndex >= text.length) {
+          setIsTyping(false);
+          onComplete?.();
+          return text.length;
         }
-      );
-    } else if (selectedPath.id === 'practical') {
-      baseSections.push(
-        {
-          id: 'use-cases',
-          title: 'Common Use Cases',
-          content: '',
-          difficulty: 'intermediate',
-          estimatedTime: 20,
-          concepts: ['use cases', 'applications', 'scenarios'],
-          isExpanded: false,
-          isComplete: false
-        },
-        {
-          id: 'best-practices',
-          title: 'Best Practices and Methodologies',
-          content: '',
-          difficulty: 'intermediate',
-          estimatedTime: 25,
-          concepts: ['best practices', 'methodologies', 'implementation'],
-          isExpanded: false,
-          isComplete: false
-        }
-      );
-    } else if (selectedPath.id === 'comprehensive') {
-      baseSections.push(
-        {
-          id: 'advanced-concepts',
-          title: 'Advanced Theoretical Concepts',
-          content: '',
-          difficulty: 'advanced',
-          estimatedTime: 30,
-          concepts: ['theory', 'advanced concepts', 'research'],
-          isExpanded: false,
-          isComplete: false
-        },
-        {
-          id: 'technical-details',
-          title: 'Technical Implementation Details',
-          content: '',
-          difficulty: 'advanced',
-          estimatedTime: 35,
-          concepts: ['implementation', 'architecture', 'technical details'],
-          isExpanded: false,
-          isComplete: false
-        }
-      );
-    }
-
-    // Add adaptive sections based on learning styles
-    if (assessment.learningStyles.includes('visual')) {
-      baseSections.push({
-        id: 'visual-representations',
-        title: 'Visual Models and Diagrams',
-        content: '',
-        difficulty: assessment.knowledgeLevel >= 3 ? 'intermediate' : 'beginner',
-        estimatedTime: 15,
-        concepts: ['diagrams', 'models', 'visualizations'],
-        isExpanded: false,
-        isComplete: false
+        return nextIndex;
       });
+    }, speed);
+  }, [text, speed, isActive, currentIndex, onComplete]);
+
+  const stopTyping = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
+    setIsTyping(false);
+  }, []);
 
-    if (assessment.learningStyles.includes('interactive')) {
-      baseSections.push({
-        id: 'interactive-examples',
-        title: 'Interactive Examples and Exercises',
-        content: '',
-        difficulty: 'intermediate',
-        estimatedTime: 20,
-        concepts: ['exercises', 'practice', 'hands-on'],
-        isExpanded: false,
-        isComplete: false
-      });
-    }
-
-    return baseSections;
-  };
-
-  // Initialize static sections
+  // Update displayed text based on current index
   useEffect(() => {
-    const sections = generateStaticSections();
-    setStaticSections(sections);
-  }, [topic, assessment, selectedPath]);
+    setDisplayedText(text.slice(0, currentIndex));
+  }, [text, currentIndex]);
 
-  // Update progress when streaming sections change
+  // Start typing when text changes or becomes active
   useEffect(() => {
-    onProgressUpdate?.(progress);
-  }, [progress, onProgressUpdate]);
-
-  // Start streaming content generation
-  const startStreaming = async () => {
-    await generateContent({
-      topic: topic.title,
-      knowledgeLevel: assessment.knowledgeLevel,
-      learningStyles: assessment.learningStyles,
-      contentDepth: assessment.preferences.contentDepth,
-      difficultyPreference: assessment.preferences.difficultyPreference
-    });
-  };
-
-  // Regenerate a specific section
-  const handleRegenerateSection = async (sectionId: string) => {
-    await regenerateSection(sectionId, {
-      topic: topic.title,
-      knowledgeLevel: assessment.knowledgeLevel,
-      learningStyles: assessment.learningStyles,
-      contentDepth: assessment.preferences.contentDepth,
-      difficultyPreference: assessment.preferences.difficultyPreference
-    });
-  };
-
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(sectionId)) {
-        newSet.delete(sectionId);
-      } else {
-        newSet.add(sectionId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleConceptClick = (concept: string) => {
-    onConceptExpand?.(concept);
-  };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'intermediate':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'advanced':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+    if (isActive && text && currentIndex < text.length) {
+      startTyping();
+    } else {
+      stopTyping();
     }
-  };
 
-  // Combine static sections with streaming sections for display
-  const displaySections = streamingSections.length > 0 ? streamingSections : staticSections;
+    return () => stopTyping();
+  }, [text, isActive, startTyping, stopTyping, currentIndex]);
+
+  // Reset when text changes
+  useEffect(() => {
+    setCurrentIndex(0);
+    setDisplayedText('');
+  }, [text]);
 
   return (
-    <div className="space-y-6">
-      {/* Learning Progress Header */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Target className="w-5 h-5 text-primary mr-2" />
-              {selectedPath.title}
-            </div>
-            <Badge variant="secondary">
-              {displaySections.filter(s => s.isComplete).length} / {displaySections.length} Complete
-            </Badge>
-          </CardTitle>
-          <CardDescription>
-            Personalized learning content based on your assessment results
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Overall Progress</span>
-              <span>{Math.round(progress)}%</span>
-            </div>
-            <Progress value={progress} className="h-2" />
+    <div className={className}>
+      {displayedText}
+      {isTyping && (
+        <span className="animate-pulse text-blue-500 ml-1">|</span>
+      )}
+    </div>
+  );
+};
+
+// Loading skeleton component
+const ContentSkeleton: React.FC<{ lines?: number }> = ({ lines = 3 }) => (
+  <div className="space-y-3">
+    {Array.from({ length: lines }).map((_, i) => (
+      <div key={i} className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded animate-pulse" style={{ width: `${Math.random() * 40 + 60}%` }} />
+        <div className="h-4 bg-gray-200 rounded animate-pulse" style={{ width: `${Math.random() * 30 + 70}%` }} />
+      </div>
+    ))}
+  </div>
+);
+
+// Agent indicator component
+const AgentIndicator: React.FC<{ agent: string; isActive: boolean }> = ({ agent, isActive }) => {
+  const getAgentIcon = (agentName: string) => {
+    switch (agentName.toLowerCase()) {
+      case 'general':
+        return <Search className="w-3 h-3" />;
+      case 'academic':
+        return <BookOpen className="w-3 h-3" />;
+      case 'computational':
+        return <Brain className="w-3 h-3" />;
+      case 'video':
+        return <Play className="w-3 h-3" />;
+      case 'community':
+        return <Zap className="w-3 h-3" />;
+      default:
+        return <Search className="w-3 h-3" />;
+    }
+  };
+
+  const getAgentColor = (agentName: string) => {
+    switch (agentName.toLowerCase()) {
+      case 'general':
+        return 'bg-blue-100 text-blue-800';
+      case 'academic':
+        return 'bg-green-100 text-green-800';
+      case 'computational':
+        return 'bg-purple-100 text-purple-800';
+      case 'video':
+        return 'bg-red-100 text-red-800';
+      case 'community':
+        return 'bg-orange-100 text-orange-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <Badge 
+      variant="secondary" 
+      className={`${getAgentColor(agent)} ${isActive ? 'animate-pulse' : ''}`}
+    >
+      {getAgentIcon(agent)}
+      <span className="ml-1 capitalize">{agent}</span>
+      {isActive && <Loader2 className="w-3 h-3 ml-1 animate-spin" />}
+    </Badge>
+  );
+};
+
+// Main streaming content component
+export const StreamingContent: React.FC<StreamingContentProps> = ({
+  content,
+  isStreaming,
+  isComplete,
+  error,
+  title,
+  subtitle,
+  agent,
+  progress = 0,
+  estimatedTime,
+  onRetry,
+  onPause,
+  onResume,
+  className = '',
+  showTypewriter = true,
+  typewriterSpeed = 30,
+  showProgress = true,
+  showAgent = true,
+}) => {
+  const [isPaused, setIsPaused] = useState(false);
+  const [typewriterComplete, setTypewriterComplete] = useState(false);
+
+  const handlePause = () => {
+    setIsPaused(true);
+    onPause?.();
+  };
+
+  const handleResume = () => {
+    setIsPaused(false);
+    onResume?.();
+  };
+
+  const handleRetry = () => {
+    setTypewriterComplete(false);
+    onRetry?.();
+  };
+
+  const formatEstimatedTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  };
+
+  return (
+    <Card className={`${className} transition-all duration-300`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            {title && (
+              <CardTitle className="text-lg font-semibold text-gray-900">
+                {title}
+              </CardTitle>
+            )}
+            {subtitle && (
+              <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {showAgent && agent && (
+              <AgentIndicator agent={agent} isActive={isStreaming && !isPaused} />
+            )}
             
-            {!isGenerating && displaySections.length > 0 && progress === 0 && (
-              <Button onClick={startStreaming} className="w-full">
-                <BookOpen className="w-4 h-4 mr-2" />
-                Start Learning Journey
+            {isStreaming && !error && (
+              <div className="flex items-center gap-1">
+                {!isPaused ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handlePause}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Pause className="w-4 h-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResume}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Play className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            )}
+            
+            {error && onRetry && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRetry}
+                className="h-8 w-8 p-0"
+              >
+                <RotateCcw className="w-4 h-4" />
               </Button>
             )}
+          </div>
+        </div>
 
-            {isGenerating && (
-              <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                <span>Generating personalized content...</span>
+        {showProgress && (isStreaming || isComplete) && (
+          <div className="space-y-2 mt-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">
+                {isComplete ? 'Complete' : isStreaming ? 'Generating...' : 'Ready'}
+              </span>
+              <div className="flex items-center gap-2 text-gray-500">
+                {estimatedTime && !isComplete && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{formatEstimatedTime(estimatedTime)}</span>
+                  </div>
+                )}
+                <span>{Math.round(progress)}%</span>
               </div>
-            )}
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        )}
+      </CardHeader>
 
-            {error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive">{error.message}</p>
-                <Button variant="outline" size="sm" onClick={startStreaming} className="mt-2">
-                  Try Again
+      <CardContent>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {error}
+              {onRetry && (
+                <Button
+                  variant="link"
+                  className="p-0 h-auto ml-2 text-red-600"
+                  onClick={handleRetry}
+                >
+                  Try again
                 </Button>
-              </div>
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : content ? (
+          <div className="prose prose-sm max-w-none">
+            {showTypewriter && isStreaming && !isPaused ? (
+              <TypewriterText
+                text={content}
+                speed={typewriterSpeed}
+                isActive={!isPaused}
+                onComplete={() => setTypewriterComplete(true)}
+                className="whitespace-pre-wrap"
+              />
+            ) : (
+              <div className="whitespace-pre-wrap">{content}</div>
             )}
+          </div>
+        ) : isStreaming ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-gray-600">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Generating content...</span>
+            </div>
+            <ContentSkeleton lines={4} />
+          </div>
+        ) : (
+          <div className="text-gray-500 text-center py-8">
+            <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>Content will appear here when generation starts</p>
+          </div>
+        )}
+
+        {isComplete && (
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-200">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <span className="text-sm text-green-600 font-medium">
+              Content generation complete
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// Multi-section streaming content component
+interface StreamingSectionProps {
+  sections: Array<{
+    id: string;
+    title: string;
+    content: string;
+    isComplete: boolean;
+    isActive: boolean;
+    agent?: string;
+    progress?: number;
+  }>;
+  currentSectionIndex: number;
+  overallProgress: number;
+  isStreaming: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  className?: string;
+}
+
+export const StreamingSections: React.FC<StreamingSectionProps> = ({
+  sections,
+  currentSectionIndex,
+  overallProgress,
+  isStreaming,
+  error,
+  onRetry,
+  className = '',
+}) => {
+  return (
+    <div className={`space-y-4 ${className}`}>
+      {/* Overall progress */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-gray-900">Content Generation Progress</h3>
+            <span className="text-sm text-gray-600">{Math.round(overallProgress)}%</span>
+          </div>
+          <Progress value={overallProgress} className="h-3" />
+          <div className="flex items-center justify-between mt-2 text-sm text-gray-600">
+            <span>
+              Section {currentSectionIndex + 1} of {sections.length}
+            </span>
+            <span>
+              {sections.filter(s => s.isComplete).length} completed
+            </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Content Sections */}
-      <div className="space-y-4">
-        {displaySections.map((section, index) => (
-          <Card 
-            key={section.id} 
-            className={`transition-all duration-300 ${
-              section.isComplete ? 'border-green-200 bg-green-50/50' : 
-              currentSectionIndex === index && isGenerating ? 'border-primary/50 bg-primary/5' :
-              'opacity-60'
-            }`}
-          >
-            <CardHeader 
-              className="cursor-pointer"
-              onClick={() => section.isComplete && toggleSection(section.id)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  {section.isComplete ? (
-                    expandedSections.has(section.id) ? 
-                      <ChevronDown className="w-5 h-5 text-muted-foreground" /> :
-                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-muted flex items-center justify-center">
-                      <span className="text-xs font-medium">{index + 1}</span>
-                    </div>
-                  )}
-                  <div>
-                    <CardTitle className="text-lg">{section.title}</CardTitle>
-                    <CardDescription className="flex items-center space-x-2 mt-1">
-                      <Clock className="w-3 h-3" />
-                      <span>{section.estimatedTime} min</span>
-                      <Badge className={getDifficultyColor(section.difficulty)}>
-                        {section.difficulty}
-                      </Badge>
-                    </CardDescription>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  {section.isComplete && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRegenerateSection(section.id);
-                        }}
-                        className="opacity-60 hover:opacity-100"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                      </Button>
-                      <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-
-            {section.isComplete && expandedSections.has(section.id) && (
-              <CardContent>
-                <div className="space-y-4">
-                  {/* Streaming Content Display */}
-                  <div className="prose prose-sm max-w-none">
-                    {section.content ? (
-                      <div className="whitespace-pre-wrap text-muted-foreground">
-                        {section.content}
-                      </div>
-                    ) : (
-                      <div className="p-4 border-2 border-dashed border-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground text-center">
-                          Content will be generated here
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Key Concepts */}
-                  <div>
-                    <h4 className="font-medium mb-2 flex items-center">
-                      <Lightbulb className="w-4 h-4 mr-1" />
-                      Key Concepts:
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {section.concepts.map((concept) => (
-                        <Button
-                          key={concept}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleConceptClick(concept)}
-                          className="text-xs"
-                        >
-                          {concept}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            )}
-
-            {currentSectionIndex === index && isGenerating && (
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                    <div className="animate-pulse w-2 h-2 bg-primary rounded-full"></div>
-                    <span>Generating content...</span>
-                  </div>
-                  {/* Show streaming content as it's being generated */}
-                  {completion && (
-                    <div className="prose prose-sm max-w-none">
-                      <div className="whitespace-pre-wrap text-muted-foreground">
-                        {completion}
-                        <span className="animate-pulse">|</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        ))}
-      </div>
-
-      {/* Adaptive Difficulty Adjustment */}
-      {progress > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Adaptive Learning</CardTitle>
-            <CardDescription>
-              Content difficulty adjusts based on your interactions and progress
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <div className="font-medium">Current Level</div>
-                <div className="text-muted-foreground">
-                  {assessment.knowledgeLevel <= 2 ? 'Beginner' : 
-                   assessment.knowledgeLevel <= 3 ? 'Intermediate' : 'Advanced'}
-                </div>
-              </div>
-              <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <div className="font-medium">Pace</div>
-                <div className="text-muted-foreground capitalize">{assessment.preferences.pacePreference}</div>
-              </div>
-              <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <div className="font-medium">Content Depth</div>
-                <div className="text-muted-foreground capitalize">{assessment.preferences.contentDepth}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Individual sections */}
+      {sections.map((section, index) => (
+        <StreamingContent
+          key={section.id}
+          title={section.title}
+          content={section.content}
+          isStreaming={section.isActive && isStreaming}
+          isComplete={section.isComplete}
+          agent={section.agent}
+          progress={section.progress || 0}
+          error={index === currentSectionIndex ? error : undefined}
+          onRetry={index === currentSectionIndex ? onRetry : undefined}
+          showTypewriter={section.isActive}
+          showProgress={section.isActive || section.isComplete}
+          className={`${
+            section.isActive 
+              ? 'ring-2 ring-blue-500 ring-opacity-50' 
+              : section.isComplete 
+                ? 'bg-green-50 border-green-200' 
+                : 'opacity-60'
+          }`}
+        />
+      ))}
     </div>
   );
-}
+};
+
+export default StreamingContent;

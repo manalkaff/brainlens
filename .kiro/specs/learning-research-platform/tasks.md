@@ -157,30 +157,30 @@
     - Build export functionality for mind map as image format
     - _Requirements: 6.4, 6.5, 6.6_
 
-- [ ] 11. Quiz Tab - Adaptive Assessment System
-  - [ ] 11.1 Build quiz generation system
+- [x] 11. Quiz Tab - Adaptive Assessment System
+  - [x] 11.1 Build quiz generation system
     - Create `generateQuiz` action using AI to create questions from explored content
     - Implement multiple question types (multiple choice, true/false, fill-in-blank)
     - Add adaptive difficulty based on user's demonstrated knowledge level
     - Build quiz persistence and progress tracking functionality
     - _Requirements: 7.1, 7.2, 7.3_
 
-  - [ ] 11.2 Implement quiz interface and scoring
+  - [x] 11.2 Implement quiz interface and scoring
     - Create quiz taking interface with question navigation and timer
     - Build `submitQuizAnswer` action with immediate feedback and explanations
     - Implement score calculation and improvement trend tracking
     - Add achievement badges and gamification elements for motivation
     - _Requirements: 7.4, 7.5, 7.6_
 
-- [ ] 12. Real-time Features and Streaming
-  - [ ] 12.1 Implement content streaming during research
+- [x] 12. Real-time Features and Streaming
+  - [x] 12.1 Implement content streaming during research
     - Set up WebSocket or Server-Sent Events for real-time research updates
     - Create progressive loading states with descriptive status messages
     - Build incremental UI updates as content becomes available during research
     - Add optimistic UI updates for immediate user feedback
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-  - [ ] 12.2 Build streaming content display components
+  - [x] 12.2 Build streaming content display components
     - Create `StreamingContent.tsx` component for real-time content rendering
     - Implement typewriter effect for AI-generated content display
     - Add loading skeletons and progress indicators for better UX
