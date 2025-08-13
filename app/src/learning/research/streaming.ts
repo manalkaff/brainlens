@@ -1,8 +1,11 @@
 import { ResearchStatus, AgentCoordinationResult } from './pipeline';
 
+// Re-export ResearchStatus for use in other modules
+export type { ResearchStatus } from './pipeline';
+
 // Types for streaming research updates
 export interface StreamingResearchUpdate {
-  type: 'status' | 'progress' | 'content' | 'error' | 'complete';
+  type: 'status' | 'progress' | 'content' | 'error' | 'complete' | 'heartbeat';
   topicId: string;
   timestamp: Date;
   data: any;

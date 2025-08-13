@@ -1,7 +1,7 @@
 import React, { Component, ReactNode } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@src/components/ui/card';
-import { Button } from '@src/components/ui/button';
-import { Alert, AlertDescription } from '@src/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
+import { Alert, AlertDescription } from '../../../components/ui/alert';
 import { AlertTriangle, RefreshCw, Bug, Wifi, WifiOff } from 'lucide-react';
 
 interface StreamingErrorBoundaryProps {

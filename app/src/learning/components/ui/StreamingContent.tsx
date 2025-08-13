@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@src/components/ui/card';
-import { Button } from '@src/components/ui/button';
-import { Progress } from '@src/components/ui/progress';
-import { Badge } from '@src/components/ui/badge';
-import { Alert, AlertDescription } from '@src/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
+import { Progress } from '../../../components/ui/progress';
+import { Badge } from '../../../components/ui/badge';
+import { Alert, AlertDescription } from '../../../components/ui/alert';
 import { 
   Loader2, 
   Play, 
@@ -20,9 +20,18 @@ import {
 
 // Types for streaming content
 interface StreamingContentProps {
-  content: string;
-  isStreaming: boolean;
-  isComplete: boolean;
+  topic: {
+    id: string;
+    title: string;
+    summary?: string;
+  };
+  assessment: any; // AssessmentResult type
+  selectedPath: any; // LearningPath type
+  onProgressUpdate: (progress: number) => Promise<void>;
+  onConceptExpand: (concept: string) => void;
+  content?: string;
+  isStreaming?: boolean;
+  isComplete?: boolean;
   error?: string | null;
   title?: string;
   subtitle?: string;
@@ -179,9 +188,14 @@ const AgentIndicator: React.FC<{ agent: string; isActive: boolean }> = ({ agent,
 
 // Main streaming content component
 export const StreamingContent: React.FC<StreamingContentProps> = ({
-  content,
-  isStreaming,
-  isComplete,
+  topic,
+  assessment,
+  selectedPath,
+  onProgressUpdate,
+  onConceptExpand,
+  content = '',
+  isStreaming = false,
+  isComplete = false,
   error,
   title,
   subtitle,
@@ -198,7 +212,6 @@ export const StreamingContent: React.FC<StreamingContentProps> = ({
   showAgent = true,
 }) => {
   const [isPaused, setIsPaused] = useState(false);
-  const [typewriterComplete, setTypewriterComplete] = useState(false);
 
   const handlePause = () => {
     setIsPaused(true);
@@ -211,7 +224,6 @@ export const StreamingContent: React.FC<StreamingContentProps> = ({
   };
 
   const handleRetry = () => {
-    setTypewriterComplete(false);
     onRetry?.();
   };
 
@@ -227,13 +239,11 @@ export const StreamingContent: React.FC<StreamingContentProps> = ({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            {title && (
-              <CardTitle className="text-lg font-semibold text-gray-900">
-                {title}
-              </CardTitle>
-            )}
-            {subtitle && (
-              <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
+            <CardTitle className="text-lg font-semibold text-gray-900">
+              {title || topic.title}
+            </CardTitle>
+            {(subtitle || topic.summary) && (
+              <p className="text-sm text-gray-600 mt-1">{subtitle || topic.summary}</p>
             )}
           </div>
           
@@ -324,7 +334,7 @@ export const StreamingContent: React.FC<StreamingContentProps> = ({
                 text={content}
                 speed={typewriterSpeed}
                 isActive={!isPaused}
-                onComplete={() => setTypewriterComplete(true)}
+                onComplete={() => {}}
                 className="whitespace-pre-wrap"
               />
             ) : (
@@ -342,7 +352,13 @@ export const StreamingContent: React.FC<StreamingContentProps> = ({
         ) : (
           <div className="text-gray-500 text-center py-8">
             <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>Content will appear here when generation starts</p>
+            <p>Learning content for "{topic.title}" will be generated based on your {selectedPath?.name || 'selected'} learning path</p>
+            <div className="mt-4 text-sm">
+              <p>Assessment level: {assessment?.level || 'Not assessed'}</p>
+              {selectedPath && (
+                <p>Learning approach: {selectedPath.name}</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -378,6 +394,116 @@ interface StreamingSectionProps {
   className?: string;
 }
 
+// Simple streaming content props for sections
+interface SimpleStreamingContentProps {
+  title?: string;
+  content?: string;
+  isStreaming?: boolean;
+  isComplete?: boolean;
+  agent?: string;
+  progress?: number;
+  error?: string | null;
+  onRetry?: () => void;
+  showTypewriter?: boolean;
+  showProgress?: boolean;
+  className?: string;
+}
+
+// Simple streaming content component for sections
+const SimpleStreamingContent: React.FC<SimpleStreamingContentProps> = ({
+  title,
+  content = '',
+  isStreaming = false,
+  isComplete = false,
+  agent,
+  progress = 0,
+  error,
+  onRetry,
+  showTypewriter = true,
+  showProgress = true,
+  className = '',
+}) => {
+  return (
+    <Card className={`${className} transition-all duration-300`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            {title && (
+              <CardTitle className="text-lg font-semibold text-gray-900">
+                {title}
+              </CardTitle>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {agent && (
+              <AgentIndicator agent={agent} isActive={isStreaming} />
+            )}
+          </div>
+        </div>
+
+        {showProgress && (isStreaming || isComplete) && (
+          <div className="space-y-2 mt-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">
+                {isComplete ? 'Complete' : isStreaming ? 'Generating...' : 'Ready'}
+              </span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        )}
+      </CardHeader>
+
+      <CardContent>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {error}
+              {onRetry && (
+                <Button
+                  variant="link"
+                  className="p-0 h-auto ml-2 text-red-600"
+                  onClick={onRetry}
+                >
+                  Try again
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : content ? (
+          <div className="prose prose-sm max-w-none">
+            <div className="whitespace-pre-wrap">{content}</div>
+          </div>
+        ) : isStreaming ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-gray-600">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Generating content...</span>
+            </div>
+            <ContentSkeleton lines={4} />
+          </div>
+        ) : (
+          <div className="text-gray-500 text-center py-8">
+            <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>Content will appear here when generation starts</p>
+          </div>
+        )}
+
+        {isComplete && (
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-200">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <span className="text-sm text-green-600 font-medium">
+              Content generation complete
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export const StreamingSections: React.FC<StreamingSectionProps> = ({
   sections,
   currentSectionIndex,
@@ -410,7 +536,7 @@ export const StreamingSections: React.FC<StreamingSectionProps> = ({
 
       {/* Individual sections */}
       {sections.map((section, index) => (
-        <StreamingContent
+        <SimpleStreamingContent
           key={section.id}
           title={section.title}
           content={section.content}
