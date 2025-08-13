@@ -293,6 +293,12 @@ page AdminUIButtonsPage {
   component: import AdminUI from "@src/admin/elements/ui-elements/ButtonsPage"
 }
 
+route AdminLearningAnalyticsRoute { path: "/admin/learning", to: AdminLearningAnalyticsPage }
+page AdminLearningAnalyticsPage {
+  authRequired: true,
+  component: import AdminLearningAnalytics from "@src/admin/dashboards/learning/LearningAnalyticsDashboardPage"
+}
+
 route NotFoundRoute { path: "*", to: NotFoundPage }
 page NotFoundPage {
   component: import { NotFoundPage } from "@src/client/components/NotFoundPage"
@@ -328,7 +334,7 @@ page TopicPage {
 // Topic Management Operations
 action createTopic {
   fn: import { createTopic } from "@src/learning/operations",
-  entities: [Topic, UserTopicProgress]
+  entities: [User, Topic, UserTopicProgress, Message, Quiz]
 }
 
 query getTopic {
@@ -430,7 +436,7 @@ query getChatThreads {
 
 action sendMessage {
   fn: import { sendMessage } from "@src/learning/chat/operations",
-  entities: [ChatThread, Message, Topic, UserTopicProgress, VectorDocument]
+  entities: [User, ChatThread, Message, Topic, UserTopicProgress, VectorDocument, Quiz]
 }
 
 action updateChatThread {
@@ -446,7 +452,7 @@ action exportChatThread {
 // Quiz Operations
 action generateQuiz {
   fn: import { generateQuiz } from "@src/learning/quiz/operations",
-  entities: [User, Topic, Quiz, QuizQuestion, UserTopicProgress, VectorDocument]
+  entities: [User, Topic, Quiz, QuizQuestion, UserTopicProgress, VectorDocument, Message]
 }
 
 action submitQuizAnswer {
@@ -457,6 +463,38 @@ action submitQuizAnswer {
 query getUserQuizzes {
   fn: import { getUserQuizzes } from "@src/learning/quiz/operations",
   entities: [Quiz, QuizQuestion, Topic]
+}
+
+// Subscription and Credit Operations
+query checkLearningCredits {
+  fn: import { checkLearningCredits } from "@src/learning/subscription/waspOperations",
+  entities: [User, Topic, Message, Quiz]
+}
+
+query getUserUsageStats {
+  fn: import { getUserUsageStats } from "@src/learning/subscription/waspOperations",
+  entities: [User, Topic, Message, Quiz]
+}
+
+query getUpgradeRecommendation {
+  fn: import { getUpgradeRecommendation } from "@src/learning/subscription/waspOperations",
+  entities: [User, Topic, Message, Quiz]
+}
+
+action consumeLearningCredits {
+  fn: import { consumeLearningCredits } from "@src/learning/subscription/waspOperations",
+  entities: [User]
+}
+
+// Admin Learning Management Operations
+query getLearningAnalytics {
+  fn: import { getLearningAnalytics } from "@src/learning/subscription/waspOperations",
+  entities: [User, Topic, UserTopicProgress, Message, Quiz]
+}
+
+action updateUserLearningQuota {
+  fn: import { updateUserLearningQuota } from "@src/learning/subscription/waspOperations",
+  entities: [User]
 }
 
 //#endregion

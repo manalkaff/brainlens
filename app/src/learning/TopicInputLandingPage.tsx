@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { Link as WaspRouterLink, routes } from 'wasp/client/router';
+import { createTopic } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
+import { HelpSystem } from './components/help/HelpSystem';
+import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow';
 
 const exampleTopics = [
   "Machine Learning Fundamentals",
@@ -15,9 +18,11 @@ const exampleTopics = [
 
 export default function TopicInputLandingPage() {
   const [topicInput, setTopicInput] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const { data: user } = useAuth();
+  const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
 
-  const handleStartLearning = () => {
+  const handleStartLearning = async () => {
     if (!topicInput.trim()) return;
     
     if (!user) {
@@ -26,16 +31,27 @@ export default function TopicInputLandingPage() {
       return;
     }
     
-    // Create topic slug from input
-    const slug = topicInput
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .trim();
+    setIsCreating(true);
     
-    // Navigate to topic page (will be implemented in next task)
-    window.location.href = `/learn/${slug}`;
+    try {
+      // Create the topic
+      const topic = await createTopic({
+        title: topicInput.trim(),
+        summary: `Learn about ${topicInput.trim()}`,
+        description: `Comprehensive learning material for ${topicInput.trim()}`
+      });
+      
+      // For now, skip the research process and navigate directly
+      // TODO: Implement research pipeline integration
+      console.log('Topic created:', topic);
+      
+      // Navigate to the topic page
+      window.location.href = `/learn/${topic.slug}`;
+    } catch (error) {
+      console.error('Failed to create topic:', error);
+      alert('Failed to create topic. Please try again.');
+      setIsCreating(false);
+    }
   };
 
   const handleExampleClick = (topic: string) => {
@@ -56,6 +72,7 @@ export default function TopicInputLandingPage() {
             </WaspRouterLink>
           </div>
           <div className='flex lg:flex-1 lg:justify-end gap-4'>
+            <HelpSystem />
             <Button variant='ghost' asChild>
               <WaspRouterLink to="/home">About</WaspRouterLink>
             </Button>
@@ -107,11 +124,11 @@ export default function TopicInputLandingPage() {
                 />
                 <Button
                   onClick={handleStartLearning}
-                  disabled={!topicInput.trim()}
+                  disabled={!topicInput.trim() || isCreating}
                   className='absolute bottom-3 right-3'
                   size='sm'
                 >
-                  Start Learning →
+                  {isCreating ? 'Creating...' : 'Start Learning →'}
                 </Button>
               </div>
               
@@ -183,6 +200,13 @@ export default function TopicInputLandingPage() {
           </div>
         </div>
       </main>
+
+      {/* Onboarding Flow */}
+      <OnboardingFlow
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        onComplete={completeOnboarding}
+      />
     </div>
   );
 }

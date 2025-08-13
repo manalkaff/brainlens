@@ -8,6 +8,7 @@ import type {
 } from 'wasp/server/operations';
 import type { ChatThread, Message, UserTopicProgress } from 'wasp/entities';
 import { conversationManager } from './conversationManager';
+import { consumeCredits } from '../subscription/operations';
 
 // Types for chat operations
 type CreateChatThreadInput = {
@@ -304,6 +305,13 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
       context.user.id,
       userPreferences
     );
+
+    // Consume credits for AI chat message
+    await consumeCredits(context.user.id, 'AI_CHAT_MESSAGE', context, {
+      threadId,
+      topicId: chatThread.topicId,
+      messageLength: content.length
+    });
 
     // Process the message and get AI response
     const result = await conversationManager.processMessage(

@@ -36,7 +36,7 @@ export const updateIsUserAdminById: UpdateIsUserAdminById<UpdateUserAdminByIdInp
 type GetPaginatedUsersOutput = {
   users: Pick<
     User,
-    'id' | 'email' | 'username' | 'subscriptionStatus' | 'paymentProcessorUserId' | 'isAdmin'
+    'id' | 'email' | 'username' | 'subscriptionStatus' | 'subscriptionPlan' | 'paymentProcessorUserId' | 'isAdmin' | 'credits'
   >[];
   totalPages: number;
 };
@@ -106,7 +106,9 @@ export const getPaginatedUsers: GetPaginatedUsers<GetPaginatedUsersInput, GetPag
       username: true,
       isAdmin: true,
       subscriptionStatus: true,
+      subscriptionPlan: true,
       paymentProcessorUserId: true,
+      credits: true,
     },
     orderBy: {
       username: 'asc',

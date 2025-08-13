@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { X, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { getPaginatedUsers, updateIsUserAdminById, useQuery } from 'wasp/client/operations';
@@ -10,9 +10,11 @@ import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { Switch } from '../../../components/ui/switch';
+import { Badge } from '../../../components/ui/badge';
 import { SubscriptionStatus } from '../../../payment/plans';
 import LoadingSpinner from '../../layout/LoadingSpinner';
 import DropdownEditDelete from './DropdownEditDelete';
+import { UserQuotaManager, BulkQuotaManager } from '../../components/UserQuotaManager';
 
 function AdminSwitch({ id, isAdmin }: Pick<User, 'id' | 'isAdmin'>) {
   const { data: currentUser } = useAuth();
@@ -34,12 +36,13 @@ const UsersTable = () => {
   const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState<Array<SubscriptionStatus | null>>(
     []
   );
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
 
   const debouncedEmailFilter = useDebounce(emailFilter, 300);
 
   const skipPages = currentPage - 1;
 
-  const { data, isLoading } = useQuery(getPaginatedUsers, {
+  const { data, isLoading, refetch } = useQuery(getPaginatedUsers, {
     skipPages,
     filter: {
       ...(debouncedEmailFilter && { emailContains: debouncedEmailFilter }),
@@ -70,6 +73,27 @@ const UsersTable = () => {
   };
 
   const hasActiveFilters = subscriptionStatusFilter && subscriptionStatusFilter.length > 0;
+
+  const handleUserSelect = (userId: string, selected: boolean) => {
+    if (selected) {
+      setSelectedUsers(prev => [...prev, userId]);
+    } else {
+      setSelectedUsers(prev => prev.filter(id => id !== userId));
+    }
+  };
+
+  const handleSelectAll = (selected: boolean) => {
+    if (selected && data?.users) {
+      setSelectedUsers(data.users.map(user => user.id));
+    } else {
+      setSelectedUsers([]);
+    }
+  };
+
+  const handleQuotaUpdate = () => {
+    refetch();
+    setSelectedUsers([]);
+  };
 
   return (
     <div className='flex flex-col gap-4'>
@@ -222,46 +246,115 @@ const UsersTable = () => {
           )}
         </div>
 
-        <div className='grid grid-cols-9 border-t-4 border-border py-4.5 px-4 md:px-6 '>
-          <div className='col-span-3 flex items-center'>
-            <p className='font-medium'>Email / Username</p>
-          </div>
-          <div className='col-span-2 flex items-center'>
-            <p className='font-medium'>Subscription Status</p>
-          </div>
-          <div className='col-span-2 flex items-center'>
-            <p className='font-medium'>Stripe ID</p>
-          </div>
-          <div className='col-span-1 flex items-center'>
-            <p className='font-medium'>Is Admin</p>
-          </div>
-          <div className='col-span-1 flex items-center'>
-            <p className='font-medium'></p>
+        <div className='border-t-4 border-border'>
+          {/* Bulk Actions */}
+          {selectedUsers.length > 0 && (
+            <div className='bg-blue-50 border-b border-border p-4 flex items-center justify-between'>
+              <div className='flex items-center gap-3'>
+                <span className='text-sm font-medium'>
+                  {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedUsers([])}
+                >
+                  Clear Selection
+                </Button>
+              </div>
+              <div className='flex items-center gap-2'>
+                <BulkQuotaManager 
+                  selectedUsers={selectedUsers} 
+                  onUpdate={handleQuotaUpdate}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Table Header */}
+          <div className='grid grid-cols-10 py-4.5 px-4 md:px-6'>
+            <div className='col-span-1 flex items-center'>
+              <Checkbox
+                checked={data?.users ? selectedUsers.length === data.users.length : false}
+                onCheckedChange={handleSelectAll}
+              />
+            </div>
+            <div className='col-span-2 flex items-center'>
+              <p className='font-medium'>Email / Username</p>
+            </div>
+            <div className='col-span-2 flex items-center'>
+              <p className='font-medium'>Subscription</p>
+            </div>
+            <div className='col-span-1 flex items-center'>
+              <p className='font-medium'>Credits</p>
+            </div>
+            <div className='col-span-2 flex items-center'>
+              <p className='font-medium'>Stripe ID</p>
+            </div>
+            <div className='col-span-1 flex items-center'>
+              <p className='font-medium'>Admin</p>
+            </div>
+            <div className='col-span-1 flex items-center'>
+              <p className='font-medium'>Actions</p>
+            </div>
           </div>
         </div>
         {isLoading && <LoadingSpinner />}
         {!!data?.users &&
           data?.users?.length > 0 &&
           data.users.map((user) => (
-            <div key={user.id} className='grid grid-cols-9 gap-4 py-4.5 px-4 md:px-6 '>
-              <div className='col-span-3 flex items-center'>
-                <div className='flex flex-col gap-1 '>
+            <div key={user.id} className='grid grid-cols-10 gap-4 py-4.5 px-4 md:px-6 border-b border-border/50'>
+              <div className='col-span-1 flex items-center'>
+                <Checkbox
+                  checked={selectedUsers.includes(user.id)}
+                  onCheckedChange={(checked) => handleUserSelect(user.id, checked as boolean)}
+                />
+              </div>
+              <div className='col-span-2 flex items-center'>
+                <div className='flex flex-col gap-1'>
                   <p className='text-sm text-foreground'>{user.email}</p>
-                  <p className='text-sm text-foreground'>{user.username}</p>
+                  <p className='text-sm text-muted-foreground'>{user.username}</p>
                 </div>
               </div>
               <div className='col-span-2 flex items-center'>
-                <p className='text-sm text-foreground'>{user.subscriptionStatus}</p>
-              </div>
-              <div className='col-span-2 flex items-center'>
-                <p className='text-sm text-muted-foreground'>{user.paymentProcessorUserId}</p>
-              </div>
-              <div className='col-span-1 flex items-center'>
-                <div className='text-sm text-foreground'>
-                  <AdminSwitch {...user} />
+                <div className='flex flex-col gap-1'>
+                  <Badge variant={user.subscriptionStatus === 'active' ? 'default' : 'secondary'}>
+                    {user.subscriptionStatus || 'Free'}
+                  </Badge>
+                  {user.subscriptionStatus && (
+                    <p className='text-xs text-muted-foreground'>
+                      {user.subscriptionPlan || 'Unknown Plan'}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className='col-span-1 flex items-center'>
+                <div className='flex items-center gap-1'>
+                  <CreditCard className='h-3 w-3 text-muted-foreground' />
+                  <span className='text-sm font-medium'>{user.credits || 0}</span>
+                </div>
+              </div>
+              <div className='col-span-2 flex items-center'>
+                <p className='text-sm text-muted-foreground font-mono'>
+                  {user.paymentProcessorUserId?.slice(0, 20) || 'N/A'}
+                  {user.paymentProcessorUserId && user.paymentProcessorUserId.length > 20 && '...'}
+                </p>
+              </div>
+              <div className='col-span-1 flex items-center'>
+                <AdminSwitch {...user} />
+              </div>
+              <div className='col-span-1 flex items-center gap-2'>
+                <UserQuotaManager 
+                  user={{
+                    id: user.id,
+                    email: user.email || undefined,
+                    username: user.username || undefined,
+                    credits: user.credits || 0,
+                    subscriptionStatus: user.subscriptionStatus || undefined,
+                    subscriptionPlan: user.subscriptionPlan || undefined
+                  }}
+                  onUpdate={handleQuotaUpdate}
+                />
                 <DropdownEditDelete />
               </div>
             </div>

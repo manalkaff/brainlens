@@ -9,6 +9,7 @@ import type {
 } from 'wasp/server/operations';
 import type { Topic, UserTopicProgress } from 'wasp/entities';
 import { TopicStatus } from '@prisma/client';
+import { consumeCredits } from './subscription/operations';
 
 // Helper function to generate URL-friendly slug from title
 function generateSlug(title: string): string {
@@ -79,6 +80,14 @@ export const createTopic: CreateTopic<CreateTopicInput, Topic> = async (args, co
   }
 
   try {
+    // Consume credits for topic research (only for root topics)
+    if (depth === 0) {
+      await consumeCredits(context.user.id, 'TOPIC_RESEARCH', context, {
+        topicTitle: title,
+        parentId: parentId || null
+      });
+    }
+
     const slug = await generateUniqueSlug(title, context);
 
     const topic = await context.entities.Topic.create({
@@ -108,6 +117,9 @@ export const createTopic: CreateTopic<CreateTopicInput, Topic> = async (args, co
 
     return topic;
   } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
     console.error('Failed to create topic:', error);
     throw new HttpError(500, 'Failed to create topic');
   }
@@ -411,7 +423,14 @@ type UserProgressStats = {
   completedTopics: number;
   totalTimeSpent: number;
   completionPercentage: number;
-  recentActivity: UserTopicProgress[];
+  recentActivity: (UserTopicProgress & {
+    topic: {
+      id: string;
+      title: string;
+      slug: string;
+      depth: number;
+    };
+  })[];
   topicsInProgress: number;
 };
 

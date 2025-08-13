@@ -12,6 +12,7 @@ import {
   getQuestionTypeDistribution,
   type QuizGenerationOptions 
 } from './generator';
+import { consumeCredits } from '../subscription/operations';
 
 // Determine difficulty based on user's demonstrated knowledge level
 function determineDifficulty(userProgress: UserTopicProgress | null, topic: Topic): 'beginner' | 'intermediate' | 'advanced' {
@@ -87,6 +88,13 @@ export const generateQuiz: GenerateQuiz<GenerateQuizInput, Quiz> = async (args, 
     // Get question type distribution based on difficulty
     const questionTypes = getQuestionTypeDistribution(quizDifficulty);
     const questionCount = questionTypes.length;
+
+    // Consume credits for quiz generation
+    await consumeCredits(context.user.id, 'QUIZ_GENERATION', context, {
+      topicId,
+      difficulty: quizDifficulty,
+      questionCount
+    });
 
     // Generate quiz content using AI
     const quizGenerationOptions: QuizGenerationOptions = {

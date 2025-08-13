@@ -12,6 +12,8 @@ import { ExploreTab } from './components/tabs/ExploreTab';
 import { AskTab } from './components/tabs/AskTab';
 import { MindMapTab } from './components/tabs/MindMapTab';
 import { QuizTab } from './components/tabs/QuizTab';
+import { HelpSystem } from './components/help/HelpSystem';
+import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow';
 
 // Loading component for tab content
 function TabContentLoader() {
@@ -116,6 +118,7 @@ function LazyTabContent({ tabId, children }: { tabId: string; children: React.Re
 // Main topic page content with tabs
 function TopicPageContent() {
   const { activeTab, setActiveTab, isLoading, error } = useTopicContext();
+  const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
 
   if (error) {
     return (
@@ -177,6 +180,14 @@ function TopicPageContent() {
           </TabsContent>
         </div>
       </Tabs>
+
+      {/* Onboarding Flow */}
+      <OnboardingFlow
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        onComplete={completeOnboarding}
+        currentTab={activeTab}
+      />
     </div>
   );
 }
@@ -210,6 +221,7 @@ export default function TopicPage() {
                 <span className="text-foreground font-medium">Topic</span>
               </div>
               <div className="flex items-center space-x-4">
+                <HelpSystem />
                 <Button variant="ghost" asChild>
                   <WaspRouterLink to="/learn">← Back to Search</WaspRouterLink>
                 </Button>

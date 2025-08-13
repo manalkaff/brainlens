@@ -7,6 +7,7 @@ import { Label } from '../../../components/ui/label';
 import { Checkbox } from '../../../components/ui/checkbox';
 import { updateTopicProgress } from '../../operations';
 import { useTopicContext } from '../../context/TopicContext';
+import { QuickHelp } from '../help/ContextualTooltip';
 
 interface KnowledgeLevel {
   id: string;
@@ -186,6 +187,7 @@ export function KnowledgeAssessment({ onComplete, isLoading = false }: Knowledge
         <CardTitle className="flex items-center">
           <div className="w-2 h-2 rounded-full bg-blue-500 mr-3" />
           Knowledge Assessment
+          <QuickHelp type="knowledgeAssessment" className="ml-2" />
         </CardTitle>
         <CardDescription>
           Help us personalize your learning experience for <strong>{topic.title}</strong>

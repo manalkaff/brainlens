@@ -5,11 +5,20 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Separator } from '../components/ui/separator';
 import { SubscriptionStatus, parsePaymentPlanId, prettyPaymentPlanName } from '../payment/plans';
+import { getUserProgressStats } from 'wasp/client/operations';
+import { UsageDashboard } from '../learning/components/subscription/UsageDashboard';
+import { BookOpen, Brain, Clock, TrendingUp } from 'lucide-react';
 
 export default function AccountPage({ user }: { user: User }) {
+  const { 
+    data: learningStats, 
+    isLoading: isLoadingStats 
+  } = useQuery(getUserProgressStats);
+
   return (
-    <div className='mt-10 px-6'>
-      <Card className='mb-4 lg:m-8'>
+    <div className='mt-10 px-6 space-y-6'>
+      {/* Account Information */}
+      <Card className='lg:m-8'>
         <CardHeader>
           <CardTitle className='text-base font-semibold leading-6 text-foreground'>
             Account Information
@@ -56,6 +65,115 @@ export default function AccountPage({ user }: { user: User }) {
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Learning Progress Overview */}
+      <Card className='lg:m-8'>
+        <CardHeader>
+          <CardTitle className='text-base font-semibold leading-6 text-foreground flex items-center gap-2'>
+            <BookOpen className='h-5 w-5' />
+            Learning Progress
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoadingStats ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                  <div className="h-2 bg-gray-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          ) : learningStats ? (
+            <div className="space-y-6">
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{learningStats.totalTopics}</div>
+                  <div className="text-sm text-blue-800">Topics Explored</div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{learningStats.completedTopics}</div>
+                  <div className="text-sm text-green-800">Completed</div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {Math.round(learningStats.totalTimeSpent / 60)}m
+                  </div>
+                  <div className="text-sm text-purple-800">Time Spent</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {learningStats.completionPercentage}%
+                  </div>
+                  <div className="text-sm text-orange-800">Completion</div>
+                </div>
+              </div>
+
+              {/* Recent Activity */}
+              {learningStats.recentActivity.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Recent Activity
+                  </h4>
+                  <div className="space-y-2">
+                    {learningStats.recentActivity.slice(0, 3).map((activity) => (
+                      <div key={activity.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{activity.topic.title}</span>
+                          {activity.completed && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                              Completed
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round(activity.timeSpent / 60)}m
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3">
+                    <WaspRouterLink
+                      to="/learn"
+                      className="text-sm text-primary hover:text-primary/80 transition-colors duration-200"
+                    >
+                      View all learning topics →
+                    </WaspRouterLink>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">Start your learning journey!</p>
+              <WaspRouterLink
+                to="/learn"
+                className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors duration-200"
+              >
+                <TrendingUp className="h-4 w-4" />
+                Explore Topics
+              </WaspRouterLink>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Usage Dashboard */}
+      <Card className='lg:m-8'>
+        <CardHeader>
+          <CardTitle className='text-base font-semibold leading-6 text-foreground flex items-center gap-2'>
+            <Brain className='h-5 w-5' />
+            Usage & Subscription
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <UsageDashboard compact={false} showRecommendations={true} />
         </CardContent>
       </Card>
     </div>
