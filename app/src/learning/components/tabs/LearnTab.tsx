@@ -6,7 +6,13 @@ import { KnowledgeAssessment, AssessmentResult } from '../ui/KnowledgeAssessment
 import { StartingPointRecommendation, LearningPath } from '../ui/StartingPointRecommendation';
 import { StreamingContent } from '../ui/StreamingContent';
 import { ConceptExpansion } from '../ui/ConceptExpansion';
-import { updateTopicProgress } from 'wasp/client/operations';
+import { 
+  updateTopicProgress
+  // generateAssessmentContent,
+  // generatePersonalizedPath,
+  // generateStartingPoint,
+  // streamAssessmentContent
+} from 'wasp/client/operations';
 import { useAuth } from 'wasp/client/auth';
 
 type LearningPhase = 'assessment' | 'recommendation' | 'learning';
@@ -57,6 +63,32 @@ export function LearnTab() {
         preferences
       });
 
+      // Generate personalized content based on assessment
+      // TODO: Uncomment when operations are available
+      // try {
+      //   const assessmentContent = await generateAssessmentContent({
+      //     topicId: topic.id,
+      //     assessment: result
+      //   });
+
+      //   // Store generated content in preferences
+      //   const updatedPreferences = {
+      //     ...preferences,
+      //     generatedContent: assessmentContent,
+      //     contentGeneratedAt: new Date().toISOString()
+      //   };
+
+      //   await updateTopicProgress({
+      //     topicId: topic.id,
+      //     preferences: updatedPreferences
+      //   });
+
+      //   console.log('Generated assessment content:', assessmentContent);
+      // } catch (contentError) {
+      //   console.error('Failed to generate assessment content:', contentError);
+      //   // Continue with basic assessment flow even if content generation fails
+      // }
+
       setAssessment(result);
       setCurrentPhase('recommendation');
       refreshTopic();
@@ -69,15 +101,41 @@ export function LearnTab() {
   };
 
   const handleStartLearning = async (path: LearningPath) => {
-    if (!topic || !user) return;
+    if (!topic || !user || !assessment) return;
 
     setIsSaving(true);
     try {
+      // Generate detailed personalized learning path
+      let enhancedPath = path;
+      // TODO: Uncomment when operations are available
+      // try {
+      //   const personalizedPath = await generatePersonalizedPath({
+      //     topicId: topic.id,
+      //     assessment,
+      //     includeContent: true
+      //   });
+
+      //   // Merge the generated path with the selected path
+      //   enhancedPath = {
+      //     ...path,
+      //     id: personalizedPath.id,
+      //     title: personalizedPath.title,
+      //     description: personalizedPath.description,
+      //     estimatedTime: personalizedPath.estimatedTime,
+      //     topics: personalizedPath.topics
+      //   };
+
+      //   console.log('Generated personalized path:', personalizedPath);
+      // } catch (pathError) {
+      //   console.error('Failed to generate personalized path:', pathError);
+      //   // Continue with basic path if generation fails
+      // }
+
       // Store selected learning path
       const currentPrefs = (userProgress?.preferences as Record<string, any>) || {};
       const updatedPreferences = {
         ...currentPrefs,
-        selectedPath: path,
+        selectedPath: enhancedPath,
         pathStartedAt: new Date().toISOString()
       };
 
@@ -86,7 +144,7 @@ export function LearnTab() {
         preferences: updatedPreferences
       });
 
-      setSelectedPath(path);
+      setSelectedPath(enhancedPath);
       setCurrentPhase('learning');
       refreshTopic();
     } catch (error) {

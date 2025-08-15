@@ -383,6 +383,27 @@ query getResearchResults {
   entities: [Topic, VectorDocument]
 }
 
+// Assessment Content Generation Operations
+action generateAssessmentContent {
+  fn: import { generateAssessmentContent } from "@src/learning/assessment/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
+action generatePersonalizedPath {
+  fn: import { generatePersonalizedPath } from "@src/learning/assessment/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
+action generateStartingPoint {
+  fn: import { generateStartingPoint } from "@src/learning/assessment/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
+action streamAssessmentContent {
+  fn: import { streamAssessmentContent } from "@src/learning/assessment/operations",
+  entities: [Topic, UserTopicProgress]
+}
+
 // Research Pipeline API
 api researchTopic {
   fn: import { researchTopicHandler } from "@src/learning/research/api",
@@ -416,6 +437,19 @@ api generateLearningContent {
   fn: import { generateContentHandler } from "@src/learning/api/generateContent",
   entities: [Topic, UserTopicProgress],
   httpRoute: (POST, "/api/learning/generate-content")
+}
+
+// Assessment Content Streaming APIs
+api createContentStream {
+  fn: import { createStreamHandler } from "@src/learning/api/streamingService",
+  entities: [Topic, UserTopicProgress],
+  httpRoute: (GET, "/api/learning/stream/create")
+}
+
+api streamContent {
+  fn: import { streamContentHandler } from "@src/learning/api/streamingService",
+  entities: [Topic, UserTopicProgress],
+  httpRoute: (POST, "/api/learning/stream/content")
 }
 
 // Chat Operations

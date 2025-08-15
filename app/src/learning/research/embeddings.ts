@@ -287,8 +287,11 @@ export class EmbeddingService {
   private async initializeRedis(redisUrl?: string): Promise<void> {
     try {
       this.redis = createClient({
-        url: redisUrl || process.env.REDIS_URL || 'redis://localhost:6379',
-        password: process.env.REDIS_PASSWORD || "",
+        socket: {
+          host: process.env.REDIS_HOST || 'localhost',
+          port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
+        },
+        password: process.env.REDIS_PASSWORD || undefined,
       });
 
       this.redis.on('error', (err) => {
