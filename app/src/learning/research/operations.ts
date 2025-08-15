@@ -8,6 +8,22 @@ import type {
 import type { Topic, VectorDocument } from 'wasp/entities';
 import { TopicStatus } from '@prisma/client';
 import { getResearchManager } from './integration';
+import { 
+  handleServerError, 
+  withDatabaseErrorHandling, 
+  withResearchPipelineErrorHandling,
+  validateInput, 
+  sanitizeInput,
+  withRetry,
+  circuitBreakers
+} from '../errors/errorHandler';
+import { 
+  createAuthenticationError, 
+  createValidationError,
+  createLearningError,
+  ErrorType,
+  ERROR_CODES
+} from '../errors/errorTypes';
 
 // Types for research operations
 type StartTopicResearchInput = {
@@ -55,56 +71,89 @@ type ResearchResultsOutput = {
 // Start research for a topic
 export const startTopicResearch: StartTopicResearch<StartTopicResearchInput, { success: boolean; message: string }> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to start research');
   }
 
-  const { topicId, userContext } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!topicId) {
-    throw new HttpError(400, 'Topic ID is required');
+  const topicId = validateInput(
+    args.topicId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Topic ID is required');
+      }
+      return input;
+    },
+    'topicId',
+    { userId: user.id }
+  );
+
+  const { userContext } = args;
+
+  // Validate user context if provided
+  if (userContext) {
+    if (userContext.userLevel && !['beginner', 'intermediate', 'advanced'].includes(userContext.userLevel)) {
+      throw createValidationError('userLevel', 'Invalid user level');
+    }
+    if (userContext.learningStyle && !['visual', 'auditory', 'kinesthetic', 'mixed'].includes(userContext.learningStyle)) {
+      throw createValidationError('learningStyle', 'Invalid learning style');
+    }
   }
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     // Verify topic exists and user has access
     const topic = await context.entities.Topic.findUnique({
       where: { id: topicId },
       include: {
         userProgress: {
-          where: { userId: context.user.id }
+          where: { userId: user.id }
         }
       }
     });
 
     if (!topic) {
-      throw new HttpError(404, 'Topic not found');
+      throw createValidationError('topicId', 'Topic not found');
     }
 
     // Check if topic is already being researched or completed
     if (topic.status === TopicStatus.RESEARCHING) {
-      throw new HttpError(409, 'Research is already in progress for this topic');
+      throw createLearningError(
+        ErrorType.RESEARCH_PIPELINE_ERROR,
+        ERROR_CODES.RESEARCH_INITIALIZATION_FAILED,
+        'Research is already in progress for this topic',
+        {
+          userMessage: 'Research is already in progress for this topic. Please wait for it to complete.',
+          context: { topicId, userId: user.id, currentStatus: topic.status }
+        }
+      );
     }
 
     if (topic.status === TopicStatus.COMPLETED) {
-      throw new HttpError(409, 'Research has already been completed for this topic');
+      throw createLearningError(
+        ErrorType.RESEARCH_PIPELINE_ERROR,
+        ERROR_CODES.RESEARCH_INITIALIZATION_FAILED,
+        'Research has already been completed for this topic',
+        {
+          userMessage: 'Research has already been completed for this topic.',
+          context: { topicId, userId: user.id, currentStatus: topic.status }
+        }
+      );
     }
 
-    // Get research manager and start research
-    const researchManager = getResearchManager();
-    
-    await researchManager.startTopicResearch(topicId, context, userContext);
+    // Start research with circuit breaker and error handling
+    await circuitBreakers.aiService.execute(async () => {
+      return withResearchPipelineErrorHandling(async () => {
+        const researchManager = getResearchManager();
+        await researchManager.startTopicResearch(topicId, context, userContext);
+      }, 'START_RESEARCH', { topicId, userId: user.id });
+    }, 'RESEARCH_SERVICE');
 
     return {
       success: true,
       message: 'Research started successfully'
     };
-
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to start topic research:', error);
-    throw new HttpError(500, 'Failed to start research');
-  }
+  }, 'START_TOPIC_RESEARCH', { userId: user.id, topicId });
 };
 
 // Cancel research for a topic

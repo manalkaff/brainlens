@@ -9,6 +9,21 @@ import type {
 import type { ChatThread, Message, UserTopicProgress } from 'wasp/entities';
 import { conversationManager } from './conversationManager';
 import { consumeCredits } from '../subscription/operations';
+import { 
+  handleServerError, 
+  withDatabaseErrorHandling, 
+  withAIServiceErrorHandling,
+  validateInput, 
+  sanitizeInput,
+  withRetry
+} from '../errors/errorHandler';
+import { 
+  createAuthenticationError, 
+  createValidationError,
+  createLearningError,
+  ErrorType,
+  ERROR_CODES
+} from '../errors/errorTypes';
 
 // Types for chat operations
 type CreateChatThreadInput = {
@@ -73,52 +88,74 @@ type ExportChatThreadResponse = {
  */
 export const createChatThread: CreateChatThread<CreateChatThreadInput, ChatThread> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to create chat threads');
   }
 
-  const { topicId, title, userPreferences } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!topicId) {
-    throw new HttpError(400, 'Topic ID is required');
+  const topicId = validateInput(
+    args.topicId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Topic ID is required');
+      }
+      return input;
+    },
+    'topicId',
+    { userId: user.id }
+  );
+
+  const title = args.title ? sanitizeInput(args.title, 200) : null;
+  const { userPreferences } = args;
+
+  // Validate user preferences if provided
+  if (userPreferences) {
+    if (userPreferences.knowledgeLevel && 
+        !['beginner', 'intermediate', 'advanced'].includes(userPreferences.knowledgeLevel)) {
+      throw createValidationError('knowledgeLevel', 'Invalid knowledge level');
+    }
+    
+    if (userPreferences.learningStyle && 
+        !['visual', 'auditory', 'kinesthetic', 'reading'].includes(userPreferences.learningStyle)) {
+      throw createValidationError('learningStyle', 'Invalid learning style');
+    }
   }
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     // Verify topic exists
     const topic = await context.entities.Topic.findUnique({
       where: { id: topicId }
     });
 
     if (!topic) {
-      throw new HttpError(404, 'Topic not found');
+      throw createValidationError('topicId', 'Topic not found');
     }
 
     // Create chat thread
     const chatThread = await context.entities.ChatThread.create({
       data: {
-        userId: context.user.id,
+        userId: user.id,
         topicId,
         title: title || `Chat about ${topic.title}`,
       }
     });
 
-    // Start conversation session
-    await conversationManager.startConversation(
-      chatThread.id,
-      topicId,
-      topic.title,
-      context.user.id,
-      userPreferences
+    // Start conversation session with error handling
+    await withAIServiceErrorHandling(
+      () => conversationManager.startConversation(
+        chatThread.id,
+        topicId,
+        topic.title,
+        user.id,
+        userPreferences
+      ),
+      'CONVERSATION_MANAGER',
+      { threadId: chatThread.id, topicId }
     );
 
     return chatThread;
-
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to create chat thread:', error);
-    throw new HttpError(500, 'Failed to create chat thread');
-  }
+  }, 'CREATE_CHAT_THREAD', { userId: user.id, topicId });
 };
 
 /**
@@ -126,20 +163,29 @@ export const createChatThread: CreateChatThread<CreateChatThreadInput, ChatThrea
  */
 export const getChatThread: GetChatThread<{ threadId: string }, ChatThreadWithMessages> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to get chat thread');
   }
 
-  const { threadId } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!threadId) {
-    throw new HttpError(400, 'Thread ID is required');
-  }
+  const threadId = validateInput(
+    args.threadId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Thread ID is required');
+      }
+      return input;
+    },
+    'threadId',
+    { userId: user.id }
+  );
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     const chatThread = await context.entities.ChatThread.findUnique({
       where: { 
         id: threadId,
-        userId: context.user.id // Ensure user owns the thread
+        userId: user.id // Ensure user owns the thread
       },
       include: {
         messages: {
@@ -156,16 +202,20 @@ export const getChatThread: GetChatThread<{ threadId: string }, ChatThreadWithMe
     });
 
     if (!chatThread) {
-      throw new HttpError(404, 'Chat thread not found');
+      throw createValidationError('threadId', 'Chat thread not found');
     }
 
     // Resume conversation session if needed
     if (chatThread.topic) {
-      await conversationManager.startConversation(
-        chatThread.id,
-        chatThread.topicId,
-        chatThread.topic.title,
-        context.user.id
+      await withAIServiceErrorHandling(
+        () => conversationManager.startConversation(
+          chatThread.id,
+          chatThread.topicId,
+          chatThread.topic!.title,
+          user.id
+        ),
+        'CONVERSATION_MANAGER',
+        { threadId, topicId: chatThread.topicId }
       );
     }
 
@@ -174,14 +224,7 @@ export const getChatThread: GetChatThread<{ threadId: string }, ChatThreadWithMe
       messageCount: chatThread.messages.length,
       lastMessage: chatThread.messages[chatThread.messages.length - 1] || undefined
     };
-
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to get chat thread:', error);
-    throw new HttpError(500, 'Failed to retrieve chat thread');
-  }
+  }, 'GET_CHAT_THREAD', { userId: user.id, threadId });
 };
 
 /**
@@ -189,14 +232,17 @@ export const getChatThread: GetChatThread<{ threadId: string }, ChatThreadWithMe
  */
 export const getChatThreads: GetChatThreads<GetChatThreadsInput, ChatThreadWithMessages[]> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to get chat threads');
   }
+
+  // Assert user is defined after authentication check
+  const user = context.user;
 
   const { topicId, limit = 20, offset = 0 } = args;
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     const whereClause: any = {
-      userId: context.user.id
+      userId: user.id
     };
 
     if (topicId) {
@@ -239,11 +285,7 @@ export const getChatThreads: GetChatThreads<GetChatThreadsInput, ChatThreadWithM
     );
 
     return threadsWithCounts;
-
-  } catch (error) {
-    console.error('Failed to get chat threads:', error);
-    throw new HttpError(500, 'Failed to retrieve chat threads');
-  }
+  }, 'GET_CHAT_THREADS', { userId: user.id });
 };
 
 /**
@@ -251,21 +293,45 @@ export const getChatThreads: GetChatThreads<GetChatThreadsInput, ChatThreadWithM
  */
 export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to send messages');
   }
 
-  const { threadId, content } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!threadId || !content?.trim()) {
-    throw new HttpError(400, 'Thread ID and message content are required');
-  }
+  const threadId = validateInput(
+    args.threadId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Thread ID is required');
+      }
+      return input;
+    },
+    'threadId',
+    { userId: user.id }
+  );
 
-  try {
+  const content = validateInput(
+    args.content,
+    (input) => {
+      if (!input || typeof input !== 'string' || input.trim().length === 0) {
+        throw new Error('Message content is required');
+      }
+      if (input.length > 4000) {
+        throw new Error('Message content is too long (maximum 4000 characters)');
+      }
+      return sanitizeInput(input, 4000);
+    },
+    'content',
+    { userId: user.id, threadId }
+  );
+
+  return withDatabaseErrorHandling(async () => {
     // Verify thread exists and user owns it
     const chatThread = await context.entities.ChatThread.findUnique({
       where: { 
         id: threadId,
-        userId: context.user.id
+        userId: user.id
       },
       include: {
         topic: true
@@ -273,19 +339,27 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
     });
 
     if (!chatThread) {
-      throw new HttpError(404, 'Chat thread not found');
+      throw createValidationError('threadId', 'Chat thread not found or access denied');
     }
 
     // Ensure conversation session is active
     if (!chatThread.topic) {
-      throw new HttpError(400, 'Chat thread topic not found');
+      throw createLearningError(
+        ErrorType.CHAT_ERROR,
+        ERROR_CODES.CHAT_MESSAGE_FAILED,
+        'Chat thread topic not found',
+        {
+          userMessage: 'Chat thread is corrupted. Please create a new chat.',
+          context: { threadId, userId: user.id }
+        }
+      );
     }
 
     // Get user's topic progress for personalization
     const userProgress = await context.entities.UserTopicProgress.findUnique({
       where: {
         userId_topicId: {
-          userId: context.user.id,
+          userId: user.id,
           topicId: chatThread.topicId
         }
       }
@@ -298,36 +372,50 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
       learningStyle: preferences.learningStyle || 'reading'
     } : undefined;
 
-    await conversationManager.startConversation(
-      threadId,
-      chatThread.topicId,
-      chatThread.topic.title,
-      context.user.id,
-      userPreferences
+    // Start conversation session with error handling
+    await withAIServiceErrorHandling(
+      () => conversationManager.startConversation(
+        threadId,
+        chatThread.topicId,
+        chatThread.topic!.title,
+        user.id,
+        userPreferences
+      ),
+      'CONVERSATION_MANAGER',
+      { threadId, topicId: chatThread.topicId }
     );
 
-    // Consume credits for AI chat message
-    await consumeCredits(context.user.id, 'AI_CHAT_MESSAGE', context, {
-      threadId,
-      topicId: chatThread.topicId,
-      messageLength: content.length
-    });
-
-    // Process the message and get AI response
-    const result = await conversationManager.processMessage(
-      threadId,
-      content.trim(),
-      context
+    // Consume credits for AI chat message with retry
+    await withRetry(
+      () => consumeCredits(user.id, 'AI_CHAT_MESSAGE', context, {
+        threadId,
+        topicId: chatThread.topicId,
+        messageLength: content.length
+      }),
+      3,
+      1000,
+      'CONSUME_CHAT_CREDITS'
     );
 
-    // Generate smart question suggestions based on reading history
-    const smartSuggestions = await generateSmartQuestionSuggestions(
-      context.user.id,
-      chatThread.topicId,
-      content,
-      result.assistantMessage.content,
-      context
+    // Process the message and get AI response with error handling
+    const result = await withAIServiceErrorHandling(
+      () => conversationManager.processMessage(threadId, content, context),
+      'MESSAGE_PROCESSING',
+      { threadId, messageLength: content.length }
     );
+
+    // Generate smart question suggestions with error handling
+    const smartSuggestions = await withDatabaseErrorHandling(
+      () => generateSmartQuestionSuggestions(
+        user.id,
+        chatThread.topicId,
+        content,
+        result.assistantMessage.content,
+        context
+      ),
+      'GENERATE_SUGGESTIONS',
+      { threadId, topicId: chatThread.topicId }
+    ).catch(() => []); // Fallback to empty array if suggestions fail
 
     // Combine AI-generated suggestions with smart suggestions
     const allSuggestions = [
@@ -341,8 +429,16 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
       data: { updatedAt: new Date() }
     });
 
-    // Update user's topic progress (time spent)
-    await updateTopicProgressFromChat(context.user.id, chatThread.topicId, context);
+    // Update user's topic progress (time spent) - non-critical operation
+    await withRetry(
+      () => updateTopicProgressFromChat(user.id, chatThread.topicId, context),
+      2,
+      1000,
+      'UPDATE_CHAT_PROGRESS'
+    ).catch((error) => {
+      // Log but don't fail the operation
+      console.warn('Failed to update topic progress from chat:', error);
+    });
 
     return {
       userMessage: result.userMessage,
@@ -354,14 +450,7 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
         sourceCount: result.assistantMessage.sources?.length || 0
       }
     };
-
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to send message:', error);
-    throw new HttpError(500, 'Failed to process message');
-  }
+  }, 'SEND_MESSAGE', { userId: user.id, threadId });
 };
 
 /**
@@ -369,26 +458,37 @@ export const sendMessage: SendMessage<SendMessageInput, SendMessageResponse> = a
  */
 export const updateChatThread: UpdateChatThread<UpdateChatThreadInput, ChatThread> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to update chat thread');
   }
 
-  const { threadId, title, userPreferences } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!threadId) {
-    throw new HttpError(400, 'Thread ID is required');
-  }
+  const threadId = validateInput(
+    args.threadId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Thread ID is required');
+      }
+      return input;
+    },
+    'threadId',
+    { userId: user.id }
+  );
 
-  try {
+  const { title, userPreferences } = args;
+
+  return withDatabaseErrorHandling(async () => {
     // Verify thread exists and user owns it
     const existingThread = await context.entities.ChatThread.findUnique({
       where: { 
         id: threadId,
-        userId: context.user.id
+        userId: user.id
       }
     });
 
     if (!existingThread) {
-      throw new HttpError(404, 'Chat thread not found');
+      throw createValidationError('threadId', 'Chat thread not found');
     }
 
     // Update thread in database
@@ -408,14 +508,7 @@ export const updateChatThread: UpdateChatThread<UpdateChatThreadInput, ChatThrea
     }
 
     return updatedThread;
-
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to update chat thread:', error);
-    throw new HttpError(500, 'Failed to update chat thread');
-  }
+  }, 'UPDATE_CHAT_THREAD', { userId: user.id, threadId });
 };
 
 /**
@@ -494,17 +587,32 @@ async function generateSmartQuestionSuggestions(
  */
 export const exportChatThread = async (args: ExportChatThreadInput, context: any): Promise<ExportChatThreadResponse> => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to export chat thread');
   }
 
-  const { threadId, format } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  try {
+  const threadId = validateInput(
+    args.threadId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Thread ID is required');
+      }
+      return input;
+    },
+    'threadId',
+    { userId: user.id }
+  );
+
+  const { format } = args;
+
+  return withDatabaseErrorHandling(async () => {
     // Verify thread exists and user owns it
     const chatThread = await context.entities.ChatThread.findUnique({
       where: { 
         id: threadId,
-        userId: context.user.id
+        userId: user.id
       },
       include: {
         messages: {
@@ -520,7 +628,7 @@ export const exportChatThread = async (args: ExportChatThreadInput, context: any
     });
 
     if (!chatThread) {
-      throw new HttpError(404, 'Chat thread not found');
+      throw createValidationError('threadId', 'Chat thread not found');
     }
 
     const exportData = {
@@ -561,14 +669,7 @@ export const exportChatThread = async (args: ExportChatThreadInput, context: any
           mimeType: 'text/plain'
         };
     }
-
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to export chat thread:', error);
-    throw new HttpError(500, 'Failed to export conversation');
-  }
+  }, 'EXPORT_CHAT_THREAD', { userId: user.id, threadId });
 };
 
 /**

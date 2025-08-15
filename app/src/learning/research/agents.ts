@@ -1,5 +1,12 @@
 import { HttpError } from 'wasp/server';
 import { getOptimizedQueries, getEnhancedPrompt, getEnhancedContext } from './prompts';
+import { 
+  SearxngUtils, 
+  AgentConfigManager,
+  type AgentConfigName,
+  isSearxngError,
+  getSearxngErrorMessage 
+} from './searxng';
 
 // Types for research agents
 export interface ResearchAgent {
@@ -112,55 +119,76 @@ export class GeneralResearchAgent extends BaseResearchAgent {
   prompt = 'Research comprehensive information about {topic} including definitions, key concepts, applications, and current developments';
 
   protected async performSearch(topic: string, context?: any): Promise<SearchResult[]> {
-    // Use optimized queries if available
-    const queries = context?.optimizedQueries || [topic];
-    const allResults: SearchResult[] = [];
-
-    // Execute multiple optimized queries
-    for (const query of queries.slice(0, 5)) { // Limit to 5 queries to avoid overwhelming
-      const results = await this.mockSearch(query, 'general', context);
-      allResults.push(...results);
-    }
-
-    // Remove duplicates and sort by relevance
-    const uniqueResults = this.deduplicateResults(allResults);
-    return uniqueResults.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-  }
-
-  private async mockSearch(query: string, type: string, context?: any): Promise<SearchResult[]> {
-    // Mock implementation - replace with actual SearXNG integration
-    const baseRelevance = 0.8 + Math.random() * 0.2; // Random relevance between 0.8-1.0
-    
-    return [
-      {
-        title: `Understanding ${query}: A Comprehensive Guide`,
-        url: `https://example.com/${query.toLowerCase().replace(/\s+/g, '-')}`,
-        snippet: `${query} is a fundamental concept that encompasses various aspects including definitions, applications, and current developments in the field.`,
-        source: 'general',
-        relevanceScore: baseRelevance,
-        metadata: { 
-          type, 
-          searchEngine: 'general',
-          query,
+    try {
+      // Use SearXNG with general research configuration
+      const response = await SearxngUtils.searchWithAgent('general', topic, context);
+      
+      // Convert SearXNG results to our SearchResult format
+      const searchResults: SearchResult[] = response.results.map(result => ({
+        title: result.title || 'Untitled',
+        url: result.url || '#',
+        snippet: result.content || result.snippet || 'No description available',
+        source: result.engine || 'general',
+        relevanceScore: result.score || 0.5,
+        metadata: {
+          type: 'general',
+          searchEngine: result.engine || 'searxng',
+          query: topic,
           userLevel: context?.userLevel,
-          searchStrategy: context?.searchStrategy
+          searchStrategy: context?.searchStrategy,
+          category: result.category,
+          publishedDate: result.publishedDate
         }
-      },
-      {
-        title: `${query}: Key Concepts and Applications`,
-        url: `https://example.com/${query.toLowerCase().replace(/\s+/g, '-')}-concepts`,
-        snippet: `Explore the key concepts and real-world applications of ${query}, including its impact on various industries and future developments.`,
-        source: 'general',
-        relevanceScore: baseRelevance - 0.1,
-        metadata: { 
-          type, 
-          searchEngine: 'general',
-          query,
-          userLevel: context?.userLevel,
-          searchStrategy: context?.searchStrategy
+      }));
+
+      // If we have additional optimized queries from context, search with those too
+      if (context?.optimizedQueries && context.optimizedQueries.length > 1) {
+        const additionalResults: SearchResult[] = [];
+        
+        // Search with up to 3 additional optimized queries
+        for (const query of context.optimizedQueries.slice(1, 4)) {
+          try {
+            const additionalResponse = await SearxngUtils.searchWithAgent('general', query, context);
+            const additionalSearchResults = additionalResponse.results.map(result => ({
+              title: result.title || 'Untitled',
+              url: result.url || '#',
+              snippet: result.content || result.snippet || 'No description available',
+              source: result.engine || 'general',
+              relevanceScore: (result.score || 0.5) * 0.9, // Slightly lower relevance for additional queries
+              metadata: {
+                type: 'general',
+                searchEngine: result.engine || 'searxng',
+                query,
+                userLevel: context?.userLevel,
+                searchStrategy: context?.searchStrategy,
+                category: result.category,
+                publishedDate: result.publishedDate
+              }
+            }));
+            additionalResults.push(...additionalSearchResults);
+          } catch (error) {
+            console.warn(`Failed to search with optimized query "${query}":`, error);
+          }
         }
+        
+        searchResults.push(...additionalResults);
       }
-    ];
+
+      // Remove duplicates and sort by relevance
+      const uniqueResults = this.deduplicateResults(searchResults);
+      return uniqueResults.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+      
+    } catch (error) {
+      console.error('General research agent search failed:', error);
+      
+      // If it's a SearXNG error, provide more context
+      if (isSearxngError(error)) {
+        console.error('SearXNG error details:', getSearxngErrorMessage(error));
+      }
+      
+      // Return empty results instead of throwing to allow other agents to continue
+      return [];
+    }
   }
 
   private deduplicateResults(results: SearchResult[]): SearchResult[] {
@@ -184,57 +212,131 @@ export class AcademicResearchAgent extends BaseResearchAgent {
   prompt = 'Find peer-reviewed research, academic papers, and scholarly articles about {topic} focusing on latest findings and theoretical frameworks';
 
   protected async performSearch(topic: string, context?: any): Promise<SearchResult[]> {
-    // Use optimized academic queries
-    const queries = context?.optimizedQueries || [topic];
-    const allResults: SearchResult[] = [];
+    try {
+      // Use SearXNG with academic research configuration
+      const response = await SearxngUtils.searchWithAgent('academic', topic, context);
+      
+      // Convert SearXNG results to our SearchResult format
+      const searchResults: SearchResult[] = response.results.map(result => ({
+        title: result.title || 'Untitled Academic Paper',
+        url: result.url || '#',
+        snippet: result.content || result.snippet || 'No abstract available',
+        source: result.engine || 'academic',
+        relevanceScore: result.score || 0.7,
+        metadata: {
+          type: 'academic',
+          searchEngine: result.engine || 'searxng',
+          query: topic,
+          userLevel: context?.userLevel,
+          category: result.category,
+          publishedDate: result.publishedDate,
+          author: result.author,
+          // Academic-specific metadata
+          citations: this.extractCitations(result),
+          year: this.extractYear(result.publishedDate),
+          venue: this.extractVenue(result)
+        }
+      }));
 
-    for (const query of queries.slice(0, 4)) { // Limit academic queries
-      const results = await this.mockAcademicSearch(query, context);
-      allResults.push(...results);
+      // If we have additional optimized academic queries, search with those too
+      if (context?.optimizedQueries && context.optimizedQueries.length > 1) {
+        const additionalResults: SearchResult[] = [];
+        
+        // Search with up to 2 additional optimized queries for academic content
+        for (const query of context.optimizedQueries.slice(1, 3)) {
+          try {
+            const additionalResponse = await SearxngUtils.searchWithAgent('academic', query, context);
+            const additionalSearchResults = additionalResponse.results.map(result => ({
+              title: result.title || 'Untitled Academic Paper',
+              url: result.url || '#',
+              snippet: result.content || result.snippet || 'No abstract available',
+              source: result.engine || 'academic',
+              relevanceScore: (result.score || 0.7) * 0.9,
+              metadata: {
+                type: 'academic',
+                searchEngine: result.engine || 'searxng',
+                query,
+                userLevel: context?.userLevel,
+                category: result.category,
+                publishedDate: result.publishedDate,
+                author: result.author,
+                citations: this.extractCitations(result),
+                year: this.extractYear(result.publishedDate),
+                venue: this.extractVenue(result)
+              }
+            }));
+            additionalResults.push(...additionalSearchResults);
+          } catch (error) {
+            console.warn(`Failed to search academic content with query "${query}":`, error);
+          }
+        }
+        
+        searchResults.push(...additionalResults);
+      }
+
+      // Remove duplicates and sort by relevance (academic papers should prioritize recent and highly cited)
+      const uniqueResults = this.deduplicateResults(searchResults);
+      return uniqueResults.sort((a, b) => {
+        // Prioritize by relevance score first
+        const scoreDiff = (b.relevanceScore || 0) - (a.relevanceScore || 0);
+        if (Math.abs(scoreDiff) > 0.1) return scoreDiff;
+        
+        // Then by year (more recent first)
+        const yearA = a.metadata?.year || 0;
+        const yearB = b.metadata?.year || 0;
+        return yearB - yearA;
+      });
+      
+    } catch (error) {
+      console.error('Academic research agent search failed:', error);
+      
+      if (isSearxngError(error)) {
+        console.error('SearXNG error details:', getSearxngErrorMessage(error));
+      }
+      
+      return [];
     }
-
-    return this.deduplicateResults(allResults);
   }
 
-  private async mockAcademicSearch(query: string, context?: any): Promise<SearchResult[]> {
-    const baseRelevance = 0.85 + Math.random() * 0.15;
+  private extractCitations(result: any): number | undefined {
+    // Try to extract citation count from various fields
+    if (result.citations) return parseInt(result.citations);
+    if (result.metadata?.citations) return parseInt(result.metadata.citations);
     
-    return [
-      {
-        title: `A Systematic Review of ${query}: Recent Advances and Future Directions`,
-        url: `https://arxiv.org/abs/2024.${Math.floor(Math.random() * 10000)}`,
-        snippet: `This systematic review examines recent advances in ${query} research, analyzing 150+ peer-reviewed papers published between 2020-2024.`,
-        source: 'arxiv',
-        relevanceScore: baseRelevance,
-        metadata: { 
-          type: 'academic', 
-          searchEngine: 'arxiv', 
-          year: 2024,
-          query,
-          userLevel: context?.userLevel
-        }
-      },
-      {
-        title: `Theoretical Frameworks in ${query}: A Meta-Analysis`,
-        url: `https://scholar.google.com/citations?view_op=view_citation&hl=en&user=example`,
-        snippet: `Meta-analysis of theoretical frameworks used in ${query} research, examining methodological approaches across 200+ studies.`,
-        source: 'google scholar',
-        relevanceScore: baseRelevance - 0.05,
-        metadata: { 
-          type: 'academic', 
-          searchEngine: 'google_scholar', 
-          citations: 45,
-          query,
-          userLevel: context?.userLevel
-        }
-      }
-    ];
+    // Look for citation patterns in content
+    const content = result.content || result.snippet || '';
+    const citationMatch = content.match(/cited by (\d+)/i) || content.match(/(\d+) citations/i);
+    return citationMatch ? parseInt(citationMatch[1]) : undefined;
+  }
+
+  private extractYear(publishedDate?: string): number | undefined {
+    if (!publishedDate) return undefined;
+    
+    const yearMatch = publishedDate.match(/(\d{4})/);
+    return yearMatch ? parseInt(yearMatch[1]) : undefined;
+  }
+
+  private extractVenue(result: any): string | undefined {
+    // Try to extract publication venue
+    if (result.venue) return result.venue;
+    if (result.metadata?.venue) return result.metadata.venue;
+    
+    // Extract from URL patterns
+    const url = result.url || '';
+    if (url.includes('arxiv.org')) return 'arXiv';
+    if (url.includes('pubmed')) return 'PubMed';
+    if (url.includes('scholar.google')) return 'Google Scholar';
+    
+    return undefined;
   }
 
   private deduplicateResults(results: SearchResult[]): SearchResult[] {
     const seen = new Set<string>();
     return results.filter(result => {
-      const key = `${result.title}-${result.url}`;
+      // For academic papers, also check for similar titles (to catch different versions)
+      const normalizedTitle = result.title.toLowerCase().replace(/[^\w\s]/g, '').trim();
+      const key = `${normalizedTitle}-${result.url}`;
+      
       if (seen.has(key)) {
         return false;
       }
@@ -252,51 +354,143 @@ export class ComputationalAgent extends BaseResearchAgent {
   prompt = 'Analyze mathematical, scientific, or computational aspects of {topic} including formulas, calculations, and technical specifications';
 
   protected async performSearch(topic: string, context?: any): Promise<SearchResult[]> {
-    // Use optimized computational queries
-    const queries = context?.optimizedQueries || [topic];
-    const allResults: SearchResult[] = [];
+    try {
+      // Use SearXNG with computational research configuration
+      const response = await SearxngUtils.searchWithAgent('computational', topic, context);
+      
+      // Convert SearXNG results to our SearchResult format
+      const searchResults: SearchResult[] = response.results.map(result => ({
+        title: result.title || 'Computational Analysis',
+        url: result.url || '#',
+        snippet: result.content || result.snippet || 'No computational data available',
+        source: result.engine || 'computational',
+        relevanceScore: result.score || 0.6,
+        metadata: {
+          type: 'computational',
+          searchEngine: result.engine || 'searxng',
+          query: topic,
+          domain: context?.domain,
+          category: result.category,
+          // Computational-specific metadata
+          hasFormulas: this.detectFormulas(result),
+          hasAlgorithms: this.detectAlgorithms(result),
+          hasCalculations: this.detectCalculations(result),
+          complexity: this.assessComplexity(result, context?.userLevel)
+        }
+      }));
 
-    for (const query of queries.slice(0, 3)) { // Limit computational queries
-      const results = await this.mockComputationalSearch(query, context);
-      allResults.push(...results);
+      // For computational queries, also try mathematical variations
+      if (context?.optimizedQueries && context.optimizedQueries.length > 1) {
+        const additionalResults: SearchResult[] = [];
+        
+        // Search with mathematical and algorithmic variations
+        for (const query of context.optimizedQueries.slice(1, 3)) {
+          try {
+            const additionalResponse = await SearxngUtils.searchWithAgent('computational', query, context);
+            const additionalSearchResults = additionalResponse.results.map(result => ({
+              title: result.title || 'Computational Analysis',
+              url: result.url || '#',
+              snippet: result.content || result.snippet || 'No computational data available',
+              source: result.engine || 'computational',
+              relevanceScore: (result.score || 0.6) * 0.9,
+              metadata: {
+                type: 'computational',
+                searchEngine: result.engine || 'searxng',
+                query,
+                domain: context?.domain,
+                category: result.category,
+                hasFormulas: this.detectFormulas(result),
+                hasAlgorithms: this.detectAlgorithms(result),
+                hasCalculations: this.detectCalculations(result),
+                complexity: this.assessComplexity(result, context?.userLevel)
+              }
+            }));
+            additionalResults.push(...additionalSearchResults);
+          } catch (error) {
+            console.warn(`Failed to search computational content with query "${query}":`, error);
+          }
+        }
+        
+        searchResults.push(...additionalResults);
+      }
+
+      // Remove duplicates and sort by relevance and computational value
+      const uniqueResults = this.deduplicateResults(searchResults);
+      return uniqueResults.sort((a, b) => {
+        // Prioritize results with formulas and calculations
+        const aHasComputation = (a.metadata?.hasFormulas || a.metadata?.hasCalculations) ? 0.1 : 0;
+        const bHasComputation = (b.metadata?.hasFormulas || b.metadata?.hasCalculations) ? 0.1 : 0;
+        
+        const adjustedScoreA = (a.relevanceScore || 0) + aHasComputation;
+        const adjustedScoreB = (b.relevanceScore || 0) + bHasComputation;
+        
+        return adjustedScoreB - adjustedScoreA;
+      });
+      
+    } catch (error) {
+      console.error('Computational agent search failed:', error);
+      
+      if (isSearxngError(error)) {
+        console.error('SearXNG error details:', getSearxngErrorMessage(error));
+      }
+      
+      return [];
     }
-
-    return this.deduplicateResults(allResults);
   }
 
-  private async mockComputationalSearch(query: string, context?: any): Promise<SearchResult[]> {
-    const baseRelevance = 0.80 + Math.random() * 0.15;
-    
-    return [
-      {
-        title: `Mathematical Properties of ${query}`,
-        url: `https://www.wolframalpha.com/input/?i=${encodeURIComponent(query)}`,
-        snippet: `Mathematical analysis and computational properties of ${query}, including formulas, calculations, and technical specifications.`,
-        source: 'wolframalpha',
-        relevanceScore: baseRelevance,
-        metadata: { 
-          type: 'computational', 
-          searchEngine: 'wolframalpha', 
-          hasFormulas: true,
-          query,
-          domain: context?.domain
-        }
-      },
-      {
-        title: `${query}: Computational Analysis and Algorithms`,
-        url: `https://www.wolframalpha.com/input/?i=${encodeURIComponent(query + ' algorithms')}`,
-        snippet: `Computational algorithms and mathematical models related to ${query}, with step-by-step calculations and visualizations.`,
-        source: 'wolframalpha',
-        relevanceScore: baseRelevance - 0.05,
-        metadata: { 
-          type: 'computational', 
-          searchEngine: 'wolframalpha', 
-          hasAlgorithms: true,
-          query,
-          domain: context?.domain
-        }
-      }
+  private detectFormulas(result: any): boolean {
+    const content = (result.content || result.snippet || '').toLowerCase();
+    const formulaPatterns = [
+      /\b(formula|equation|theorem|proof)\b/,
+      /[=+\-*/^()]/,
+      /\b(sin|cos|tan|log|ln|sqrt|integral|derivative)\b/,
+      /\b(x|y|z|n|i|j|k)\s*[=+\-*/^]/
     ];
+    
+    return formulaPatterns.some(pattern => pattern.test(content));
+  }
+
+  private detectAlgorithms(result: any): boolean {
+    const content = (result.content || result.snippet || '').toLowerCase();
+    const algorithmPatterns = [
+      /\b(algorithm|procedure|method|process|step)\b/,
+      /\b(sort|search|optimize|compute|calculate)\b/,
+      /\b(complexity|runtime|efficiency|performance)\b/,
+      /\b(o\(|big o|time complexity|space complexity)\b/
+    ];
+    
+    return algorithmPatterns.some(pattern => pattern.test(content));
+  }
+
+  private detectCalculations(result: any): boolean {
+    const content = (result.content || result.snippet || '').toLowerCase();
+    const calculationPatterns = [
+      /\b(calculate|computation|result|answer|solution)\b/,
+      /\b\d+(\.\d+)?\s*[=+\-*/^]\s*\d+/,
+      /\b(sum|product|difference|quotient|remainder)\b/
+    ];
+    
+    return calculationPatterns.some(pattern => pattern.test(content));
+  }
+
+  private assessComplexity(result: any, userLevel?: string): 'basic' | 'intermediate' | 'advanced' {
+    const content = (result.content || result.snippet || '').toLowerCase();
+    
+    // Advanced indicators
+    if (content.includes('theorem') || content.includes('proof') || 
+        content.includes('differential') || content.includes('integral') ||
+        content.includes('matrix') || content.includes('vector')) {
+      return 'advanced';
+    }
+    
+    // Intermediate indicators
+    if (content.includes('formula') || content.includes('equation') ||
+        content.includes('algorithm') || content.includes('function')) {
+      return 'intermediate';
+    }
+    
+    // Default to basic
+    return 'basic';
   }
 
   private deduplicateResults(results: SearchResult[]): SearchResult[] {
@@ -320,60 +514,182 @@ export class VideoLearningAgent extends BaseResearchAgent {
   prompt = 'Discover educational videos, tutorials, and visual explanations about {topic} suitable for different learning levels';
 
   protected async performSearch(topic: string, context?: any): Promise<SearchResult[]> {
-    // Use optimized video queries
-    const queries = context?.optimizedQueries || [topic];
-    const allResults: SearchResult[] = [];
+    try {
+      // Use SearXNG with video learning configuration
+      const response = await SearxngUtils.searchWithAgent('video', topic, context);
+      
+      // Convert SearXNG results to our SearchResult format
+      const searchResults: SearchResult[] = response.results.map(result => ({
+        title: result.title || 'Educational Video',
+        url: result.url || '#',
+        snippet: result.content || result.snippet || 'No description available',
+        source: result.engine || 'video',
+        relevanceScore: result.score || 0.7,
+        metadata: {
+          type: 'video',
+          searchEngine: result.engine || 'searxng',
+          query: topic,
+          level: context?.userLevel || 'intermediate',
+          category: result.category,
+          // Video-specific metadata
+          duration: result.length || this.estimateDuration(result),
+          views: result.views || this.extractViews(result),
+          thumbnail: result.thumbnail || result.thumbnail_src || result.img_src,
+          author: result.author || this.extractAuthor(result),
+          publishedDate: result.publishedDate,
+          isEducational: this.assessEducationalValue(result),
+          difficulty: this.assessDifficulty(result, context?.userLevel)
+        }
+      }));
 
-    for (const query of queries.slice(0, 4)) { // Limit video queries
-      const results = await this.mockVideoSearch(query, context);
-      allResults.push(...results);
+      // For video content, also search with tutorial-specific variations
+      if (context?.optimizedQueries && context.optimizedQueries.length > 1) {
+        const additionalResults: SearchResult[] = [];
+        
+        // Search with tutorial and educational variations
+        for (const query of context.optimizedQueries.slice(1, 3)) {
+          try {
+            const additionalResponse = await SearxngUtils.searchWithAgent('video', query, context);
+            const additionalSearchResults = additionalResponse.results.map(result => ({
+              title: result.title || 'Educational Video',
+              url: result.url || '#',
+              snippet: result.content || result.snippet || 'No description available',
+              source: result.engine || 'video',
+              relevanceScore: (result.score || 0.7) * 0.9,
+              metadata: {
+                type: 'video',
+                searchEngine: result.engine || 'searxng',
+                query,
+                level: context?.userLevel || 'intermediate',
+                category: result.category,
+                duration: result.length || this.estimateDuration(result),
+                views: result.views || this.extractViews(result),
+                thumbnail: result.thumbnail || result.thumbnail_src || result.img_src,
+                author: result.author || this.extractAuthor(result),
+                publishedDate: result.publishedDate,
+                isEducational: this.assessEducationalValue(result),
+                difficulty: this.assessDifficulty(result, context?.userLevel)
+              }
+            }));
+            additionalResults.push(...additionalSearchResults);
+          } catch (error) {
+            console.warn(`Failed to search video content with query "${query}":`, error);
+          }
+        }
+        
+        searchResults.push(...additionalResults);
+      }
+
+      // Remove duplicates and sort by educational value and relevance
+      const uniqueResults = this.deduplicateResults(searchResults);
+      return uniqueResults.sort((a, b) => {
+        // Prioritize educational content
+        const aEducational = a.metadata?.isEducational ? 0.1 : 0;
+        const bEducational = b.metadata?.isEducational ? 0.1 : 0;
+        
+        // Prioritize appropriate difficulty level
+        const aLevelMatch = this.matchesUserLevel(a.metadata?.difficulty, context?.userLevel) ? 0.05 : 0;
+        const bLevelMatch = this.matchesUserLevel(b.metadata?.difficulty, context?.userLevel) ? 0.05 : 0;
+        
+        const adjustedScoreA = (a.relevanceScore || 0) + aEducational + aLevelMatch;
+        const adjustedScoreB = (b.relevanceScore || 0) + bEducational + bLevelMatch;
+        
+        return adjustedScoreB - adjustedScoreA;
+      });
+      
+    } catch (error) {
+      console.error('Video learning agent search failed:', error);
+      
+      if (isSearxngError(error)) {
+        console.error('SearXNG error details:', getSearxngErrorMessage(error));
+      }
+      
+      return [];
     }
-
-    return this.deduplicateResults(allResults);
   }
 
-  private async mockVideoSearch(query: string, context?: any): Promise<SearchResult[]> {
-    const baseRelevance = 0.85 + Math.random() * 0.15;
-    const userLevel = context?.userLevel || 'intermediate';
+  private estimateDuration(result: any): string | undefined {
+    // Try to extract duration from various fields
+    if (result.length) return result.length;
+    if (result.duration) return result.duration;
     
-    return [
-      {
-        title: `${query} Explained: Complete Tutorial for ${userLevel === 'beginner' ? 'Beginners' : 'Advanced Learners'}`,
-        url: `https://www.youtube.com/watch?v=example1`,
-        snippet: `Comprehensive tutorial covering ${query} from basics to advanced concepts. Perfect for ${userLevel} level with clear explanations and examples.`,
-        source: 'youtube',
-        relevanceScore: baseRelevance,
-        metadata: { 
-          type: 'video', 
-          searchEngine: 'youtube', 
-          duration: userLevel === 'beginner' ? '25:30' : '45:15',
-          views: '1.2M',
-          level: userLevel,
-          query
-        }
-      },
-      {
-        title: `${query}: Deep Dive with Examples`,
-        url: `https://www.youtube.com/watch?v=example2`,
-        snippet: `Advanced concepts in ${query} with real-world examples and practical applications. Suitable for ${userLevel} learners.`,
-        source: 'youtube',
-        relevanceScore: baseRelevance - 0.05,
-        metadata: { 
-          type: 'video', 
-          searchEngine: 'youtube', 
-          duration: '45:15',
-          views: '850K',
-          level: userLevel,
-          query
-        }
-      }
+    // Look for duration patterns in content
+    const content = result.content || result.snippet || '';
+    const durationMatch = content.match(/(\d+):(\d+)/);
+    return durationMatch ? durationMatch[0] : undefined;
+  }
+
+  private extractViews(result: any): string | undefined {
+    // Try to extract view count from various fields
+    if (result.views) return result.views;
+    
+    // Look for view patterns in content
+    const content = result.content || result.snippet || '';
+    const viewMatch = content.match(/(\d+(?:,\d+)*(?:\.\d+)?[KMB]?)\s*views?/i);
+    return viewMatch ? viewMatch[1] : undefined;
+  }
+
+  private extractAuthor(result: any): string | undefined {
+    // Try to extract author/channel from various fields
+    if (result.author) return result.author;
+    
+    // Extract from URL patterns
+    const url = result.url || '';
+    const channelMatch = url.match(/youtube\.com\/(?:channel|user|c)\/([^/?]+)/);
+    return channelMatch ? channelMatch[1] : undefined;
+  }
+
+  private assessEducationalValue(result: any): boolean {
+    const content = (result.title + ' ' + (result.content || result.snippet || '')).toLowerCase();
+    const educationalKeywords = [
+      'tutorial', 'learn', 'course', 'lesson', 'explained', 'guide', 'how to',
+      'introduction', 'basics', 'fundamentals', 'education', 'teaching', 'lecture'
     ];
+    
+    return educationalKeywords.some(keyword => content.includes(keyword));
+  }
+
+  private assessDifficulty(result: any, userLevel?: string): 'beginner' | 'intermediate' | 'advanced' {
+    const content = (result.title + ' ' + (result.content || result.snippet || '')).toLowerCase();
+    
+    // Advanced indicators
+    if (content.includes('advanced') || content.includes('expert') || 
+        content.includes('deep dive') || content.includes('masterclass')) {
+      return 'advanced';
+    }
+    
+    // Beginner indicators
+    if (content.includes('beginner') || content.includes('basics') || 
+        content.includes('introduction') || content.includes('101') ||
+        content.includes('getting started')) {
+      return 'beginner';
+    }
+    
+    // Default to intermediate
+    return 'intermediate';
+  }
+
+  private matchesUserLevel(videoDifficulty?: string, userLevel?: string): boolean {
+    if (!videoDifficulty || !userLevel) return true;
+    
+    // Exact match
+    if (videoDifficulty === userLevel) return true;
+    
+    // Allow some flexibility
+    if (userLevel === 'intermediate') return true; // Intermediate can handle any level
+    if (userLevel === 'advanced' && videoDifficulty !== 'beginner') return true;
+    if (userLevel === 'beginner' && videoDifficulty === 'beginner') return true;
+    
+    return false;
   }
 
   private deduplicateResults(results: SearchResult[]): SearchResult[] {
     const seen = new Set<string>();
     return results.filter(result => {
-      const key = `${result.title}-${result.url}`;
+      // For videos, also check for similar titles to catch re-uploads
+      const normalizedTitle = result.title.toLowerCase().replace(/[^\w\s]/g, '').trim();
+      const key = `${normalizedTitle}-${result.url}`;
+      
       if (seen.has(key)) {
         return false;
       }
@@ -391,62 +707,216 @@ export class CommunityDiscussionAgent extends BaseResearchAgent {
   prompt = 'Find real-world discussions, practical applications, common questions, and user experiences related to {topic}';
 
   protected async performSearch(topic: string, context?: any): Promise<SearchResult[]> {
-    // Use optimized community queries
-    const queries = context?.optimizedQueries || [topic];
-    const allResults: SearchResult[] = [];
+    try {
+      // Use SearXNG with community discussion configuration
+      const response = await SearxngUtils.searchWithAgent('community', topic, context);
+      
+      // Convert SearXNG results to our SearchResult format
+      const searchResults: SearchResult[] = response.results.map(result => ({
+        title: result.title || 'Community Discussion',
+        url: result.url || '#',
+        snippet: result.content || result.snippet || 'No discussion content available',
+        source: result.engine || 'community',
+        relevanceScore: result.score || 0.6,
+        metadata: {
+          type: 'community',
+          searchEngine: result.engine || 'searxng',
+          query: topic,
+          platforms: context?.platforms || ['reddit'],
+          category: result.category,
+          publishedDate: result.publishedDate,
+          // Community-specific metadata
+          subreddit: this.extractSubreddit(result),
+          upvotes: this.extractUpvotes(result),
+          comments: this.extractCommentCount(result),
+          author: result.author || this.extractAuthor(result),
+          discussionType: this.classifyDiscussion(result),
+          sentiment: this.analyzeSentiment(result),
+          practicalValue: this.assessPracticalValue(result)
+        }
+      }));
 
-    for (const query of queries.slice(0, 4)) { // Limit community queries
-      const results = await this.mockCommunitySearch(query, context);
-      allResults.push(...results);
+      // For community content, also search with experience and question variations
+      if (context?.optimizedQueries && context.optimizedQueries.length > 1) {
+        const additionalResults: SearchResult[] = [];
+        
+        // Search with community-focused variations
+        for (const query of context.optimizedQueries.slice(1, 3)) {
+          try {
+            const additionalResponse = await SearxngUtils.searchWithAgent('community', query, context);
+            const additionalSearchResults = additionalResponse.results.map(result => ({
+              title: result.title || 'Community Discussion',
+              url: result.url || '#',
+              snippet: result.content || result.snippet || 'No discussion content available',
+              source: result.engine || 'community',
+              relevanceScore: (result.score || 0.6) * 0.9,
+              metadata: {
+                type: 'community',
+                searchEngine: result.engine || 'searxng',
+                query,
+                platforms: context?.platforms || ['reddit'],
+                category: result.category,
+                publishedDate: result.publishedDate,
+                subreddit: this.extractSubreddit(result),
+                upvotes: this.extractUpvotes(result),
+                comments: this.extractCommentCount(result),
+                author: result.author || this.extractAuthor(result),
+                discussionType: this.classifyDiscussion(result),
+                sentiment: this.analyzeSentiment(result),
+                practicalValue: this.assessPracticalValue(result)
+              }
+            }));
+            additionalResults.push(...additionalSearchResults);
+          } catch (error) {
+            console.warn(`Failed to search community content with query "${query}":`, error);
+          }
+        }
+        
+        searchResults.push(...additionalResults);
+      }
+
+      // Remove duplicates and sort by community engagement and practical value
+      const uniqueResults = this.deduplicateResults(searchResults);
+      return uniqueResults.sort((a, b) => {
+        // Prioritize high engagement (upvotes and comments)
+        const aEngagement = this.calculateEngagementScore(a.metadata);
+        const bEngagement = this.calculateEngagementScore(b.metadata);
+        
+        // Prioritize practical value
+        const aPractical = a.metadata?.practicalValue === 'high' ? 0.1 : 0;
+        const bPractical = b.metadata?.practicalValue === 'high' ? 0.1 : 0;
+        
+        const adjustedScoreA = (a.relevanceScore || 0) + aEngagement + aPractical;
+        const adjustedScoreB = (b.relevanceScore || 0) + bEngagement + bPractical;
+        
+        return adjustedScoreB - adjustedScoreA;
+      });
+      
+    } catch (error) {
+      console.error('Community discussion agent search failed:', error);
+      
+      if (isSearxngError(error)) {
+        console.error('SearXNG error details:', getSearxngErrorMessage(error));
+      }
+      
+      return [];
     }
-
-    return this.deduplicateResults(allResults);
   }
 
-  private async mockCommunitySearch(query: string, context?: any): Promise<SearchResult[]> {
-    const baseRelevance = 0.80 + Math.random() * 0.15;
-    const platforms = context?.platforms || ['reddit'];
+  private extractSubreddit(result: any): string | undefined {
+    // Try to extract subreddit from URL
+    const url = result.url || '';
+    const subredditMatch = url.match(/reddit\.com\/r\/([^/?]+)/);
+    if (subredditMatch) return subredditMatch[1];
     
-    return [
-      {
-        title: `r/explainlikeimfive: What is ${query} and why should I care?`,
-        url: `https://www.reddit.com/r/explainlikeimfive/comments/example1`,
-        snippet: `Community discussion about ${query} with simple explanations and real-world examples. Users share practical applications and common misconceptions.`,
-        source: 'reddit',
-        relevanceScore: baseRelevance,
-        metadata: { 
-          type: 'community', 
-          searchEngine: 'reddit', 
-          subreddit: 'explainlikeimfive',
-          upvotes: 2500,
-          comments: 180,
-          query,
-          platforms
-        }
-      },
-      {
-        title: `Common ${query} Questions and Experiences - Discussion Thread`,
-        url: `https://www.reddit.com/r/askscience/comments/example2`,
-        snippet: `Users share their experiences with ${query}, common questions, troubleshooting tips, and practical advice from the community.`,
-        source: 'reddit',
-        relevanceScore: baseRelevance - 0.05,
-        metadata: { 
-          type: 'community', 
-          searchEngine: 'reddit', 
-          subreddit: 'askscience',
-          upvotes: 1800,
-          comments: 95,
-          query,
-          platforms
-        }
-      }
+    // Try to extract from title
+    const title = result.title || '';
+    const titleMatch = title.match(/r\/([^:\s]+)/);
+    return titleMatch ? titleMatch[1] : undefined;
+  }
+
+  private extractUpvotes(result: any): number | undefined {
+    // Try to extract upvote count from various fields
+    if (result.upvotes) return parseInt(result.upvotes);
+    if (result.score) return parseInt(result.score);
+    
+    // Look for upvote patterns in content
+    const content = result.content || result.snippet || '';
+    const upvoteMatch = content.match(/(\d+)\s*upvotes?/i) || content.match(/(\d+)\s*points?/i);
+    return upvoteMatch ? parseInt(upvoteMatch[1]) : undefined;
+  }
+
+  private extractCommentCount(result: any): number | undefined {
+    // Try to extract comment count from various fields
+    if (result.comments) return parseInt(result.comments);
+    
+    // Look for comment patterns in content
+    const content = result.content || result.snippet || '';
+    const commentMatch = content.match(/(\d+)\s*comments?/i);
+    return commentMatch ? parseInt(commentMatch[1]) : undefined;
+  }
+
+  private extractAuthor(result: any): string | undefined {
+    // Try to extract author from URL or content
+    const url = result.url || '';
+    const content = result.content || result.snippet || '';
+    
+    // Look for author patterns
+    const authorMatch = content.match(/by\s+u\/([^\s]+)/i) || content.match(/posted by\s+([^\s]+)/i);
+    return authorMatch ? authorMatch[1] : undefined;
+  }
+
+  private classifyDiscussion(result: any): 'question' | 'experience' | 'advice' | 'explanation' | 'general' {
+    const title = (result.title || '').toLowerCase();
+    const content = (result.content || result.snippet || '').toLowerCase();
+    const text = title + ' ' + content;
+    
+    if (text.includes('?') || text.includes('how') || text.includes('what') || text.includes('why')) {
+      return 'question';
+    }
+    
+    if (text.includes('experience') || text.includes('tried') || text.includes('used')) {
+      return 'experience';
+    }
+    
+    if (text.includes('advice') || text.includes('tip') || text.includes('recommend')) {
+      return 'advice';
+    }
+    
+    if (text.includes('explain') || text.includes('eli5') || text.includes('understand')) {
+      return 'explanation';
+    }
+    
+    return 'general';
+  }
+
+  private analyzeSentiment(result: any): 'positive' | 'negative' | 'neutral' {
+    const content = (result.title + ' ' + (result.content || result.snippet || '')).toLowerCase();
+    
+    const positiveWords = ['good', 'great', 'excellent', 'amazing', 'helpful', 'useful', 'love', 'recommend'];
+    const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'problem', 'issue', 'difficult', 'confusing'];
+    
+    const positiveCount = positiveWords.filter(word => content.includes(word)).length;
+    const negativeCount = negativeWords.filter(word => content.includes(word)).length;
+    
+    if (positiveCount > negativeCount) return 'positive';
+    if (negativeCount > positiveCount) return 'negative';
+    return 'neutral';
+  }
+
+  private assessPracticalValue(result: any): 'high' | 'medium' | 'low' {
+    const content = (result.title + ' ' + (result.content || result.snippet || '')).toLowerCase();
+    
+    const highValueIndicators = [
+      'tutorial', 'guide', 'how to', 'step by step', 'example', 'code', 'solution',
+      'practical', 'real world', 'experience', 'tips', 'tricks'
     ];
+    
+    const highValueCount = highValueIndicators.filter(indicator => content.includes(indicator)).length;
+    
+    if (highValueCount >= 3) return 'high';
+    if (highValueCount >= 1) return 'medium';
+    return 'low';
+  }
+
+  private calculateEngagementScore(metadata: any): number {
+    const upvotes = metadata?.upvotes || 0;
+    const comments = metadata?.comments || 0;
+    
+    // Normalize engagement score (0-0.2 range)
+    const upvoteScore = Math.min(upvotes / 1000, 0.1); // Max 0.1 for upvotes
+    const commentScore = Math.min(comments / 100, 0.1); // Max 0.1 for comments
+    
+    return upvoteScore + commentScore;
   }
 
   private deduplicateResults(results: SearchResult[]): SearchResult[] {
     const seen = new Set<string>();
     return results.filter(result => {
-      const key = `${result.title}-${result.url}`;
+      // For community posts, check both URL and normalized title
+      const normalizedTitle = result.title.toLowerCase().replace(/[^\w\s]/g, '').trim();
+      const key = `${normalizedTitle}-${result.url}`;
+      
       if (seen.has(key)) {
         return false;
       }

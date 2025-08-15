@@ -32,6 +32,9 @@ export const checkLearningCredits: CheckLearningCredits<CheckLearningCreditsInpu
     throw new HttpError(401, 'Authentication required');
   }
 
+  // Assert user is defined after authentication check
+  const user = context.user;
+
   const { operation } = args;
 
   if (!operation || !CREDIT_COSTS[operation]) {
@@ -39,7 +42,7 @@ export const checkLearningCredits: CheckLearningCredits<CheckLearningCreditsInpu
   }
 
   try {
-    return await checkUserCredits(context.user.id, operation, context);
+    return await checkUserCredits(user.id, operation, context);
   } catch (error) {
     console.error('Failed to check learning credits:', error);
     throw new HttpError(500, 'Failed to check credit availability');
@@ -67,6 +70,9 @@ export const getUserUsageStats: GetUserUsageStats<void, UserUsageStatsOutput> = 
     throw new HttpError(401, 'Authentication required');
   }
 
+  // Assert user is defined after authentication check
+  const user = context.user;
+
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -79,7 +85,7 @@ export const getUserUsageStats: GetUserUsageStats<void, UserUsageStatsOutput> = 
       where: {
         userProgress: {
           some: {
-            userId: context.user.id,
+            userId: user.id,
             topic: {
               createdAt: {
                 gte: startOfMonth
@@ -94,7 +100,7 @@ export const getUserUsageStats: GetUserUsageStats<void, UserUsageStatsOutput> = 
     const chatMessagesToday = await context.entities.Message.count({
       where: {
         thread: {
-          userId: context.user.id
+          userId: user.id
         },
         role: 'USER',
         createdAt: {
@@ -106,7 +112,7 @@ export const getUserUsageStats: GetUserUsageStats<void, UserUsageStatsOutput> = 
     // Count quizzes this week
     const quizzesThisWeek = await context.entities.Quiz.count({
       where: {
-        userId: context.user.id,
+        userId: user.id,
         createdAt: {
           gte: startOfWeek
         }
@@ -178,8 +184,11 @@ export const getUpgradeRecommendation: GetUpgradeRecommendation<void, UpgradeRec
     throw new HttpError(401, 'Authentication required');
   }
 
+  // Assert user is defined after authentication check
+  const user = context.user;
+
   try {
-    const recommendation = await getUpgradeRec(context.user.id, context);
+    const recommendation = await getUpgradeRec(user.id, context);
     
     // Get current usage for context
     const usage = await getUserUsageStats(undefined, context);
@@ -209,6 +218,9 @@ export const consumeLearningCredits: ConsumeLearningCredits<ConsumeLearningCredi
     throw new HttpError(401, 'Authentication required');
   }
 
+  // Assert user is defined after authentication check
+  const user = context.user;
+
   const { operation, metadata } = args;
 
   if (!operation || !CREDIT_COSTS[operation]) {
@@ -216,7 +228,7 @@ export const consumeLearningCredits: ConsumeLearningCredits<ConsumeLearningCredi
   }
 
   try {
-    return await consumeCredits(context.user.id, operation, context, metadata);
+    return await consumeCredits(user.id, operation, context, metadata);
   } catch (error) {
     if (error instanceof HttpError) {
       throw error;

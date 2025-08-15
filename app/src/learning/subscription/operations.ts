@@ -83,50 +83,51 @@ export async function checkUserCredits(
     console.warn('Failed to get usage stats, proceeding with credit-only check:', error);
   }
 
-  // Check subscription-based limits first (only if we have usage stats)
-  if (!isSubscribed && usageStats) {
-    // Free tier checks
-    const freeChecks = checkFreeTierLimits(operation, usageStats);
-    if (!freeChecks.allowed) {
-      return {
-        hasCredits: false,
-        currentCredits: user.credits,
-        requiredCredits,
-        isSubscribed: false,
-        upgradeRequired: true,
-        limitType: 'feature_limit',
-        resetDate: freeChecks.resetDate
-      };
-    }
-  } else if (isSubscribed && !isPro && usageStats) {
-    // Hobby tier checks (more generous than free but still limited)
-    const hobbyChecks = checkHobbyTierLimits(operation, usageStats);
-    if (!hobbyChecks.allowed) {
-      return {
-        hasCredits: false,
-        currentCredits: user.credits,
-        requiredCredits,
-        isSubscribed: true,
-        subscriptionPlan: user.subscriptionPlan || 'hobby',
-        upgradeRequired: true,
-        limitType: 'feature_limit',
-        resetDate: hobbyChecks.resetDate
-      };
+  // Check credit balance first - this is the primary gate
+  const hasCredits = user.credits >= requiredCredits;
+
+  // For development and better UX, prioritize credit-based access over usage limits
+  // Only check usage limits if user has credits but we want to warn about approaching limits
+  if (hasCredits && usageStats) {
+    // Check subscription-based limits for warnings, but don't block if user has credits
+    if (!isSubscribed) {
+      // Free tier checks - warn but don't block if they have credits
+      const freeChecks = checkFreeTierLimits(operation, usageStats);
+      if (!freeChecks.allowed) {
+        // User has credits but is approaching/at limits - allow but warn
+        console.log(`User ${userId} approaching free tier limits for ${operation}, but has credits`);
+      }
+    } else if (!isPro) {
+      // Hobby tier checks
+      const hobbyChecks = checkHobbyTierLimits(operation, usageStats);
+      if (!hobbyChecks.allowed) {
+        // Similar warning for hobby tier
+        console.log(`User ${userId} approaching hobby tier limits for ${operation}`);
+      }
     }
   }
 
-  // Check credit balance
-  const hasCredits = user.credits >= requiredCredits;
-
-  return {
+  const result: CreditCheckResult = {
     hasCredits,
     currentCredits: user.credits,
     requiredCredits,
     isSubscribed,
     subscriptionPlan: user.subscriptionPlan || undefined,
     upgradeRequired: !hasCredits && !isSubscribed,
-    limitType: hasCredits ? undefined : 'credits'
+    limitType: hasCredits ? undefined : ('credits' as const)
   };
+
+  // Debug logging
+  console.log(`Credit check for user ${userId}, operation ${operation}:`, {
+    hasCredits,
+    currentCredits: user.credits,
+    requiredCredits,
+    isSubscribed,
+    subscriptionPlan: user.subscriptionPlan,
+    upgradeRequired: result.upgradeRequired
+  });
+
+  return result;
 }
 
 /**

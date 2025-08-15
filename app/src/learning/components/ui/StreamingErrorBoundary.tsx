@@ -2,7 +2,15 @@ import React, { Component, ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Alert, AlertDescription } from '../../../components/ui/alert';
-import { AlertTriangle, RefreshCw, Bug, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Bug, Wifi, WifiOff, Shield, Clock, Zap } from 'lucide-react';
+import { 
+  LearningPlatformError, 
+  classifyError, 
+  logError,
+  isLearningPlatformError,
+  ErrorType,
+  ErrorSeverity
+} from '../../errors/errorTypes';
 
 interface StreamingErrorBoundaryProps {
   children: ReactNode;
@@ -15,99 +23,15 @@ interface StreamingErrorBoundaryProps {
 
 interface StreamingErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
+  error: LearningPlatformError | null;
   errorInfo: any;
   retryCount: number;
   isRetrying: boolean;
+  lastErrorTime: number;
 }
 
-// Error types for better error handling
-export enum StreamingErrorType {
-  CONNECTION_ERROR = 'CONNECTION_ERROR',
-  TIMEOUT_ERROR = 'TIMEOUT_ERROR',
-  AUTHENTICATION_ERROR = 'AUTHENTICATION_ERROR',
-  RATE_LIMIT_ERROR = 'RATE_LIMIT_ERROR',
-  SERVER_ERROR = 'SERVER_ERROR',
-  PARSING_ERROR = 'PARSING_ERROR',
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
-}
-
-export interface StreamingError extends Error {
-  type: StreamingErrorType;
-  recoverable: boolean;
-  retryAfter?: number;
-  details?: any;
-}
-
-// Utility function to classify errors
-export const classifyStreamingError = (error: Error): StreamingError => {
-  const streamingError = error as StreamingError;
-  
-  // If already classified, return as is
-  if (streamingError.type) {
-    return streamingError;
-  }
-
-  // Classify based on error message and properties
-  if (error.message.includes('fetch') || error.message.includes('network')) {
-    return {
-      ...error,
-      type: StreamingErrorType.CONNECTION_ERROR,
-      recoverable: true,
-      retryAfter: 3000
-    } as StreamingError;
-  }
-
-  if (error.message.includes('timeout')) {
-    return {
-      ...error,
-      type: StreamingErrorType.TIMEOUT_ERROR,
-      recoverable: true,
-      retryAfter: 5000
-    } as StreamingError;
-  }
-
-  if (error.message.includes('401') || error.message.includes('unauthorized')) {
-    return {
-      ...error,
-      type: StreamingErrorType.AUTHENTICATION_ERROR,
-      recoverable: false
-    } as StreamingError;
-  }
-
-  if (error.message.includes('429') || error.message.includes('rate limit')) {
-    return {
-      ...error,
-      type: StreamingErrorType.RATE_LIMIT_ERROR,
-      recoverable: true,
-      retryAfter: 60000 // 1 minute
-    } as StreamingError;
-  }
-
-  if (error.message.includes('5') && error.message.includes('server')) {
-    return {
-      ...error,
-      type: StreamingErrorType.SERVER_ERROR,
-      recoverable: true,
-      retryAfter: 10000
-    } as StreamingError;
-  }
-
-  if (error.message.includes('parse') || error.message.includes('JSON')) {
-    return {
-      ...error,
-      type: StreamingErrorType.PARSING_ERROR,
-      recoverable: false
-    } as StreamingError;
-  }
-
-  return {
-    ...error,
-    type: StreamingErrorType.UNKNOWN_ERROR,
-    recoverable: true,
-    retryAfter: 5000
-  } as StreamingError;
-};
+// Re-export error types for backward compatibility
+export { ErrorType as StreamingErrorType } from '../../errors/errorTypes';
 
 class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, StreamingErrorBoundaryState> {
   private retryTimeoutId: NodeJS.Timeout | null = null;
@@ -119,19 +43,30 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
       error: null,
       errorInfo: null,
       retryCount: 0,
-      isRetrying: false
+      isRetrying: false,
+      lastErrorTime: 0
     };
   }
 
   static getDerivedStateFromError(error: Error): Partial<StreamingErrorBoundaryState> {
+    const learningError = isLearningPlatformError(error) ? error : classifyError(error);
     return {
       hasError: true,
-      error: classifyStreamingError(error)
+      error: learningError,
+      lastErrorTime: Date.now()
     };
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('Streaming Error Boundary caught an error:', error, errorInfo);
+    const learningError = isLearningPlatformError(error) ? error : classifyError(error);
+    
+    // Log the error with context
+    logError(learningError, { 
+      component: 'StreamingErrorBoundary',
+      errorInfo,
+      retryCount: this.state.retryCount
+    });
+    
     this.setState({
       errorInfo
     });
@@ -145,15 +80,14 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
 
   handleRetry = () => {
     const { error, retryCount } = this.state;
-    const streamingError = error as StreamingError;
     
-    if (!streamingError?.recoverable || retryCount >= 3) {
+    if (!error?.recoverable || retryCount >= 3) {
       return;
     }
 
     this.setState({ isRetrying: true });
 
-    const retryDelay = streamingError.retryAfter || 3000;
+    const retryDelay = error.retryAfter || 3000;
     
     this.retryTimeoutId = setTimeout(() => {
       this.setState({
@@ -161,7 +95,8 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
         error: null,
         errorInfo: null,
         retryCount: retryCount + 1,
-        isRetrying: false
+        isRetrying: false,
+        lastErrorTime: 0
       });
       
       this.props.onRetry?.();
@@ -174,73 +109,93 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
       error: null,
       errorInfo: null,
       retryCount: 0,
-      isRetrying: false
+      isRetrying: false,
+      lastErrorTime: 0
     });
     
     this.props.onReset?.();
   };
 
-  getErrorIcon = (errorType: StreamingErrorType) => {
+  getErrorIcon = (errorType: ErrorType) => {
     switch (errorType) {
-      case StreamingErrorType.CONNECTION_ERROR:
+      case ErrorType.NETWORK_ERROR:
+      case ErrorType.CONNECTION_ERROR:
         return <WifiOff className="w-5 h-5 text-red-500" />;
-      case StreamingErrorType.TIMEOUT_ERROR:
-        return <Wifi className="w-5 h-5 text-yellow-500" />;
-      case StreamingErrorType.AUTHENTICATION_ERROR:
-        return <AlertTriangle className="w-5 h-5 text-red-500" />;
-      case StreamingErrorType.RATE_LIMIT_ERROR:
-        return <AlertTriangle className="w-5 h-5 text-orange-500" />;
-      case StreamingErrorType.SERVER_ERROR:
+      case ErrorType.TIMEOUT_ERROR:
+        return <Clock className="w-5 h-5 text-yellow-500" />;
+      case ErrorType.AUTHENTICATION_ERROR:
+      case ErrorType.AUTHORIZATION_ERROR:
+        return <Shield className="w-5 h-5 text-red-500" />;
+      case ErrorType.AI_RATE_LIMIT_ERROR:
+      case ErrorType.AI_QUOTA_EXCEEDED:
+        return <Zap className="w-5 h-5 text-orange-500" />;
+      case ErrorType.AI_API_ERROR:
+      case ErrorType.VECTOR_STORE_ERROR:
+      case ErrorType.RESEARCH_PIPELINE_ERROR:
         return <Bug className="w-5 h-5 text-red-500" />;
+      case ErrorType.VALIDATION_ERROR:
+        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
       default:
         return <AlertTriangle className="w-5 h-5 text-red-500" />;
     }
   };
 
-  getErrorMessage = (error: StreamingError) => {
-    switch (error.type) {
-      case StreamingErrorType.CONNECTION_ERROR:
-        return 'Connection lost. Please check your internet connection and try again.';
-      case StreamingErrorType.TIMEOUT_ERROR:
-        return 'Request timed out. The server is taking too long to respond.';
-      case StreamingErrorType.AUTHENTICATION_ERROR:
-        return 'Authentication failed. Please log in again.';
-      case StreamingErrorType.RATE_LIMIT_ERROR:
-        return 'Too many requests. Please wait a moment before trying again.';
-      case StreamingErrorType.SERVER_ERROR:
-        return 'Server error occurred. Our team has been notified.';
-      case StreamingErrorType.PARSING_ERROR:
-        return 'Data parsing error. The response format was unexpected.';
-      default:
-        return 'An unexpected error occurred. Please try again.';
-    }
+  getErrorMessage = (error: LearningPlatformError) => {
+    return error.userMessage || error.message;
   };
 
-  getErrorSuggestions = (error: StreamingError) => {
+  getErrorSuggestions = (error: LearningPlatformError) => {
     switch (error.type) {
-      case StreamingErrorType.CONNECTION_ERROR:
+      case ErrorType.NETWORK_ERROR:
+      case ErrorType.CONNECTION_ERROR:
         return [
           'Check your internet connection',
           'Try refreshing the page',
           'Disable VPN if active'
         ];
-      case StreamingErrorType.TIMEOUT_ERROR:
+      case ErrorType.TIMEOUT_ERROR:
         return [
           'Try again in a few moments',
           'Check server status',
           'Reduce request complexity'
         ];
-      case StreamingErrorType.AUTHENTICATION_ERROR:
+      case ErrorType.AUTHENTICATION_ERROR:
+      case ErrorType.AUTHORIZATION_ERROR:
         return [
           'Log out and log back in',
           'Clear browser cache',
           'Check account status'
         ];
-      case StreamingErrorType.RATE_LIMIT_ERROR:
+      case ErrorType.AI_RATE_LIMIT_ERROR:
+      case ErrorType.AI_QUOTA_EXCEEDED:
         return [
           'Wait before making more requests',
           'Upgrade your plan for higher limits',
           'Reduce request frequency'
+        ];
+      case ErrorType.VALIDATION_ERROR:
+        return [
+          'Check your input format',
+          'Ensure all required fields are filled',
+          'Remove any invalid characters'
+        ];
+      case ErrorType.AI_API_ERROR:
+        return [
+          'Try again in a few moments',
+          'Check if the service is available',
+          'Contact support if problem persists'
+        ];
+      case ErrorType.VECTOR_STORE_ERROR:
+        return [
+          'Search functionality may be temporarily unavailable',
+          'Try a simpler search query',
+          'Contact support if problem persists'
+        ];
+      case ErrorType.RESEARCH_PIPELINE_ERROR:
+        return [
+          'Research may be temporarily unavailable',
+          'Try with a different topic',
+          'Contact support if problem persists'
         ];
       default:
         return [
@@ -256,7 +211,6 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
     const { children, fallback, showDetails = false, className = '' } = this.props;
 
     if (hasError && error) {
-      const streamingError = error as StreamingError;
       
       if (fallback) {
         return fallback;
@@ -266,9 +220,11 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
         <Card className={`border-red-200 bg-red-50 ${className}`}>
           <CardHeader>
             <div className="flex items-center gap-3">
-              {this.getErrorIcon(streamingError.type)}
+              {this.getErrorIcon(error.type)}
               <CardTitle className="text-red-800">
-                Streaming Error
+                {error.severity === ErrorSeverity.CRITICAL ? 'Critical Error' : 
+                 error.severity === ErrorSeverity.HIGH ? 'System Error' : 
+                 'Application Error'}
               </CardTitle>
             </div>
           </CardHeader>
@@ -277,7 +233,7 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                {this.getErrorMessage(streamingError)}
+                {this.getErrorMessage(error)}
               </AlertDescription>
             </Alert>
 
@@ -285,7 +241,7 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-gray-700">Suggestions:</h4>
               <ul className="text-sm text-gray-600 space-y-1">
-                {this.getErrorSuggestions(streamingError).map((suggestion, index) => (
+                {this.getErrorSuggestions(error).map((suggestion, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <span className="text-gray-400">•</span>
                     <span>{suggestion}</span>
@@ -296,7 +252,7 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
 
             {/* Action buttons */}
             <div className="flex gap-2 pt-2">
-              {streamingError.recoverable && retryCount < 3 && (
+              {error.recoverable && retryCount < 3 && (
                 <Button
                   onClick={this.handleRetry}
                   disabled={isRetrying}
@@ -333,11 +289,16 @@ class StreamingErrorBoundary extends Component<StreamingErrorBoundaryProps, Stre
                   Technical Details
                 </summary>
                 <div className="mt-2 p-3 bg-gray-100 rounded text-xs font-mono">
-                  <div><strong>Error Type:</strong> {streamingError.type}</div>
+                  <div><strong>Error Code:</strong> {error.code}</div>
+                  <div><strong>Error Type:</strong> {error.type}</div>
+                  <div><strong>Severity:</strong> {error.severity}</div>
                   <div><strong>Message:</strong> {error.message}</div>
-                  <div><strong>Recoverable:</strong> {streamingError.recoverable ? 'Yes' : 'No'}</div>
-                  {streamingError.retryAfter && (
-                    <div><strong>Retry After:</strong> {streamingError.retryAfter}ms</div>
+                  <div><strong>Recoverable:</strong> {error.recoverable ? 'Yes' : 'No'}</div>
+                  {error.retryAfter && (
+                    <div><strong>Retry After:</strong> {error.retryAfter}ms</div>
+                  )}
+                  {error.context && (
+                    <div><strong>Context:</strong> {JSON.stringify(error.context, null, 2)}</div>
                   )}
                   {errorInfo && (
                     <div className="mt-2">

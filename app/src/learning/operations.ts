@@ -10,6 +10,21 @@ import type {
 import type { Topic, UserTopicProgress } from 'wasp/entities';
 import { TopicStatus } from '@prisma/client';
 import { consumeCredits } from './subscription/operations';
+import { 
+  handleServerError, 
+  withDatabaseErrorHandling, 
+  validateInput, 
+  sanitizeInput,
+  withRetry
+} from './errors/errorHandler';
+import { 
+  createAuthenticationError, 
+  createValidationError,
+  createLearningError,
+  ErrorType,
+  ErrorSeverity,
+  ERROR_CODES
+} from './errors/errorTypes';
 
 // Helper function to generate URL-friendly slug from title
 function generateSlug(title: string): string {
@@ -50,52 +65,72 @@ type CreateTopicInput = {
 
 export const createTopic: CreateTopic<CreateTopicInput, Topic> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to create topics');
   }
 
-  const { title, summary, description, parentId } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!title || title.trim().length === 0) {
-    throw new HttpError(400, 'Topic title is required');
-  }
+  // Validate and sanitize inputs
+  const title = validateInput(
+    args.title,
+    (input) => {
+      if (!input || typeof input !== 'string' || input.trim().length === 0) {
+        throw new Error('Topic title is required');
+      }
+      return sanitizeInput(input, 200);
+    },
+    'title',
+    { userId: user.id }
+  );
 
-  // Validate parent topic exists if parentId is provided
+  const summary = args.summary ? sanitizeInput(args.summary, 500) : null;
+  const description = args.description ? sanitizeInput(args.description, 2000) : null;
+  const parentId = args.parentId;
+
+  // Initialize depth variable in outer scope
   let depth = 0;
 
-  if (parentId) {
-    const parentTopic = await context.entities.Topic.findUnique({
-      where: { id: parentId }
-    });
+  return withDatabaseErrorHandling(async () => {
+    // Validate parent topic exists if parentId is provided
+    if (parentId) {
+      const parentTopic = await context.entities.Topic.findUnique({
+        where: { id: parentId }
+      });
 
-    if (!parentTopic) {
-      throw new HttpError(404, 'Parent topic not found');
+      if (!parentTopic) {
+        throw createValidationError('parentId', 'Parent topic not found');
+      }
+
+      depth = parentTopic.depth + 1;
+
+      // Limit depth to 3 levels as per requirements
+      if (depth > 3) {
+        throw createValidationError('depth', 'Maximum topic depth of 3 levels exceeded');
+      }
     }
 
-    depth = parentTopic.depth + 1;
-
-    // Limit depth to 3 levels as per requirements
-    if (depth > 3) {
-      throw new HttpError(400, 'Maximum topic depth of 3 levels exceeded');
-    }
-  }
-
-  try {
     // Consume credits for topic research (only for root topics)
     if (depth === 0) {
-      await consumeCredits(context.user.id, 'TOPIC_RESEARCH', context, {
-        topicTitle: title,
-        parentId: parentId || null
-      });
+      await withRetry(
+        () => consumeCredits(user.id, 'TOPIC_RESEARCH', context, {
+          topicTitle: title,
+          parentId: parentId || null
+        }),
+        3,
+        1000,
+        'CONSUME_CREDITS'
+      );
     }
 
     const slug = await generateUniqueSlug(title, context);
 
     const topic = await context.entities.Topic.create({
       data: {
-        title: title.trim(),
+        title,
         slug,
-        summary: summary?.trim() || null,
-        description: description?.trim() || null,
+        summary,
+        description,
         parentId: parentId || null,
         depth,
         status: TopicStatus.PENDING,
@@ -106,7 +141,7 @@ export const createTopic: CreateTopic<CreateTopicInput, Topic> = async (args, co
     // Create initial progress record for the user
     await context.entities.UserTopicProgress.create({
       data: {
-        userId: context.user.id,
+        userId: user.id,
         topicId: topic.id,
         completed: false,
         timeSpent: 0,
@@ -116,13 +151,7 @@ export const createTopic: CreateTopic<CreateTopicInput, Topic> = async (args, co
     });
 
     return topic;
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to create topic:', error);
-    throw new HttpError(500, 'Failed to create topic');
-  }
+  }, 'CREATE_TOPIC', { userId: user.id, title, depth });
 };
 
 type GetTopicInput = {
@@ -137,16 +166,33 @@ type GetTopicOutput = Topic & {
 
 export const getTopic: GetTopic<GetTopicInput, GetTopicOutput> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to access topics');
   }
 
-  const { slug } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!slug) {
-    throw new HttpError(400, 'Topic slug is required');
-  }
+  const slug = validateInput(
+    args.slug,
+    (input) => {
+      if (!input || typeof input !== 'string' || input.trim().length === 0) {
+        throw new Error('Topic slug is required');
+      }
+      // More permissive slug validation - allow letters, numbers, hyphens, and underscores
+      const trimmed = input.trim();
+      if (trimmed.length > 100) {
+        throw new Error('Slug is too long (maximum 100 characters)');
+      }
+      if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+        throw new Error(`Slug '${trimmed}' contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed.`);
+      }
+      return trimmed;
+    },
+    'slug',
+    { userId: user.id, originalSlug: args.slug }
+  );
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     const topic = await context.entities.Topic.findUnique({
       where: { slug },
       include: {
@@ -158,26 +204,30 @@ export const getTopic: GetTopic<GetTopicInput, GetTopicOutput> = async (args, co
         },
         parent: true,
         userProgress: {
-          where: { userId: context.user.id }
+          where: { userId: user.id }
         }
       }
     });
 
     if (!topic) {
-      throw new HttpError(404, 'Topic not found');
+      throw createLearningError(
+        ErrorType.TOPIC_NOT_FOUND,
+        ERROR_CODES.TOPIC_NOT_FOUND,
+        `Topic with slug '${slug}' not found`,
+        {
+          severity: ErrorSeverity.LOW,
+          recoverable: false,
+          userMessage: `Topic '${slug}' not found. It may have been deleted or you may not have access to it.`,
+          context: { slug, userId: user.id }
+        }
+      );
     }
 
     return {
       ...topic,
       userProgress: topic.userProgress[0] || undefined
     };
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to get topic:', error);
-    throw new HttpError(500, 'Failed to retrieve topic');
-  }
+  }, 'GET_TOPIC', { userId: user.id, slug });
 };
 
 type GetTopicTreeItem = Topic & {
@@ -189,12 +239,14 @@ type GetTopicTreeOutput = GetTopicTreeItem[];
 
 export const getTopicTree: GetTopicTree<void, GetTopicTreeOutput> = async (_args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to access topic tree');
   }
 
-  const userId = context.user.id;
+  // Assert user is defined after authentication check
+  const user = context.user;
+  const userId = user.id;
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     // Get all root topics (depth 0) with their nested children
     const buildTopicTree = async (parentId: string | null = null): Promise<GetTopicTreeOutput> => {
       const topics = await context.entities.Topic.findMany({
@@ -225,10 +277,7 @@ export const getTopicTree: GetTopicTree<void, GetTopicTreeOutput> = async (_args
     };
 
     return await buildTopicTree();
-  } catch (error) {
-    console.error('Failed to get topic tree:', error);
-    throw new HttpError(500, 'Failed to retrieve topic tree');
-  }
+  }, 'GET_TOPIC_TREE', { userId });
 };
 
 type UpdateTopicProgressInput = {
@@ -241,34 +290,54 @@ type UpdateTopicProgressInput = {
 
 export const updateTopicProgress: UpdateTopicProgress<UpdateTopicProgressInput, UserTopicProgress> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to update progress');
   }
 
-  const { topicId, completed, timeSpent, preferences, bookmarks } = args;
+  // Assert user is defined after authentication check
+  const user = context.user;
 
-  if (!topicId) {
-    throw new HttpError(400, 'Topic ID is required');
+  const topicId = validateInput(
+    args.topicId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Topic ID is required');
+      }
+      return input;
+    },
+    'topicId',
+    { userId: user.id }
+  );
+
+  // Validate optional inputs
+  const { completed, timeSpent, preferences, bookmarks } = args;
+
+  if (timeSpent !== undefined && (typeof timeSpent !== 'number' || timeSpent < 0)) {
+    throw createValidationError('timeSpent', 'Time spent must be a non-negative number');
   }
 
-  // Validate topic exists
-  const topic = await context.entities.Topic.findUnique({
-    where: { id: topicId },
-    include: {
-      parent: true,
-      children: true
+  if (bookmarks !== undefined && !Array.isArray(bookmarks)) {
+    throw createValidationError('bookmarks', 'Bookmarks must be an array');
+  }
+
+  return withDatabaseErrorHandling(async () => {
+    // Validate topic exists
+    const topic = await context.entities.Topic.findUnique({
+      where: { id: topicId },
+      include: {
+        parent: true,
+        children: true
+      }
+    });
+
+    if (!topic) {
+      throw createValidationError('topicId', 'Topic not found');
     }
-  });
 
-  if (!topic) {
-    throw new HttpError(404, 'Topic not found');
-  }
-
-  try {
     // Find existing progress record
     const existingProgress = await context.entities.UserTopicProgress.findUnique({
       where: {
         userId_topicId: {
-          userId: context.user.id,
+          userId: user.id,
           topicId
         }
       }
@@ -292,7 +361,10 @@ export const updateTopicProgress: UpdateTopicProgress<UpdateTopicProgressInput, 
     }
 
     if (bookmarks !== undefined) {
-      updateData.bookmarks = bookmarks;
+      // Sanitize bookmark strings
+      updateData.bookmarks = bookmarks.map((bookmark: string) => 
+        sanitizeInput(bookmark, 500)
+      );
     }
 
     let updatedProgress;
@@ -301,7 +373,7 @@ export const updateTopicProgress: UpdateTopicProgress<UpdateTopicProgressInput, 
       updatedProgress = await context.entities.UserTopicProgress.update({
         where: {
           userId_topicId: {
-            userId: context.user.id,
+            userId: user.id,
             topicId
           }
         },
@@ -311,7 +383,7 @@ export const updateTopicProgress: UpdateTopicProgress<UpdateTopicProgressInput, 
       // Create new progress record
       updatedProgress = await context.entities.UserTopicProgress.create({
         data: {
-          userId: context.user.id,
+          userId: user.id,
           topicId,
           completed: completed || false,
           timeSpent: timeSpent || 0,
@@ -324,14 +396,16 @@ export const updateTopicProgress: UpdateTopicProgress<UpdateTopicProgressInput, 
 
     // If this topic was marked as completed, update parent progress
     if (completed === true && topic.parent) {
-      await updateParentProgress(context.user.id, topic.parent.id, context);
+      await withRetry(
+        () => updateParentProgress(user.id, topic.parent!.id, context),
+        2,
+        1000,
+        'UPDATE_PARENT_PROGRESS'
+      );
     }
 
     return updatedProgress;
-  } catch (error) {
-    console.error('Failed to update topic progress:', error);
-    throw new HttpError(500, 'Failed to update topic progress');
-  }
+  }, 'UPDATE_TOPIC_PROGRESS', { userId: user.id, topicId });
 };
 
 // Helper function to calculate and update parent topic progress
@@ -436,13 +510,16 @@ type UserProgressStats = {
 
 export const getUserProgressStats: GetUserProgressStats<void, UserProgressStats> = async (_args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to get progress stats');
   }
 
-  try {
+  // Assert user is defined after authentication check
+  const user = context.user;
+
+  return withDatabaseErrorHandling(async () => {
     // Get all user progress records
     const allProgress = await context.entities.UserTopicProgress.findMany({
-      where: { userId: context.user.id },
+      where: { userId: user.id },
       include: {
         topic: {
           select: {
@@ -473,10 +550,7 @@ export const getUserProgressStats: GetUserProgressStats<void, UserProgressStats>
       recentActivity,
       topicsInProgress
     };
-  } catch (error) {
-    console.error('Failed to get user progress stats:', error);
-    throw new HttpError(500, 'Failed to retrieve progress statistics');
-  }
+  }, 'GET_USER_PROGRESS_STATS', { userId: user.id });
 };
 
 // Get detailed progress summary for a specific topic and its hierarchy
@@ -503,20 +577,30 @@ type TopicProgressSummary = {
 
 export const getTopicProgressSummary: GetTopicProgressSummary<TopicProgressSummaryInput, TopicProgressSummary> = async (args, context) => {
   if (!context.user) {
-    throw new HttpError(401, 'Authentication required');
+    throw createAuthenticationError('Authentication required to get progress summary');
   }
 
-  const userId = context.user.id;
+  // Assert user is defined after authentication check
+  const user = context.user;
+  const userId = user.id;
   const { topicId } = args;
 
-  if (!topicId) {
-    throw new HttpError(400, 'Topic ID is required');
-  }
+  const validatedTopicId = validateInput(
+    topicId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Topic ID is required');
+      }
+      return input;
+    },
+    'topicId',
+    { userId: user.id }
+  );
 
-  try {
+  return withDatabaseErrorHandling(async () => {
     // Get topic with all descendants
     const topic = await context.entities.Topic.findUnique({
-      where: { id: topicId },
+      where: { id: validatedTopicId },
       include: {
         userProgress: {
           where: { userId }
@@ -525,7 +609,7 @@ export const getTopicProgressSummary: GetTopicProgressSummary<TopicProgressSumma
     });
 
     if (!topic) {
-      throw new HttpError(404, 'Topic not found');
+      throw createValidationError('topicId', 'Topic not found');
     }
 
     // Get all descendant topics recursively
@@ -552,10 +636,10 @@ export const getTopicProgressSummary: GetTopicProgressSummary<TopicProgressSumma
       return allDescendants;
     };
 
-    const descendants = await getAllDescendants(topicId);
+    const descendants = await getAllDescendants(validatedTopicId);
     
     // Calculate children progress (direct children only)
-    const directChildren = descendants.filter(d => d.parentId === topicId);
+    const directChildren = descendants.filter(d => d.parentId === validatedTopicId);
     const completedChildren = directChildren.filter(child => 
       child.userProgress.length > 0 && child.userProgress[0].completed
     ).length;
@@ -604,11 +688,5 @@ export const getTopicProgressSummary: GetTopicProgressSummary<TopicProgressSumma
       childrenProgress,
       hierarchyProgress
     };
-  } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    console.error('Failed to get topic progress summary:', error);
-    throw new HttpError(500, 'Failed to retrieve topic progress summary');
-  }
+  }, 'GET_TOPIC_PROGRESS_SUMMARY', { userId: user.id, topicId: validatedTopicId });
 };

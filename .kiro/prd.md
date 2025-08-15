@@ -35,21 +35,64 @@ An AI-powered platform that acts as a comprehensive learning companion - users s
 
 #### 4.1 Research Pipeline
 ```
-User Query → Ground Definition Agent → Search Query Generation → 
-Meta Search Engine → Results Aggregation → Summary + Subtopics Generation →
+User Query → Ground Definition Agent → Multi-Agent Search Orchestration → 
+SearXNG Multi-Engine Search → Results Aggregation → Summary + Subtopics Generation →
 Recursive Subtopic Research (3 levels deep) → Knowledge Tree Complete → Embedding Generation → Qdrant Storage → RAG-Ready Index
 ```
 
 **Backend Process:**
 1. **Ground Definition Agent**: Establishes core understanding of user query
-2. **Search Query Generator**: Creates optimized search queries for meta engines
-3. **Meta Search Integration**: Fetches comprehensive results from multiple sources
-4. **Aggregation Engine**: Combines and deduplicates information
+2. **Multi-Agent Search Orchestration**: Deploys 5 specialized search agents simultaneously
+3. **SearXNG Integration**: Parallel searches across specialized engines
+4. **Results Aggregation**: Combines and deduplicates information from all agents
 5. **Content Generator**: Creates summary and identifies subtopics
 6. **Recursive Depth**: Automatically explores 3 levels deep (expandable on demand)
 7. **Real-time Streaming**: Updates UI progressively as content generates
 
-#### 4.2 URL Structure
+#### 4.2 Multi-Agent Search Architecture
+
+**5 Specialized Search Agents:**
+
+1. **General Research Agent**
+   - **Purpose**: Broad web search for general information
+   - **SearXNG Config**: No specific engines (uses default web engines)
+   - **Use Case**: Overview, definitions, general context
+
+2. **Academic Research Agent**
+   - **Purpose**: Scholarly and scientific information
+   - **SearXNG Engines**: `arxiv`, `google scholar`, `pubmed`
+   - **Use Case**: Research papers, academic definitions, scientific data
+
+3. **Computational Agent**
+   - **Purpose**: Mathematical, computational, and factual data
+   - **SearXNG Engines**: `wolframalpha`
+   - **Use Case**: Calculations, formulas, structured data, facts
+
+4. **Video Research Agent**
+   - **Purpose**: Educational video content and tutorials
+   - **SearXNG Engines**: `youtube`
+   - **Use Case**: Visual learning materials, tutorials, demonstrations
+
+5. **Social Research Agent**
+   - **Purpose**: Community discussions and practical insights
+   - **SearXNG Engines**: `reddit`
+   - **Use Case**: Real-world experiences, discussions, troubleshooting
+
+**Search Execution Flow:**
+```typescript
+// Parallel execution of all 5 agents
+const searchPromises = [
+  searchSearxng(query, { /* general - no engines specified */ }),
+  searchSearxng(query, { engines: ['arxiv', 'google scholar', 'pubmed'] }),
+  searchSearxng(query, { engines: ['wolframalpha'] }),
+  searchSearxng(query, { engines: ['youtube'] }),
+  searchSearxng(query, { engines: ['reddit'] })
+];
+
+const results = await Promise.allSettled(searchPromises);
+```
+
+#### 4.3 URL Structure
 - Base: `/{topic-slug}` (e.g., `/machine-learning`, `/quantum-computing`)
 - Clean, shareable URLs for each learning topic
 
@@ -174,7 +217,8 @@ Recursive Subtopic Research (3 levels deep) → Knowledge Tree Complete → Embe
 - **Backend**:
   - Next.js API Routes
   - Kiro AI Integration
-  - Meta search engine APIs
+  - SearXNG Meta Search Engine
+  - Multi-Agent Search Orchestration
   - PostgreSQL (via Prisma)
   - Vector DB for RAG using QDRANT
 
@@ -215,6 +259,7 @@ ChatThread {
   messages: Message[]
   createdAt: Date
 }
+
 VectorDocument {
   id: string
   topicId: string
@@ -224,9 +269,19 @@ VectorDocument {
     depth: number
     parentTopicId: string
     contentType: 'summary' | 'full' | 'quiz' | 'user_note'
+    sourceAgent: 'general' | 'academic' | 'computational' | 'video' | 'social'
     createdAt: Date
     lastAccessed: Date
   }
+}
+
+SearchResult {
+  id: string
+  topicId: string
+  query: string
+  agent: 'general' | 'academic' | 'computational' | 'video' | 'social'
+  results: JSON // SearXNG results
+  createdAt: Date
 }
 ```
 
@@ -236,12 +291,56 @@ VectorDocument {
 - **Progress Indicators**: Loading states for each section
 - **Incremental Rendering**: Show content as it becomes available
 
-#### 6.4 Vector Storage Strategy:
+#### 6.4 SearXNG Integration
+
+**Configuration:**
+```typescript
+interface SearxngSearchOptions {
+  categories?: string[];
+  engines?: string[];
+  language?: string;
+  pageno?: number;
+}
+
+// Agent-specific configurations
+const AGENT_CONFIGS = {
+  general: { /* no engines - uses default */ },
+  academic: { engines: ['arxiv', 'google scholar', 'pubmed'] },
+  computational: { engines: ['wolframalpha'] },
+  video: { engines: ['youtube'] },
+  social: { engines: ['reddit'] }
+};
+```
+
+**Multi-Agent Search Implementation:**
+```typescript
+export const multiAgentSearch = async (query: string) => {
+  const agents = ['general', 'academic', 'computational', 'video', 'social'];
+  
+  const searchPromises = agents.map(agent => 
+    searchSearxng(query, AGENT_CONFIGS[agent])
+      .then(results => ({ agent, ...results }))
+      .catch(error => ({ agent, error, results: [], suggestions: [] }))
+  );
+  
+  const results = await Promise.allSettled(searchPromises);
+  return aggregateResults(results);
+};
+```
+
+**Result Processing:**
+- **Source Attribution**: Each result tagged with originating agent
+- **Quality Scoring**: Different weights for different agent types
+- **Deduplication**: Cross-agent duplicate detection and removal
+- **Content Enrichment**: Combine complementary information from multiple agents
+
+#### 6.5 Vector Storage Strategy:
 - Automatic Indexing: Every generated document/topic automatically embedded and stored
 - Chunking Strategy: Split documents into semantic chunks (max 512 tokens)
 - Real-time Updates: Stream content → Generate embeddings → Store in Qdrant pipeline
 - Retrieval Optimization: Pre-compute embeddings during initial research phase
 - Collection Structure: One collection per main topic, points for subtopics
+- Agent Source Tracking: Metadata includes source agent for result provenance
 - Hybrid Search: Combine vector similarity with metadata filtering for precise retrieval
 
 ### 7. User Journey
@@ -249,7 +348,11 @@ VectorDocument {
 1. **Discovery**: User enters topic in search box
 2. **Processing**: Loading animation with status updates
    - "Understanding your topic..."
-   - "Researching across the web..."
+   - "Deploying research agents..."
+   - "Searching academic sources..."
+   - "Gathering video content..."
+   - "Analyzing community discussions..."
+   - "Aggregating results..."
    - "Building knowledge tree..."
    - "Preparing your learning experience..."
 3. **Landing**: Arrives at `/{topic-slug}` with Learn tab open
@@ -262,13 +365,14 @@ VectorDocument {
 ### 8. MVP Scope
 
 **Must Have:**
+- SearXNG integration with 5 specialized agents
 - Topic research with 3-level depth
 - All 5 tabs with basic functionality
 - Vercel AI SDK 4.0 for multi llm integration
-- Real-time UI updates
+- Real-time UI updates with agent progress indicators
 - Learn tab with personalization
 - Explore tab with tree navigation
-- Basic RAG for Ask tab
+- Basic RAG for Ask tab with source attribution
 - Simple mindmap visualization
 - Auto-generated quizzes
 - Progress tracking
@@ -283,11 +387,23 @@ VectorDocument {
 
 ### 9. Unique Value Proposition
 
+- **Multi-Agent Intelligence**: 5 specialized search agents for comprehensive coverage
 - **Multi-modal Learning**: Not just text, but guided, exploratory, visual, and conversational
-- **Real-time Research**: Live web aggregation, not static content
+- **Real-time Research**: Live web aggregation across academic, social, and computational sources
+- **Source Diversity**: Academic papers, video tutorials, community discussions, and computational data
 - **Depth Control**: Automatic 3-level exploration with on-demand expansion
 - **Personalized Experience**: Adapts to knowledge level and learning style
 - **Zero Configuration**: Works instantly with just a topic name
 - **Comprehensive Platform**: Everything needed to master a topic in one place
+
+### 10. SearXNG Agent Specializations
+
+**General Agent**: Broad web coverage for foundational understanding
+**Academic Agent**: Peer-reviewed research and scholarly articles
+**Computational Agent**: Mathematical proofs, calculations, and structured data
+**Video Agent**: Visual learning through tutorials and demonstrations
+**Social Agent**: Real-world applications and community insights
+
+This multi-agent approach ensures comprehensive topic coverage from multiple perspectives, providing learners with both theoretical foundations and practical applications.
 
 ---

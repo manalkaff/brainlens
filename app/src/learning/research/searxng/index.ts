@@ -1,0 +1,185 @@
+// SearXNG Integration Module
+// This module provides a complete SearXNG integration for the learning platform
+
+// Client and core functionality
+export {
+  SearxngClient,
+  defaultSearxngClient,
+  type SearxngSearchOptions,
+  type SearxngSearchResult,
+  type SearxngResponse,
+  type SearxngConfig
+} from './client';
+
+// Agent configurations
+export {
+  AgentConfigManager,
+  AGENT_SEARCH_CONFIGS,
+  GENERAL_RESEARCH_CONFIG,
+  ACADEMIC_RESEARCH_CONFIG,
+  COMPUTATIONAL_RESEARCH_CONFIG,
+  VIDEO_LEARNING_CONFIG,
+  COMMUNITY_DISCUSSION_CONFIG,
+  type AgentSearchConfig,
+  type AgentConfigName
+} from './agentConfigs';
+
+// Error handling and retry logic
+export {
+  SearxngCircuitBreaker,
+  SearxngRetryHandler,
+  SearxngErrorRecovery,
+  searxngCircuitBreaker,
+  searxngRetryHandler,
+  createSearxngError,
+  isSearxngError,
+  getSearxngErrorMessage,
+  SearxngErrorType,
+  type SearxngError,
+  type RetryConfig
+} from './errorHandler';
+
+// Import required classes and types for utility class
+import { SearxngClient, defaultSearxngClient } from './client';
+import { AgentConfigManager, AGENT_SEARCH_CONFIGS, type AgentConfigName } from './agentConfigs';
+import { 
+  searxngCircuitBreaker, 
+  searxngRetryHandler, 
+  isSearxngError, 
+  SearxngErrorRecovery 
+} from './errorHandler';
+
+// Utility functions for common operations
+export class SearxngUtils {
+  /**
+   * Create a configured SearXNG client for a specific agent
+   */
+  static createClientForAgent(agentName: AgentConfigName): SearxngClient {
+    return new SearxngClient({
+      baseUrl: process.env.SEARXNG_URL || 'http://localhost:8080',
+      timeout: 30000,
+      retryAttempts: 3,
+      retryDelay: 1000
+    });
+  }
+
+  /**
+   * Perform a search with agent-specific optimization
+   */
+  static async searchWithAgent(
+    agentName: AgentConfigName,
+    query: string,
+    context?: any
+  ): Promise<{
+    results: any[];
+    suggestions: string[];
+    totalResults: number;
+    query: string;
+  }> {
+    const client = this.createClientForAgent(agentName);
+    const optimizedQueries = AgentConfigManager.optimizeQuery(agentName, query, context);
+    const searchOptions = AgentConfigManager.getSearchOptions(agentName);
+
+    // Use the first optimized query for the main search
+    const mainQuery = optimizedQueries[0] || query;
+    
+    try {
+      const response = await searxngRetryHandler.execute(async () => {
+        return await searxngCircuitBreaker.execute(async () => {
+          return await client.search(mainQuery, searchOptions);
+        });
+      });
+
+      // Filter results based on agent configuration
+      const filteredResults = AgentConfigManager.filterResults(agentName, response.results);
+
+      return {
+        ...response,
+        results: filteredResults
+      };
+    } catch (error) {
+      // Handle errors with recovery strategies
+      if (isSearxngError(error)) {
+        return await SearxngErrorRecovery.handleError(error, 'cache');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Test SearXNG connectivity
+   */
+  static async testConnection(): Promise<{
+    connected: boolean;
+    availableEngines: string[];
+    error?: string;
+  }> {
+    try {
+      const client = new SearxngClient();
+      const connected = await client.testConnection();
+      const availableEngines = connected ? await client.getAvailableEngines() : [];
+      
+      return {
+        connected,
+        availableEngines
+      };
+    } catch (error) {
+      return {
+        connected: false,
+        availableEngines: [],
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Validate all agent configurations
+   */
+  static validateAllConfigs(): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    for (const [name, config] of Object.entries(AGENT_SEARCH_CONFIGS)) {
+      if (!AgentConfigManager.validateConfig(config)) {
+        errors.push(`Invalid configuration for agent: ${name}`);
+      }
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Get configuration summary for debugging
+   */
+  static getConfigSummary(): {
+    searxngUrl: string;
+    agentCount: number;
+    agents: { name: string; engines: string[]; categories?: string[] }[];
+    circuitBreakerState: any;
+  } {
+    const agents = AgentConfigManager.getAllConfigs().map(config => ({
+      name: config.name,
+      engines: config.engines,
+      categories: config.categories
+    }));
+
+    return {
+      searxngUrl: process.env.SEARXNG_URL || 'http://localhost:8080',
+      agentCount: agents.length,
+      agents,
+      circuitBreakerState: searxngCircuitBreaker.getState()
+    };
+  }
+}
+
+// Default export for convenience
+export default {
+  SearxngClient,
+  AgentConfigManager,
+  SearxngUtils,
+  defaultSearxngClient,
+  searxngCircuitBreaker,
+  searxngRetryHandler
+};

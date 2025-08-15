@@ -14,6 +14,8 @@ import { MindMapTab } from './components/tabs/MindMapTab';
 import { QuizTab } from './components/tabs/QuizTab';
 import { HelpSystem } from './components/help/HelpSystem';
 import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow';
+import StreamingErrorBoundary from './components/ui/StreamingErrorBoundary';
+import { useErrorHandler } from './hooks/useErrorHandler';
 
 // Loading component for tab content
 function TabContentLoader() {
@@ -119,20 +121,35 @@ function LazyTabContent({ tabId, children }: { tabId: string; children: React.Re
 function TopicPageContent() {
   const { activeTab, setActiveTab, isLoading, error } = useTopicContext();
   const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
+  const errorHandler = useErrorHandler({
+    maxRetries: 3,
+    onError: (error) => {
+      console.error('Topic page error:', error);
+    },
+    onRetry: (attempt) => {
+      console.log(`Retrying topic page operation, attempt ${attempt}`);
+    }
+  });
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-center">
-            <h3 className="text-lg font-semibold text-destructive mb-2">Error Loading Topic</h3>
-            <p className="text-muted-foreground mb-4">{error}</p>
-            <Button onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <StreamingErrorBoundary
+        onRetry={() => window.location.reload()}
+        onReset={() => window.location.reload()}
+        showDetails={process.env.NODE_ENV === 'development'}
+      >
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-destructive mb-2">Error Loading Topic</h3>
+              <p className="text-muted-foreground mb-4">{error}</p>
+              <Button onClick={() => window.location.reload()}>
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </StreamingErrorBoundary>
     );
   }
 
@@ -147,36 +164,61 @@ function TopicPageContent() {
           <TabStatusIndicator />
         </div>
 
-        {/* Tab Content with Lazy Loading */}
+        {/* Tab Content with Lazy Loading and Error Boundaries */}
         <div className="mt-6">
           <TabsContent value="learn" className="mt-0">
-            <Suspense fallback={<TabContentLoader />}>
-              <LearnTab />
-            </Suspense>
+            <StreamingErrorBoundary
+              onRetry={() => window.location.reload()}
+              showDetails={process.env.NODE_ENV === 'development'}
+            >
+              <Suspense fallback={<TabContentLoader />}>
+                <LearnTab />
+              </Suspense>
+            </StreamingErrorBoundary>
           </TabsContent>
           
           <TabsContent value="explore" className="mt-0">
-            <LazyTabContent tabId="explore">
-              <ExploreTab />
-            </LazyTabContent>
+            <StreamingErrorBoundary
+              onRetry={() => window.location.reload()}
+              showDetails={process.env.NODE_ENV === 'development'}
+            >
+              <LazyTabContent tabId="explore">
+                <ExploreTab />
+              </LazyTabContent>
+            </StreamingErrorBoundary>
           </TabsContent>
           
           <TabsContent value="ask" className="mt-0">
-            <LazyTabContent tabId="ask">
-              <AskTab />
-            </LazyTabContent>
+            <StreamingErrorBoundary
+              onRetry={() => window.location.reload()}
+              showDetails={process.env.NODE_ENV === 'development'}
+            >
+              <LazyTabContent tabId="ask">
+                <AskTab />
+              </LazyTabContent>
+            </StreamingErrorBoundary>
           </TabsContent>
           
           <TabsContent value="mindmap" className="mt-0">
-            <LazyTabContent tabId="mindmap">
-              <MindMapTab />
-            </LazyTabContent>
+            <StreamingErrorBoundary
+              onRetry={() => window.location.reload()}
+              showDetails={process.env.NODE_ENV === 'development'}
+            >
+              <LazyTabContent tabId="mindmap">
+                <MindMapTab />
+              </LazyTabContent>
+            </StreamingErrorBoundary>
           </TabsContent>
           
           <TabsContent value="quiz" className="mt-0">
-            <LazyTabContent tabId="quiz">
-              <QuizTab />
-            </LazyTabContent>
+            <StreamingErrorBoundary
+              onRetry={() => window.location.reload()}
+              showDetails={process.env.NODE_ENV === 'development'}
+            >
+              <LazyTabContent tabId="quiz">
+                <QuizTab />
+              </LazyTabContent>
+            </StreamingErrorBoundary>
           </TabsContent>
         </div>
       </Tabs>
@@ -197,48 +239,54 @@ export default function TopicPage() {
   const { data: user } = useAuth();
 
   return (
-    <TopicProvider>
-      <div className="min-h-screen bg-background">
-        {/* Header with Breadcrumb */}
-        <header className="border-b">
-          <div className="container mx-auto px-4 py-4">
-            <nav className="flex items-center justify-between">
-              <div className="flex items-center space-x-2 text-sm">
-                <WaspRouterLink 
-                  to={routes.LandingPageRoute.to} 
-                  className="text-xl font-bold text-primary hover:text-primary/80 transition-colors"
-                >
-                  LearnAI
-                </WaspRouterLink>
-                <span className="text-muted-foreground">/</span>
-                <WaspRouterLink 
-                  to="/learn" 
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Learn
-                </WaspRouterLink>
-                <span className="text-muted-foreground">/</span>
-                <span className="text-foreground font-medium">Topic</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <HelpSystem />
-                <Button variant="ghost" asChild>
-                  <WaspRouterLink to="/learn">← Back to Search</WaspRouterLink>
-                </Button>
-                <Button variant="ghost" asChild>
-                  <WaspRouterLink to={routes.AccountRoute.to}>Account</WaspRouterLink>
-                </Button>
-              </div>
-            </nav>
-          </div>
-        </header>
+    <StreamingErrorBoundary
+      onRetry={() => window.location.reload()}
+      onReset={() => window.location.href = '/learn'}
+      showDetails={process.env.NODE_ENV === 'development'}
+    >
+      <TopicProvider>
+        <div className="min-h-screen bg-background">
+          {/* Header with Breadcrumb */}
+          <header className="border-b">
+            <div className="container mx-auto px-4 py-4">
+              <nav className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-sm">
+                  <WaspRouterLink 
+                    to={routes.LandingPageRoute.to} 
+                    className="text-xl font-bold text-primary hover:text-primary/80 transition-colors"
+                  >
+                    LearnAI
+                  </WaspRouterLink>
+                  <span className="text-muted-foreground">/</span>
+                  <WaspRouterLink 
+                    to="/learn" 
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Learn
+                  </WaspRouterLink>
+                  <span className="text-muted-foreground">/</span>
+                  <span className="text-foreground font-medium">Topic</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <HelpSystem />
+                  <Button variant="ghost" asChild>
+                    <WaspRouterLink to="/learn">← Back to Search</WaspRouterLink>
+                  </Button>
+                  <Button variant="ghost" asChild>
+                    <WaspRouterLink to={routes.AccountRoute.to}>Account</WaspRouterLink>
+                  </Button>
+                </div>
+              </nav>
+            </div>
+          </header>
 
-        <main className="container mx-auto px-4 py-8">
-          <div className="max-w-6xl mx-auto">
-            <TopicPageContent />
-          </div>
-        </main>
-      </div>
-    </TopicProvider>
+          <main className="container mx-auto px-4 py-8">
+            <div className="max-w-6xl mx-auto">
+              <TopicPageContent />
+            </div>
+          </main>
+        </div>
+      </TopicProvider>
+    </StreamingErrorBoundary>
   );
 }
