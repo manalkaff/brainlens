@@ -1,7 +1,7 @@
-import { createClient, RedisClientType } from 'redis';
+import Redis from 'ioredis';
 
 class RedisCache {
-  private client: RedisClientType | null = null;
+  private client: Redis | null = null;
   private isConnected = false;
 
   async connect(): Promise<void> {
@@ -10,15 +10,17 @@ class RedisCache {
     }
 
     try {
-      this.client = createClient({
-        socket: {
-          host: process.env.REDIS_HOST || 'localhost',
-          port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
-        },
+      this.client = new Redis({
+        host: process.env.REDIS_HOST || 'localhost',
+        port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
         password: process.env.REDIS_PASSWORD || undefined,
+        connectTimeout: 10000,
+        lazyConnect: true,
       });
 
       this.client.on('error', (err) => {
+        console.log(process.env.REDIS_HOST || 'localhost')
+        console.log(process.env.REDIS_PORT || 6379)
         console.error('Redis Client Error:', err);
         this.isConnected = false;
       });
@@ -28,7 +30,7 @@ class RedisCache {
         this.isConnected = true;
       });
 
-      this.client.on('disconnect', () => {
+      this.client.on('close', () => {
         console.log('Redis Client Disconnected');
         this.isConnected = false;
       });
@@ -44,7 +46,7 @@ class RedisCache {
 
   async disconnect(): Promise<void> {
     if (this.client && this.isConnected) {
-      await this.client.disconnect();
+      this.client.disconnect();
       this.client = null;
       this.isConnected = false;
     }
@@ -76,7 +78,7 @@ class RedisCache {
     try {
       const serialized = JSON.stringify(value);
       if (ttlSeconds) {
-        await this.client!.setEx(key, ttlSeconds, serialized);
+        await this.client!.setex(key, ttlSeconds, serialized);
       } else {
         await this.client!.set(key, serialized);
       }
@@ -139,7 +141,7 @@ class RedisCache {
         return 0;
       }
       
-      await this.client!.del(keys);
+      await this.client!.del(...keys);
       return keys.length;
     } catch (error) {
       console.error(`Redis FLUSH PATTERN error for pattern ${pattern}:`, error);
@@ -171,7 +173,7 @@ class RedisCache {
     }
 
     try {
-      await this.client!.hSet(key, field, JSON.stringify(value));
+      await this.client!.hset(key, field, JSON.stringify(value));
       if (ttlSeconds) {
         await this.client!.expire(key, ttlSeconds);
       }
@@ -188,7 +190,7 @@ class RedisCache {
     }
 
     try {
-      const value = await this.client!.hGet(key, field);
+      const value = await this.client!.hget(key, field);
       return value ? JSON.parse(value) : null;
     } catch (error) {
       console.error(`Redis HGET error for key ${key}, field ${field}:`, error);
@@ -202,7 +204,7 @@ class RedisCache {
     }
 
     try {
-      const hash = await this.client!.hGetAll(key);
+      const hash = await this.client!.hgetall(key);
       const result: Record<string, T> = {};
       
       for (const [field, value] of Object.entries(hash)) {

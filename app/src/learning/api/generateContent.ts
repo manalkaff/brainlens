@@ -1,34 +1,143 @@
-import { streamText } from 'ai';
-import { openai } from '@ai-sdk/openai';
 import type { Request, Response } from 'express';
+import type { Topic, VectorDocument } from 'wasp/entities';
+import { aiContentGenerator, type ContentGenerationOptions } from './contentGenerator';
 
-export async function generateContentHandler(req: Request, res: Response, context: any) {
+export const generateContentHandler = async (req: Request, res: Response, context: any) => {
   try {
-    const { prompt } = req.body;
-
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
+    console.log('Content generation API called with:', { topicId: req.body.topicId, options: req.body.options });
+    
+    if (!context.user) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const result = await streamText({
-      model: openai('gpt-4-turbo-preview'),
-      prompt,
-      temperature: 0.7,
+    const { topicId, options } = req.body;
+
+    if (!topicId) {
+      return res.status(400).json({ error: 'Topic ID is required' });
+    }
+
+    if (!options) {
+      return res.status(400).json({ error: 'Content generation options are required' });
+    }
+
+    // Get the topic
+    const topic = await context.entities.Topic.findUnique({
+      where: { id: topicId },
+      include: {
+        vectorDocuments: {
+          take: 10,
+          orderBy: { createdAt: 'desc' }
+        }
+      }
     });
 
-    // Set headers for streaming
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    // Stream the response
-    for await (const chunk of result.textStream) {
-      res.write(chunk);
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
     }
 
-    res.end();
+    // Convert vector documents to research results
+    const researchResults = topic.vectorDocuments.map((doc: any) => ({
+      title: `Research Document ${doc.id.slice(0, 8)}`,
+      content: doc.content,
+      source: 'Research Database',
+      relevanceScore: 0.8,
+      contentType: 'article' as const
+    }));
+
+    // Generate content based on the content type
+    let generatedContent;
+    
+    console.log('Generating content for topic:', topic.title, 'with type:', options.contentType);
+    
+    if (options.contentType === 'exploration') {
+      // For exploration content, generate MDX content
+      const subtopics = await generateSubtopics(topic, context);
+      console.log('Generated subtopics:', subtopics);
+      
+      const mdxContent = await aiContentGenerator.generateExplorationContent(topic, subtopics);
+      console.log('Generated MDX content length:', mdxContent.content.length);
+      
+      generatedContent = {
+        content: mdxContent.content,
+        metadata: {
+          ...mdxContent.frontmatter,
+          contentType: options.contentType,
+          userLevel: options.userLevel,
+          learningStyle: options.learningStyle,
+          tokensUsed: 0,
+          generatedAt: new Date(),
+          sections: mdxContent.sections.map(s => s.title)
+        }
+      };
+    } else {
+      // For other content types, use the standard generator
+      console.log('Using standard content generator with research results:', researchResults.length);
+      generatedContent = await aiContentGenerator.generateLearningContent(
+        topic,
+        researchResults,
+        options as ContentGenerationOptions
+      );
+    }
+    
+    console.log('Final generated content length:', generatedContent.content.length);
+
+    // Return the generated content
+    res.json({
+      success: true,
+      content: generatedContent.content,
+      metadata: generatedContent.metadata,
+      topicId: topic.id,
+      topicTitle: topic.title
+    });
+
   } catch (error) {
-    console.error('Content generation error:', error);
-    res.status(500).json({ error: 'Failed to generate content' });
+    console.error('=== SERVER CONTENT GENERATION ERROR ===');
+    console.error('Error details:', error);
+    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('Request body:', req.body);
+    console.error('=====================================');
+    
+    // Check if it's an OpenAI API key issue
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isApiKeyIssue = errorMessage.includes('API key') || errorMessage.includes('401') || errorMessage.includes('authentication');
+    
+    res.status(500).json({ 
+      error: isApiKeyIssue 
+        ? 'OpenAI API key not configured. Please set OPENAI_API_KEY in your .env.server file.'
+        : 'Failed to generate content',
+      details: errorMessage,
+      suggestion: isApiKeyIssue 
+        ? 'Add OPENAI_API_KEY=your-key-here to your .env.server file and restart the server'
+        : 'Check the server logs for more details'
+    });
   }
+}
+
+// Helper function to generate subtopics for exploration content
+async function generateSubtopics(topic: Topic, context: any): Promise<string[]> {
+  // Get existing child topics as subtopics
+  const childTopics = await context.entities.Topic.findMany({
+    where: { parentId: topic.id },
+    select: { title: true },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (childTopics.length > 0) {
+    return childTopics.map((child: any) => child.title);
+  }
+
+  // If no child topics exist, generate default subtopics based on the topic
+  const defaultSubtopics = [
+    'Overview and Introduction',
+    'Core Concepts and Principles',
+    'Practical Applications',
+    'Best Practices and Guidelines',
+    'Common Challenges and Solutions',
+    'Advanced Topics and Techniques',
+    'Tools and Resources',
+    'Future Trends and Developments'
+  ];
+
+  return defaultSubtopics.slice(0, 6); // Limit to 6 subtopics
 }

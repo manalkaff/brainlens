@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
 import { Separator } from '../../../components/ui/separator';
+import { Input } from '../../../components/ui/input';
 import { 
   BookOpen, 
   Bookmark, 
@@ -12,7 +13,8 @@ import {
   Hash,
   Copy,
   Check,
-  ExternalLink
+  ExternalLink,
+  Search
 } from 'lucide-react';
 
 interface MDXContentProps {
@@ -45,7 +47,38 @@ export function MDXContent({
   const [tableOfContents, setTableOfContents] = useState<TableOfContentsItem[]>([]);
   const [activeSection, setActiveSection] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState<string>('');
+  const [contentSearchQuery, setContentSearchQuery] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Filter table of contents based on search query
+  const filteredTableOfContents = useMemo(() => {
+    if (!contentSearchQuery) return tableOfContents;
+    
+    const query = contentSearchQuery.toLowerCase();
+    return tableOfContents.filter(item =>
+      item.title.toLowerCase().includes(query)
+    );
+  }, [tableOfContents, contentSearchQuery]);
+
+  // Highlight search text in content
+  const highlightSearchText = (text: string, query: string) => {
+    if (!query) return text;
+    
+    const regex = new RegExp(`(${query})`, 'gi');
+    const parts = text.split(regex);
+    
+    return (
+      <span>
+        {parts.map((part, index) => 
+          regex.test(part) ? (
+            <mark key={index} className="bg-yellow-200 dark:bg-yellow-800 px-1 rounded">
+              {part}
+            </mark>
+          ) : part
+        )}
+      </span>
+    );
+  };
 
   // Parse content and extract headings for table of contents
   useEffect(() => {
@@ -201,105 +234,222 @@ export function MDXContent({
     }
   };
 
-  const exportToPDF = () => {
-    // This would integrate with a PDF generation library
-    console.log('Exporting to PDF...');
-    // Implementation would go here
+  const exportToPDF = async () => {
+    try {
+      // Import the export service dynamically
+      const { contentExportService } = await import('../../export/exportService');
+      
+      // Create a mock topic object for export
+      const mockTopic = {
+        id: 'current-topic',
+        title: topicTitle,
+        summary: null,
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as any;
+
+      const exportResult = await contentExportService.exportTopicContent(
+        mockTopic,
+        content,
+        { 
+          format: 'pdf',
+          includeBookmarks: true,
+          includeMetadata: true
+        },
+        undefined // No user progress for now
+      );
+
+      contentExportService.downloadContent(exportResult);
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+    }
   };
 
-  const exportToMarkdown = () => {
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${topicTitle.toLowerCase().replace(/\s+/g, '-')}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const exportToMarkdown = async () => {
+    try {
+      // Import the export service dynamically
+      const { contentExportService } = await import('../../export/exportService');
+      
+      // Create a mock topic object for export
+      const mockTopic = {
+        id: 'current-topic',
+        title: topicTitle,
+        summary: null,
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as any;
+
+      const exportResult = await contentExportService.exportTopicContent(
+        mockTopic,
+        content,
+        { 
+          format: 'markdown',
+          includeBookmarks: true,
+          includeMetadata: true
+        },
+        undefined // No user progress for now
+      );
+
+      contentExportService.downloadContent(exportResult);
+    } catch (error) {
+      console.error('Failed to export Markdown:', error);
+      
+      // Fallback to simple download
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${topicTitle.toLowerCase().replace(/\s+/g, '-')}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const exportToHTML = async () => {
+    try {
+      // Import the export service dynamically
+      const { contentExportService } = await import('../../export/exportService');
+      
+      // Create a mock topic object for export
+      const mockTopic = {
+        id: 'current-topic',
+        title: topicTitle,
+        summary: null,
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as any;
+
+      const exportResult = await contentExportService.exportTopicContent(
+        mockTopic,
+        content,
+        { 
+          format: 'html',
+          includeBookmarks: true,
+          includeMetadata: true
+        },
+        undefined // No user progress for now
+      );
+
+      contentExportService.downloadContent(exportResult);
+    } catch (error) {
+      console.error('Failed to export HTML:', error);
+    }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      {/* Table of Contents */}
-      <div className="lg:col-span-1">
-        <Card className="sticky top-4">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <BookOpen className="w-4 h-4" />
-              Contents
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {tableOfContents.map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                className={`
-                  block text-xs p-2 rounded transition-colors
-                  ${activeSection === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}
-                  ${item.isRead ? 'line-through opacity-60' : ''}
-                `}
-                style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
-                onClick={() => onMarkAsRead(item.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="truncate">{item.title}</span>
-                  <div className="flex items-center gap-1 ml-2">
-                    {item.isBookmarked && (
-                      <Bookmark className="w-3 h-3 text-yellow-500" />
-                    )}
-                  </div>
-                </div>
-              </a>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Content */}
-      <div className="lg:col-span-3">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                {topicTitle}
+    <div className="flex gap-6 h-full">
+      {/* Table of Contents - Fixed Sidebar */}
+      <div className="w-64 flex-shrink-0">
+        <div className="sticky top-0">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BookOpen className="w-4 h-4" />
+                Contents
               </CardTitle>
-              <div className="flex gap-2">
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Content Search */}
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                <Input
+                  placeholder="Search content..."
+                  value={contentSearchQuery}
+                  onChange={(e) => setContentSearchQuery(e.target.value)}
+                  className="pl-7 text-xs h-7"
+                />
+              </div>
+
+              {/* Table of Contents */}
+              <div className="space-y-1 max-h-80 overflow-y-auto">
+                {filteredTableOfContents.map((item) => (
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    className={`
+                      block text-xs p-2 rounded transition-colors
+                      ${activeSection === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}
+                      ${item.isRead ? 'line-through opacity-60' : ''}
+                    `}
+                    style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
+                    onClick={() => onMarkAsRead(item.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="truncate">
+                        {contentSearchQuery ? highlightSearchText(item.title, contentSearchQuery) : item.title}
+                      </span>
+                      <div className="flex items-center gap-1 ml-2">
+                        {item.isBookmarked && (
+                          <Bookmark className="w-3 h-3 text-yellow-500" />
+                        )}
+                      </div>
+                    </div>
+                  </a>
+                ))}
+                
+                {contentSearchQuery && filteredTableOfContents.length === 0 && (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <Search className="w-4 h-4 mx-auto mb-1 opacity-50" />
+                    <p className="text-xs">No sections found</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Export Actions */}
+          <Card className="mt-4">
+            <CardContent className="p-3">
+              <div className="flex flex-col gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={exportToPDF}
-                  className="text-xs"
+                  className="text-xs w-full"
                 >
                   <Download className="w-3 h-3 mr-1" />
-                  PDF
+                  Export PDF
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={exportToMarkdown}
-                  className="text-xs"
+                  className="text-xs w-full"
                 >
                   <Download className="w-3 h-3 mr-1" />
-                  MD
+                  Export Markdown
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportToHTML}
+                  className="text-xs w-full"
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  Export HTML
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 min-w-0">
+        <div ref={contentRef} className="prose prose-sm max-w-none">
+          {content ? renderMarkdown(content) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No content available yet.</p>
+              <p className="text-xs mt-2">Content will be generated based on the research for this topic.</p>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div ref={contentRef} className="prose prose-sm max-w-none">
-              {content ? renderMarkdown(content) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No content available yet.</p>
-                  <p className="text-xs mt-2">Content will be generated based on the research for this topic.</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </div>
     </div>
   );

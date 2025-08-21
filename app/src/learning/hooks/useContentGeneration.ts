@@ -258,18 +258,76 @@ Happy learning!`;
     setError(null);
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call the content generation API
+      const response = await fetch('/api/learning/generate-content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topicId: topic.id,
+          options: {
+            userLevel: 'intermediate', // TODO: Get from user preferences
+            learningStyle: 'textual', // TODO: Get from user preferences
+            contentType: 'exploration',
+            maxTokens: 4000,
+            temperature: 0.7
+          }
+        }),
+      });
 
-      // In a real implementation, this would call an AI service
-      // For now, we'll generate sample content
-      const generatedContent = generateSampleContent(topic.title, topic.summary);
+      if (!response.ok) {
+        throw new Error(`Failed to generate content: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (!result.content) {
+        throw new Error('No content received from API');
+      }
+
+      const generatedContent = result.content;
       const parsedSections = parseContentSections(generatedContent);
 
       setContent(generatedContent);
       setSections(parsedSections);
     } catch (err) {
+      console.error('=== CONTENT GENERATION ERROR ===');
+      console.error('Error details:', err);
+      console.error('Error message:', err instanceof Error ? err.message : 'Unknown error');
+      console.error('Stack trace:', err instanceof Error ? err.stack : 'No stack trace');
+      console.error('================================');
+
       setError(err instanceof Error ? err : new Error('Failed to generate content'));
+
+      // Provide a helpful error message instead of empty content
+      const errorContent = `# Content Generation Error
+
+We encountered an issue generating content for "${topic.title}". This could be due to:
+
+## Possible Causes:
+- **OpenAI API Key**: Make sure your \`OPENAI_API_KEY\` is set in your \`.env.server\` file
+- **Network Issues**: Check your internet connection
+- **Service Availability**: OpenAI services might be temporarily unavailable
+
+## To Fix This:
+1. Check your \`.env.server\` file and ensure \`OPENAI_API_KEY\` is set
+2. Restart your Wasp development server with \`wasp start\`
+3. Try generating content again
+
+## Error Details:
+\`\`\`
+${err instanceof Error ? err.message : 'Unknown error'}
+\`\`\`
+
+*This is a development error message. In production, users would see a more user-friendly message.*`;
+
+      setContent(errorContent);
+      setSections(parseContentSections(errorContent));
     } finally {
       setIsGenerating(false);
     }
@@ -307,52 +365,120 @@ Happy learning!`;
 
 // Hook for managing content bookmarks and reading progress
 export function useContentBookmarks(topicId: string | null) {
-  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
-  const [readSections, setReadSections] = useState<Set<string>>(new Set());
+  const [bookmarks, setBookmarks] = useState<string[]>([]);
+  const [readSections, setReadSections] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const toggleBookmark = useCallback((sectionId: string) => {
-    setBookmarks(prev => {
-      const newBookmarks = new Set(prev);
-      if (newBookmarks.has(sectionId)) {
-        newBookmarks.delete(sectionId);
-      } else {
-        newBookmarks.add(sectionId);
+  // Load bookmarks and read sections when topic changes
+  useEffect(() => {
+    if (!topicId) {
+      setBookmarks([]);
+      setReadSections([]);
+      return;
+    }
+
+    const loadBookmarksAndReadSections = async () => {
+      setIsLoading(true);
+      try {
+        // In a real implementation, these would be Wasp operations
+        // For now, we'll use local storage as a fallback
+        const bookmarksKey = `bookmarks_${topicId}`;
+        const readSectionsKey = `readSections_${topicId}`;
+
+        const savedBookmarks = localStorage.getItem(bookmarksKey);
+        const savedReadSections = localStorage.getItem(readSectionsKey);
+
+        setBookmarks(savedBookmarks ? JSON.parse(savedBookmarks) : []);
+        setReadSections(savedReadSections ? JSON.parse(savedReadSections) : []);
+      } catch (error) {
+        console.error('Failed to load bookmarks and read sections:', error);
+        setBookmarks([]);
+        setReadSections([]);
+      } finally {
+        setIsLoading(false);
       }
-      return newBookmarks;
-    });
-  }, []);
+    };
 
-  const markAsRead = useCallback((sectionId: string) => {
-    setReadSections(prev => new Set([...prev, sectionId]));
-  }, []);
+    loadBookmarksAndReadSections();
+  }, [topicId]);
 
-  const markAsUnread = useCallback((sectionId: string) => {
-    setReadSections(prev => {
-      const newReadSections = new Set(prev);
-      newReadSections.delete(sectionId);
-      return newReadSections;
-    });
-  }, []);
+  const toggleBookmark = useCallback(async (sectionId: string) => {
+    if (!topicId) return;
+
+    try {
+      const isCurrentlyBookmarked = bookmarks.includes(sectionId);
+      let updatedBookmarks: string[];
+
+      if (isCurrentlyBookmarked) {
+        updatedBookmarks = bookmarks.filter(id => id !== sectionId);
+      } else {
+        updatedBookmarks = [...bookmarks, sectionId];
+      }
+
+      setBookmarks(updatedBookmarks);
+
+      // Save to localStorage as fallback
+      const bookmarksKey = `bookmarks_${topicId}`;
+      localStorage.setItem(bookmarksKey, JSON.stringify(updatedBookmarks));
+
+      // TODO: Call Wasp operation when available
+      // if (isCurrentlyBookmarked) {
+      //   await removeContentBookmark({ topicId, sectionId });
+      // } else {
+      //   await addContentBookmark({ topicId, sectionId });
+      // }
+    } catch (error) {
+      console.error('Failed to toggle bookmark:', error);
+    }
+  }, [topicId, bookmarks]);
+
+  const markAsRead = useCallback(async (sectionId: string) => {
+    if (!topicId || readSections.includes(sectionId)) return;
+
+    try {
+      const updatedReadSections = [...readSections, sectionId];
+      setReadSections(updatedReadSections);
+
+      // Save to localStorage as fallback
+      const readSectionsKey = `readSections_${topicId}`;
+      localStorage.setItem(readSectionsKey, JSON.stringify(updatedReadSections));
+
+      // TODO: Call Wasp operation when available
+      // await markContentAsRead({ topicId, sectionId });
+    } catch (error) {
+      console.error('Failed to mark as read:', error);
+    }
+  }, [topicId, readSections]);
+
+  const markAsUnread = useCallback(async (sectionId: string) => {
+    if (!topicId) return;
+
+    try {
+      const updatedReadSections = readSections.filter(id => id !== sectionId);
+      setReadSections(updatedReadSections);
+
+      // Save to localStorage as fallback
+      const readSectionsKey = `readSections_${topicId}`;
+      localStorage.setItem(readSectionsKey, JSON.stringify(updatedReadSections));
+
+      // TODO: Implement unread functionality in backend
+    } catch (error) {
+      console.error('Failed to mark as unread:', error);
+    }
+  }, [topicId, readSections]);
 
   const isBookmarked = useCallback((sectionId: string) => {
-    return bookmarks.has(sectionId);
+    return bookmarks.includes(sectionId);
   }, [bookmarks]);
 
   const isRead = useCallback((sectionId: string) => {
-    return readSections.has(sectionId);
+    return readSections.includes(sectionId);
   }, [readSections]);
 
-  // Reset when topic changes
-  useEffect(() => {
-    if (topicId) {
-      setBookmarks(new Set());
-      setReadSections(new Set());
-    }
-  }, [topicId]);
-
   return {
-    bookmarks: Array.from(bookmarks),
-    readSections: Array.from(readSections),
+    bookmarks,
+    readSections,
+    isLoading,
     toggleBookmark,
     markAsRead,
     markAsUnread,

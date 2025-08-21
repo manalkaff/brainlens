@@ -38,6 +38,7 @@ interface TopicTreeProps {
   isGenerating?: boolean;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  compact?: boolean;
 }
 
 interface TopicNodeProps {
@@ -45,6 +46,8 @@ interface TopicNodeProps {
   level: number;
   isSelected: boolean;
   isExpanded: boolean;
+  selectedTopicId?: string;
+  expandedNodes: Set<string>;
   onToggleExpand: (topicId: string) => void;
   onSelect: (topic: TopicTreeItem) => void;
   onGenerateSubtopics?: (topicId: string) => void;
@@ -57,6 +60,8 @@ function TopicNode({
   level,
   isSelected,
   isExpanded,
+  selectedTopicId,
+  expandedNodes,
   onToggleExpand,
   onSelect,
   onGenerateSubtopics,
@@ -185,8 +190,10 @@ function TopicNode({
               key={child.id}
               topic={child}
               level={level + 1}
-              isSelected={child.id === topic.id} // This should be passed from parent
-              isExpanded={false} // This should be managed by parent
+              isSelected={child.id === selectedTopicId}
+              isExpanded={expandedNodes.has(child.id)}
+              selectedTopicId={selectedTopicId}
+              expandedNodes={expandedNodes}
               onToggleExpand={onToggleExpand}
               onSelect={onSelect}
               onGenerateSubtopics={onGenerateSubtopics}
@@ -222,31 +229,47 @@ export function TopicTree({
   onGenerateSubtopics,
   isGenerating = false,
   searchQuery = '',
-  onSearchChange
+  onSearchChange,
+  compact = false
 }: TopicTreeProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
-  // Filter topics based on search query
+  // Filter topics based on search query with enhanced search capabilities
   const filteredTopics = useMemo(() => {
     if (!localSearchQuery) return topics;
 
+    const searchTerms = localSearchQuery.toLowerCase().split(' ').filter(term => term.length > 0);
+    
     const filterTopics = (topicList: TopicTreeItem[]): TopicTreeItem[] => {
       return topicList.reduce((acc: TopicTreeItem[], topic) => {
-        const matchesSearch = 
-          topic.title.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
-          (topic.summary && topic.summary.toLowerCase().includes(localSearchQuery.toLowerCase()));
+        // Enhanced search matching
+        const searchableText = [
+          topic.title,
+          topic.summary || '',
+          topic.description || '',
+          ...(topic.metadata?.tags || [])
+        ].join(' ').toLowerCase();
+
+        const matchesSearch = searchTerms.every(term => 
+          searchableText.includes(term)
+        );
+
+        // Also check if any content sections match (if available)
+        const contentMatches = topic.metadata?.contentSections?.some((section: string) =>
+          searchTerms.some(term => section.toLowerCase().includes(term))
+        ) || false;
 
         const filteredChildren = filterTopics(topic.children || []);
         
-        if (matchesSearch || filteredChildren.length > 0) {
+        if (matchesSearch || contentMatches || filteredChildren.length > 0) {
           acc.push({
             ...topic,
             children: filteredChildren
           });
           
-          // Auto-expand nodes that have matching children
-          if (filteredChildren.length > 0) {
+          // Auto-expand nodes that have matching children or content
+          if (filteredChildren.length > 0 || contentMatches) {
             setExpandedNodes(prev => new Set([...prev, topic.id]));
           }
         }
@@ -294,6 +317,100 @@ export function TopicTree({
 
   const stats = getTopicStats();
 
+  if (compact) {
+    return (
+      <div className="space-y-4">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search topics..."
+            value={localSearchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-10 text-sm h-8"
+          />
+        </div>
+
+        {/* Progress Stats */}
+        <div className="flex gap-1 text-xs">
+          <Badge variant="secondary" className="text-xs px-2 py-1">
+            {stats.completed}/{stats.total}
+          </Badge>
+          {stats.inProgress > 0 && (
+            <Badge variant="outline" className="text-xs px-2 py-1">
+              {stats.inProgress} active
+            </Badge>
+          )}
+        </div>
+
+        {/* Topic Tree */}
+        <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+          {filteredTopics.length > 0 ? (
+            filteredTopics.map((topic) => (
+              <TopicNode
+                key={topic.id}
+                topic={topic}
+                level={0}
+                isSelected={topic.id === selectedTopicId}
+                isExpanded={expandedNodes.has(topic.id)}
+                selectedTopicId={selectedTopicId}
+                expandedNodes={expandedNodes}
+                onToggleExpand={handleToggleExpand}
+                onSelect={onTopicSelect}
+                onGenerateSubtopics={onGenerateSubtopics}
+                isGenerating={isGenerating}
+                searchQuery={localSearchQuery}
+              />
+            ))
+          ) : localSearchQuery ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              <p className="text-xs">No matches found</p>
+            </div>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              <BookOpen className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              <p className="text-xs">No topics available</p>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        {topics.length > 0 && (
+          <div className="flex gap-1 pt-2 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 px-2"
+              onClick={() => {
+                // Expand all nodes
+                const allIds = new Set<string>();
+                const collectIds = (topicList: TopicTreeItem[]) => {
+                  topicList.forEach(topic => {
+                    allIds.add(topic.id);
+                    collectIds(topic.children || []);
+                  });
+                };
+                collectIds(topics);
+                setExpandedNodes(allIds);
+              }}
+            >
+              Expand All
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 px-2"
+              onClick={() => setExpandedNodes(new Set())}
+            >
+              Collapse All
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -332,6 +449,8 @@ export function TopicTree({
                 level={0}
                 isSelected={topic.id === selectedTopicId}
                 isExpanded={expandedNodes.has(topic.id)}
+                selectedTopicId={selectedTopicId}
+                expandedNodes={expandedNodes}
                 onToggleExpand={handleToggleExpand}
                 onSelect={onTopicSelect}
                 onGenerateSubtopics={onGenerateSubtopics}

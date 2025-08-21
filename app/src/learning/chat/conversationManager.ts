@@ -45,14 +45,37 @@ export class ConversationManager {
     }
   ): Promise<ConversationSession> {
     try {
-      // Check if session already exists
-      const existingSession = this.activeSessions.get(threadId);
-      if (existingSession && existingSession.isActive) {
-        existingSession.lastActivity = new Date();
-        return existingSession;
+      // Validate inputs
+      if (!threadId || !topicId || !topicTitle || !userId) {
+        throw new HttpError(400, 'Missing required parameters for conversation session');
       }
 
-      // Create new conversation context
+      // Check if session already exists and is valid
+      const existingSession = this.activeSessions.get(threadId);
+      if (existingSession && existingSession.isActive) {
+        // Verify session belongs to the same user and topic
+        if (existingSession.userId === userId && existingSession.topicId === topicId) {
+          existingSession.lastActivity = new Date();
+          
+          // Update preferences if provided
+          if (userPreferences) {
+            if (userPreferences.knowledgeLevel) {
+              existingSession.context.userKnowledgeLevel = userPreferences.knowledgeLevel;
+            }
+            if (userPreferences.learningStyle) {
+              existingSession.context.learningStyle = userPreferences.learningStyle;
+            }
+          }
+          
+          console.log(`Resumed conversation session: ${threadId}`);
+          return existingSession;
+        } else {
+          // Session exists but for different user/topic - end it and create new one
+          this.endConversation(threadId);
+        }
+      }
+
+      // Create new conversation context with enhanced initialization
       const context: ConversationContext = {
         topicId,
         topicTitle,
@@ -73,10 +96,15 @@ export class ConversationManager {
       };
 
       this.activeSessions.set(threadId, session);
+      
+      console.log(`Started new conversation session: ${threadId} for topic: ${topicTitle}`);
       return session;
 
     } catch (error) {
       console.error('Failed to start conversation:', error);
+      if (error instanceof HttpError) {
+        throw error;
+      }
       throw new HttpError(500, 'Failed to start conversation session');
     }
   }
@@ -94,9 +122,14 @@ export class ConversationManager {
     suggestedQuestions: string[];
   }> {
     try {
+      // Validate inputs
+      if (!threadId || !userMessage?.trim()) {
+        throw new HttpError(400, 'Thread ID and message content are required');
+      }
+
       const session = this.activeSessions.get(threadId);
       if (!session || !session.isActive) {
-        throw new HttpError(404, 'Conversation session not found or inactive');
+        throw new HttpError(404, 'Conversation session not found or inactive. Please start a new conversation.');
       }
 
       // Update session activity
@@ -107,23 +140,66 @@ export class ConversationManager {
         await this.loadConversationHistory(session, dbContext);
       }
 
+      // Validate message length
+      const trimmedMessage = userMessage.trim();
+      if (trimmedMessage.length > 4000) {
+        throw new HttpError(400, 'Message is too long. Please keep messages under 4000 characters.');
+      }
+
       // Create user message
       const userMessageData: ConversationMessage = {
         role: 'user',
-        content: userMessage,
+        content: trimmedMessage,
         timestamp: new Date()
       };
 
-      // Add to context
+      // Add to context with conversation history management
       session.context.conversationHistory.push(userMessageData);
 
-      // Generate RAG response
-      const ragResponse = await ragSystem.generateResponse(
-        userMessage,
-        session.context
-      );
+      // Optimize conversation history before processing if needed
+      if (session.context.conversationHistory.length > 20) {
+        try {
+          session.context.conversationHistory = await ragSystem.optimizeConversationHistory(
+            session.context.conversationHistory,
+            15
+          );
+        } catch (optimizationError) {
+          console.warn('Failed to optimize conversation history:', optimizationError);
+          // Fallback: keep only recent messages
+          session.context.conversationHistory = session.context.conversationHistory.slice(-15);
+        }
+      }
 
-      // Create assistant message
+      // Generate RAG response with enhanced error handling
+      let ragResponse: RAGResponse;
+      try {
+        ragResponse = await ragSystem.generateResponse(
+          trimmedMessage,
+          session.context
+        );
+      } catch (ragError) {
+        console.error('RAG system failed:', ragError);
+        
+        // Fallback response when RAG fails
+        ragResponse = {
+          content: "I apologize, but I'm having trouble accessing the relevant information right now. Could you please rephrase your question or try again in a moment?",
+          sources: [],
+          confidence: 0.1,
+          suggestedQuestions: [
+            "Can you rephrase your question?",
+            "What specific aspect would you like to know more about?",
+            "Would you like me to explain the basics of this topic?"
+          ],
+          metadata: {
+            contextTokens: 0,
+            responseTokens: 50,
+            retrievedDocuments: 0,
+            processingTime: 0
+          }
+        };
+      }
+
+      // Create assistant message with enhanced metadata
       const assistantMessageData: ConversationMessage = {
         role: 'assistant',
         content: ragResponse.content,
@@ -131,39 +207,70 @@ export class ConversationManager {
         metadata: {
           sources: ragResponse.sources,
           confidence: ragResponse.confidence,
-          relevantContent: ragResponse.sources.map(s => s.content.substring(0, 200))
+          relevantContent: ragResponse.sources.map(s => s.content.substring(0, 200)),
+          processingTime: ragResponse.metadata.processingTime,
+          contextTokens: ragResponse.metadata.contextTokens,
+          retrievedDocuments: ragResponse.metadata.retrievedDocuments
         }
       };
 
       // Add to context
       session.context.conversationHistory.push(assistantMessageData);
 
-      // Optimize conversation history if it's getting too long
-      if (session.context.conversationHistory.length > 20) {
-        session.context.conversationHistory = await ragSystem.optimizeConversationHistory(
-          session.context.conversationHistory,
-          15
+      // Save messages to database with error handling
+      let savedUserMessage: MessageWithMetadata;
+      let savedAssistantMessage: MessageWithMetadata;
+
+      try {
+        savedUserMessage = await this.saveMessage(
+          threadId,
+          userMessageData,
+          dbContext
         );
-      }
 
-      // Save messages to database
-      const savedUserMessage = await this.saveMessage(
-        threadId,
-        userMessageData,
-        dbContext
-      );
+        savedAssistantMessage = await this.saveMessage(
+          threadId,
+          assistantMessageData,
+          dbContext,
+          {
+            sources: ragResponse.sources,
+            confidence: ragResponse.confidence,
+            suggestedQuestions: ragResponse.suggestedQuestions,
+            processingTime: ragResponse.metadata.processingTime,
+            contextTokens: ragResponse.metadata.contextTokens,
+            retrievedDocuments: ragResponse.metadata.retrievedDocuments
+          }
+        );
+      } catch (saveError) {
+        console.error('Failed to save messages to database:', saveError);
+        
+        // Create fallback message objects if database save fails
+        savedUserMessage = {
+          id: `temp-user-${Date.now()}`,
+          threadId,
+          role: 'USER' as any,
+          content: userMessageData.content,
+          createdAt: userMessageData.timestamp,
+          updatedAt: userMessageData.timestamp,
+          metadata: null
+        };
 
-      const savedAssistantMessage = await this.saveMessage(
-        threadId,
-        assistantMessageData,
-        dbContext,
-        {
+        savedAssistantMessage = {
+          id: `temp-assistant-${Date.now()}`,
+          threadId,
+          role: 'ASSISTANT' as any,
+          content: assistantMessageData.content,
+          createdAt: assistantMessageData.timestamp,
+          updatedAt: assistantMessageData.timestamp,
+          metadata: assistantMessageData.metadata,
           sources: ragResponse.sources,
           confidence: ragResponse.confidence,
           suggestedQuestions: ragResponse.suggestedQuestions,
           processingTime: ragResponse.metadata.processingTime
-        }
-      );
+        };
+      }
+
+      console.log(`Processed message in thread ${threadId}: ${ragResponse.sources.length} sources, confidence: ${ragResponse.confidence}`);
 
       return {
         userMessage: savedUserMessage,
@@ -173,6 +280,11 @@ export class ConversationManager {
 
     } catch (error) {
       console.error('Failed to process message:', error);
+      
+      if (error instanceof HttpError) {
+        throw error;
+      }
+      
       throw new HttpError(500, `Failed to process message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

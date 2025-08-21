@@ -203,10 +203,27 @@ export async function searchTopicContent(
 
   return circuitBreakers.vectorStore.execute(async () => {
     return withVectorStoreErrorHandling(async () => {
-      const results = await vectorStore.searchSimilar(validatedQuery, validatedTopicId, limit);
+      // Perform vector search using Qdrant
+      const allResults = await vectorStore.searchSimilar(validatedQuery, validatedTopicId, Math.max(limit * 2, 20));
 
-      console.log(`Found ${results.length} relevant content items for query: ${validatedQuery}`);
-      return results;
+      // Filter by score threshold
+      let filteredResults = allResults.filter(result => result.score >= scoreThreshold);
+
+      // Filter by content types if specified
+      if (contentTypes && contentTypes.length > 0) {
+        filteredResults = filteredResults.filter(result => 
+          contentTypes.includes(result.metadata.contentType)
+        );
+      }
+
+      // Sort by relevance score and limit results
+      const sortedResults = filteredResults
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+
+      console.log(`Found ${sortedResults.length} relevant content items for query: ${validatedQuery} (filtered from ${allResults.length} total results)`);
+      
+      return sortedResults;
     }, 'SEARCH_TOPIC_CONTENT', { topicId: validatedTopicId, queryLength: validatedQuery.length, limit });
   }, 'VECTOR_STORE');
 }
@@ -354,60 +371,96 @@ export async function extractRAGContext(
   sources: SearchResult[];
   totalTokens: number;
 }> {
-  try {
-    const { maxTokens = 4000, includeMetadata = true } = options;
+  const validatedQuery = validateInput(
+    query,
+    (input) => {
+      if (!input || typeof input !== 'string' || input.trim().length === 0) {
+        throw new Error('Search query is required');
+      }
+      if (input.length > 1000) {
+        throw new Error('Search query is too long (maximum 1000 characters)');
+      }
+      return sanitizeInput(input, 1000);
+    },
+    'query'
+  );
 
-    // Search for relevant content
-    const searchResults = await searchTopicContent(query, topicId, {
-      limit: 20,
-      scoreThreshold: 0.6
-    });
+  const validatedTopicId = validateInput(
+    topicId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Topic ID is required');
+      }
+      return input;
+    },
+    'topicId'
+  );
 
-    if (searchResults.length === 0) {
+  const { maxTokens = 4000, includeMetadata = true } = options;
+
+  return circuitBreakers.vectorStore.execute(async () => {
+    return withVectorStoreErrorHandling(async () => {
+      // Search for relevant content using the vector store directly
+      const searchResults = await vectorStore.searchSimilar(validatedQuery, validatedTopicId, 20);
+
+      if (searchResults.length === 0) {
+        console.log(`No relevant content found for query: ${validatedQuery} in topic: ${validatedTopicId}`);
+        return {
+          context: '',
+          sources: [],
+          totalTokens: 0
+        };
+      }
+
+      // Filter results by score threshold
+      const filteredResults = searchResults.filter(result => result.score >= 0.6);
+
+      if (filteredResults.length === 0) {
+        console.log(`No high-quality results found for query: ${validatedQuery} (all scores below 0.6)`);
+        return {
+          context: '',
+          sources: [],
+          totalTokens: 0
+        };
+      }
+
+      // Rank results by relevance and content type priority
+      const rankedResults = rankSearchResults(filteredResults, validatedQuery);
+
+      // Build context string with token limit
+      let context = '';
+      let totalTokens = 0;
+      const sources: SearchResult[] = [];
+
+      for (const result of rankedResults) {
+        // Rough token estimation (1 token ≈ 4 characters)
+        const contentTokens = Math.ceil(result.content.length / 4);
+        const metadataTokens = includeMetadata ? Math.ceil(JSON.stringify(result.metadata).length / 4) : 0;
+        const resultTokens = contentTokens + metadataTokens;
+
+        if (totalTokens + resultTokens > maxTokens) {
+          break;
+        }
+
+        // Add content to context with structured formatting
+        if (includeMetadata) {
+          context += `[Source: ${result.metadata.contentType} from ${result.metadata.topicSlug} (Score: ${result.score.toFixed(3)})]\n`;
+        }
+        context += result.content + '\n\n';
+        
+        sources.push(result);
+        totalTokens += resultTokens;
+      }
+
+      console.log(`Extracted RAG context: ${sources.length} sources, ${totalTokens} tokens for query: ${validatedQuery}`);
+
       return {
-        context: '',
-        sources: [],
-        totalTokens: 0
+        context: context.trim(),
+        sources,
+        totalTokens
       };
-    }
-
-    // Rank results by relevance and content type priority
-    const rankedResults = rankSearchResults(searchResults, query);
-
-    // Build context string with token limit
-    let context = '';
-    let totalTokens = 0;
-    const sources: SearchResult[] = [];
-
-    for (const result of rankedResults) {
-      // Rough token estimation (1 token ≈ 4 characters)
-      const contentTokens = Math.ceil(result.content.length / 4);
-      const metadataTokens = includeMetadata ? Math.ceil(JSON.stringify(result.metadata).length / 4) : 0;
-      const resultTokens = contentTokens + metadataTokens;
-
-      if (totalTokens + resultTokens > maxTokens) {
-        break;
-      }
-
-      // Add content to context with structured formatting
-      if (includeMetadata) {
-        context += `[Source: ${result.metadata.contentType} from ${result.metadata.topicSlug} (Score: ${result.score.toFixed(3)})]\n`;
-      }
-      context += result.content + '\n\n';
-      
-      sources.push(result);
-      totalTokens += resultTokens;
-    }
-
-    return {
-      context: context.trim(),
-      sources,
-      totalTokens
-    };
-  } catch (error) {
-    console.error('Failed to extract RAG context:', error);
-    throw new HttpError(500, 'Failed to extract context for RAG system');
-  }
+    }, 'EXTRACT_RAG_CONTEXT', { topicId: validatedTopicId, queryLength: validatedQuery.length, maxTokens });
+  }, 'VECTOR_STORE');
 }
 
 /**
@@ -451,6 +504,205 @@ export async function searchTopicContentEnhanced(
 }
 
 /**
+ * Optimize context window by selecting the most relevant content within token limits
+ */
+export async function optimizeContextWindow(
+  query: string,
+  topicId: string,
+  maxTokens: number = 4000,
+  options: {
+    prioritizeRecent?: boolean;
+    includeMetadata?: boolean;
+    diversifyContentTypes?: boolean;
+  } = {}
+): Promise<{
+  context: string;
+  sources: SearchResult[];
+  totalTokens: number;
+  optimization: {
+    originalResults: number;
+    selectedResults: number;
+    tokenEfficiency: number;
+  };
+}> {
+  const { prioritizeRecent = true, includeMetadata = true, diversifyContentTypes = true } = options;
+
+  try {
+    // Get comprehensive search results
+    const searchResults = await searchTopicContent(query, topicId, {
+      limit: 50, // Get more results for better optimization
+      scoreThreshold: 0.5 // Lower threshold for more options
+    });
+
+    if (searchResults.length === 0) {
+      return {
+        context: '',
+        sources: [],
+        totalTokens: 0,
+        optimization: {
+          originalResults: 0,
+          selectedResults: 0,
+          tokenEfficiency: 0
+        }
+      };
+    }
+
+    // Rank and optimize results
+    let rankedResults = rankSearchResults(searchResults, query);
+
+    // Apply content type diversification if requested
+    if (diversifyContentTypes) {
+      rankedResults = diversifyContentSelection(rankedResults);
+    }
+
+    // Apply recency boost if requested
+    if (prioritizeRecent) {
+      rankedResults = applyRecencyBoost(rankedResults);
+    }
+
+    // Select optimal content within token limits
+    const selectedContent = selectOptimalContent(rankedResults, maxTokens, includeMetadata);
+
+    // Build context string
+    let context = '';
+    for (const result of selectedContent.sources) {
+      if (includeMetadata) {
+        context += `[Source: ${result.metadata.contentType} from ${result.metadata.topicSlug} (Score: ${result.score.toFixed(3)})]\n`;
+      }
+      context += result.content + '\n\n';
+    }
+
+    const tokenEfficiency = selectedContent.sources.length > 0 
+      ? selectedContent.totalTokens / maxTokens 
+      : 0;
+
+    return {
+      context: context.trim(),
+      sources: selectedContent.sources,
+      totalTokens: selectedContent.totalTokens,
+      optimization: {
+        originalResults: searchResults.length,
+        selectedResults: selectedContent.sources.length,
+        tokenEfficiency: Math.round(tokenEfficiency * 100) / 100
+      }
+    };
+
+  } catch (error) {
+    console.error('Failed to optimize context window:', error);
+    throw new HttpError(500, 'Failed to optimize context window');
+  }
+}
+
+/**
+ * Diversify content selection to include different content types
+ */
+function diversifyContentSelection(results: SearchResult[]): SearchResult[] {
+  const contentTypeGroups: Record<string, SearchResult[]> = {};
+  
+  // Group by content type
+  for (const result of results) {
+    const contentType = result.metadata.contentType;
+    if (!contentTypeGroups[contentType]) {
+      contentTypeGroups[contentType] = [];
+    }
+    contentTypeGroups[contentType].push(result);
+  }
+
+  // Select top results from each content type
+  const diversifiedResults: SearchResult[] = [];
+  const maxPerType = Math.max(2, Math.floor(results.length / Object.keys(contentTypeGroups).length));
+
+  for (const [contentType, typeResults] of Object.entries(contentTypeGroups)) {
+    const topResults = typeResults
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxPerType);
+    diversifiedResults.push(...topResults);
+  }
+
+  // Fill remaining slots with highest scoring results
+  const remainingSlots = results.length - diversifiedResults.length;
+  if (remainingSlots > 0) {
+    const usedIds = new Set(diversifiedResults.map(r => r.id));
+    const remainingResults = results
+      .filter(r => !usedIds.has(r.id))
+      .slice(0, remainingSlots);
+    diversifiedResults.push(...remainingResults);
+  }
+
+  return diversifiedResults;
+}
+
+/**
+ * Apply recency boost to search results
+ */
+function applyRecencyBoost(results: SearchResult[]): SearchResult[] {
+  const now = Date.now();
+  
+  return results.map(result => {
+    const createdAt = new Date(result.metadata.createdAt).getTime();
+    const daysSinceCreated = (now - createdAt) / (1000 * 60 * 60 * 24);
+    
+    // Boost recent content (within last 7 days)
+    const recencyBoost = daysSinceCreated <= 7 ? 1.15 : 
+                        daysSinceCreated <= 30 ? 1.05 : 1.0;
+    
+    return {
+      ...result,
+      score: result.score * recencyBoost
+    };
+  }).sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Select optimal content within token limits using greedy algorithm
+ */
+function selectOptimalContent(
+  results: SearchResult[],
+  maxTokens: number,
+  includeMetadata: boolean
+): {
+  sources: SearchResult[];
+  totalTokens: number;
+} {
+  const selectedSources: SearchResult[] = [];
+  let totalTokens = 0;
+
+  for (const result of results) {
+    // Calculate tokens for this result
+    const contentTokens = Math.ceil(result.content.length / 4);
+    const metadataTokens = includeMetadata ? Math.ceil(JSON.stringify(result.metadata).length / 4) : 0;
+    const resultTokens = contentTokens + metadataTokens;
+
+    // Check if adding this result would exceed token limit
+    if (totalTokens + resultTokens <= maxTokens) {
+      selectedSources.push(result);
+      totalTokens += resultTokens;
+    } else {
+      // Try to fit partial content if it's a high-scoring result
+      if (result.score > 0.8 && selectedSources.length < 3) {
+        const remainingTokens = maxTokens - totalTokens;
+        const maxContentLength = (remainingTokens - metadataTokens) * 4;
+        
+        if (maxContentLength > 200) { // Minimum useful content length
+          const truncatedResult = {
+            ...result,
+            content: result.content.substring(0, maxContentLength) + '...'
+          };
+          selectedSources.push(truncatedResult);
+          totalTokens = maxTokens; // We've used up all available tokens
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    sources: selectedSources,
+    totalTokens
+  };
+}
+
+/**
  * Rank search results by relevance and content type priority
  */
 function rankSearchResults(results: SearchResult[], query: string): SearchResult[] {
@@ -466,7 +718,7 @@ function rankSearchResults(results: SearchResult[], query: string): SearchResult
       ...result,
       relevanceScore: calculateRelevanceScore(result, query, contentTypePriority)
     }))
-    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+    .sort((a, b) => (b as any).relevanceScore - (a as any).relevanceScore);
 }
 
 /**
@@ -488,5 +740,20 @@ function calculateRelevanceScore(
   // Boost score for content with higher confidence (if available)
   const confidenceMultiplier = result.metadata.confidence ? result.metadata.confidence : 1.0;
   
-  return baseScore * contentTypeMultiplier * freshnessMultiplier * confidenceMultiplier;
+  // Boost score for content length optimization (prefer medium-length content)
+  const contentLength = result.content.length;
+  const lengthMultiplier = contentLength >= 100 && contentLength <= 2000 ? 1.05 : 
+                          contentLength > 2000 ? 0.95 : 0.9;
+  
+  // Boost score for query term overlap (simple keyword matching)
+  const queryTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 2);
+  const contentLower = result.content.toLowerCase();
+  const termMatches = queryTerms.filter(term => contentLower.includes(term)).length;
+  const termMatchMultiplier = queryTerms.length > 0 ? 1 + (termMatches / queryTerms.length) * 0.2 : 1.0;
+  
+  // Boost score for content depth (deeper content might be more comprehensive)
+  const depthMultiplier = result.metadata.depth <= 2 ? 1.0 : 0.95;
+  
+  return baseScore * contentTypeMultiplier * freshnessMultiplier * confidenceMultiplier * 
+         lengthMultiplier * termMatchMultiplier * depthMultiplier;
 }

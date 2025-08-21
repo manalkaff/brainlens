@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { createClient } from 'redis';
+import Redis from 'ioredis';
 
 export interface EmbeddingCacheEntry {
   embedding: number[];
@@ -9,7 +9,7 @@ export interface EmbeddingCacheEntry {
 
 export class EmbeddingService {
   private openai: OpenAI;
-  private redis?: ReturnType<typeof createClient>;
+  private redis?: Redis;
   private cacheEnabled: boolean;
   private cacheTTL: number; // Cache TTL in seconds
 
@@ -156,7 +156,7 @@ export class EmbeddingService {
         model: 'text-embedding-3-small',
       };
 
-      await this.redis.setEx(
+      await this.redis.setex(
         cacheKey,
         this.cacheTTL,
         JSON.stringify(cacheEntry)
@@ -178,7 +178,7 @@ export class EmbeddingService {
       const cached = await this.redis.get(cacheKey);
       
       if (cached) {
-        const cacheEntry: EmbeddingCacheEntry = JSON.parse(cached.toString());
+        const cacheEntry: EmbeddingCacheEntry = JSON.parse(cached);
         return cacheEntry.embedding;
       }
     } catch (error) {
@@ -196,9 +196,9 @@ export class EmbeddingService {
     if (!this.redis || !this.cacheEnabled) return;
 
     try {
-      const keys = await this.redis.keys('embedding:*') as string[];
+      const keys = await this.redis.keys('embedding:*');
       if (keys.length > 0) {
-        await this.redis.del(keys);
+        await this.redis.del(...keys);
         console.log(`Cleared ${keys.length} cached embeddings`);
       }
     } catch (error) {
@@ -220,10 +220,9 @@ export class EmbeddingService {
     }
 
     try {
-      const keys = await this.redis.keys('embedding:*') as string[];
+      const keys = await this.redis.keys('embedding:*');
       const info = await this.redis.info('memory');
-      const infoStr = typeof info === 'string' ? info : String(info);
-      const memoryMatch = infoStr.match(/used_memory_human:(.+)/);
+      const memoryMatch = info.match(/used_memory_human:(.+)/);
       const memoryUsage = memoryMatch ? memoryMatch[1].trim() : 'Unknown';
 
       return {
@@ -286,15 +285,17 @@ export class EmbeddingService {
    */
   private async initializeRedis(redisUrl?: string): Promise<void> {
     try {
-      this.redis = createClient({
-        socket: {
-          host: process.env.REDIS_HOST || 'localhost',
-          port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
-        },
+      this.redis = new Redis({
+        host: process.env.REDIS_HOST || 'localhost',
+        port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379,
         password: process.env.REDIS_PASSWORD || undefined,
+        connectTimeout: 10000,
+        lazyConnect: true,
       });
 
       this.redis.on('error', (err) => {
+        console.log(process.env.REDIS_HOST || 'localhost')
+        console.log(process.env.REDIS_PORT || 6379)
         console.error('Redis client error:', err);
         this.cacheEnabled = false; // Disable cache on connection error
       });
@@ -325,7 +326,7 @@ export class EmbeddingService {
    */
   async close(): Promise<void> {
     if (this.redis) {
-      await this.redis.quit();
+      this.redis.disconnect();
     }
   }
 }

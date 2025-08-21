@@ -433,10 +433,48 @@ api streamingStatus {
 }
 
 // Learning Content Generation API
-api generateLearningContent {
+api learningContentGeneration {
   fn: import { generateContentHandler } from "@src/learning/api/generateContent",
-  entities: [Topic, UserTopicProgress],
+  entities: [Topic, UserTopicProgress, VectorDocument],
   httpRoute: (POST, "/api/learning/generate-content")
+}
+
+// Subtopic Generation API
+api generateSubtopics {
+  fn: import { generateSubtopicsHandler } from "@src/learning/api/generateSubtopics",
+  entities: [Topic],
+  httpRoute: (POST, "/api/learning/generate-subtopics")
+}
+
+// Content Bookmarking Operations
+action addContentBookmark {
+  fn: import { addBookmark } from "@src/learning/bookmarks/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+action removeContentBookmark {
+  fn: import { removeBookmark } from "@src/learning/bookmarks/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+query getContentBookmarks {
+  fn: import { getTopicBookmarks } from "@src/learning/bookmarks/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+action markContentAsRead {
+  fn: import { markSectionAsRead } from "@src/learning/bookmarks/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+query getReadContent {
+  fn: import { getReadSections } from "@src/learning/bookmarks/operations",
+  entities: [UserTopicProgress, Topic]
+}
+
+action exportTopicContent {
+  fn: import { exportTopicContent } from "@src/learning/bookmarks/operations",
+  entities: [Topic, UserTopicProgress]
 }
 
 // Assessment Content Streaming APIs

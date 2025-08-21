@@ -72,12 +72,11 @@ export function useTopicTree(options: UseTopicTreeOptions = {}): UseTopicTreeRet
         throw new Error('Parent topic not found');
       }
 
-      // Generate some example subtopics based on the parent topic
-      // In a real implementation, this would call an AI service
-      const subtopicTitles = generateSubtopicTitles(parentTopic.title);
+      // Generate AI-powered subtopics based on the parent topic
+      const subtopicTitles = await generateIntelligentSubtopics(parentTopic);
       
-      // Create subtopics
-      const subtopicPromises = subtopicTitles.map((title, index) =>
+      // Create subtopics using the createTopic operation
+      const subtopicPromises = subtopicTitles.map((title) =>
         createTopic({
           title,
           summary: `Exploring ${title.toLowerCase()} in the context of ${parentTopic.title}`,
@@ -97,6 +96,34 @@ export function useTopicTree(options: UseTopicTreeOptions = {}): UseTopicTreeRet
       setIsGenerating(false);
     }
   }, [topics, refreshTree]);
+
+  // Generate intelligent subtopics using AI
+  const generateIntelligentSubtopics = useCallback(async (parentTopic: TopicTreeItem): Promise<string[]> => {
+    try {
+      const response = await fetch('/api/learning/generate-subtopics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topicId: parentTopic.id,
+          topicTitle: parentTopic.title,
+          topicSummary: parentTopic.summary,
+          depth: parentTopic.depth
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate subtopics');
+      }
+
+      const result = await response.json();
+      return result.subtopics || generateSubtopicTitles(parentTopic.title);
+    } catch (error) {
+      console.error('AI subtopic generation failed, using fallback:', error);
+      return generateSubtopicTitles(parentTopic.title);
+    }
+  }, []);
 
   return {
     topics,
