@@ -205,12 +205,14 @@ export class ConversationManager {
         content: ragResponse.content,
         timestamp: new Date(),
         metadata: {
-          sources: ragResponse.sources,
+          sources: ragResponse.sources.map(s => ({
+            id: s.id,
+            content: s.content,
+            score: s.score,
+            metadata: s.metadata
+          })),
           confidence: ragResponse.confidence,
-          relevantContent: ragResponse.sources.map(s => s.content.substring(0, 200)),
-          processingTime: ragResponse.metadata.processingTime,
-          contextTokens: ragResponse.metadata.contextTokens,
-          retrievedDocuments: ragResponse.metadata.retrievedDocuments
+          relevantContent: ragResponse.sources.map(s => s.content.substring(0, 200))
         }
       };
 
@@ -251,7 +253,6 @@ export class ConversationManager {
           role: 'USER' as any,
           content: userMessageData.content,
           createdAt: userMessageData.timestamp,
-          updatedAt: userMessageData.timestamp,
           metadata: null
         };
 
@@ -261,8 +262,7 @@ export class ConversationManager {
           role: 'ASSISTANT' as any,
           content: assistantMessageData.content,
           createdAt: assistantMessageData.timestamp,
-          updatedAt: assistantMessageData.timestamp,
-          metadata: assistantMessageData.metadata,
+          metadata: assistantMessageData.metadata ? JSON.parse(JSON.stringify(assistantMessageData.metadata)) : null,
           sources: ragResponse.sources,
           confidence: ragResponse.confidence,
           suggestedQuestions: ragResponse.suggestedQuestions,
@@ -333,12 +333,17 @@ export class ConversationManager {
         ...additionalMetadata
       };
 
+      // Serialize complex objects for JSON storage
+      const serializedMetadata = Object.keys(metadata).length > 0 
+        ? JSON.parse(JSON.stringify(metadata))
+        : null;
+
       const savedMessage = await dbContext.entities.Message.create({
         data: {
           threadId,
           role: messageRole,
           content: message.content,
-          metadata: Object.keys(metadata).length > 0 ? metadata : null
+          metadata: serializedMetadata
         }
       });
 
