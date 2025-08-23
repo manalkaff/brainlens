@@ -12,6 +12,18 @@ module.exports = {
 					'Satoshi',
 					'system-ui',
 					'sans-serif'
+				],
+				platform: [
+					'Inter',
+					'system-ui',
+					'-apple-system',
+					'sans-serif'
+				],
+				content: [
+					'Merriweather',
+					'Georgia',
+					'Times New Roman',
+					'serif'
 				]
 			},
 			colors: {

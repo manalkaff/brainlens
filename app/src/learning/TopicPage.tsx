@@ -67,12 +67,12 @@ function TopicHeader() {
     <div className="mb-8">
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
-          <h1 className="text-4xl font-bold text-foreground mb-2">{topic.title}</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2 font-platform">{topic.title}</h1>
           {topic.summary && (
-            <p className="text-lg text-muted-foreground mb-4">{topic.summary}</p>
+            <p className="text-lg text-muted-foreground mb-4 font-content">{topic.summary}</p>
           )}
           {topic.description && (
-            <p className="text-muted-foreground">{topic.description}</p>
+            <p className="text-muted-foreground font-content">{topic.description}</p>
           )}
         </div>
       </div>
@@ -253,9 +253,9 @@ export default function TopicPage() {
                 <div className="flex items-center space-x-2 text-sm">
                   <WaspRouterLink 
                     to={routes.LandingPageRoute.to} 
-                    className="text-xl font-bold text-primary hover:text-primary/80 transition-colors"
+                    className="text-xl font-bold text-primary hover:text-primary/80 transition-colors font-platform"
                   >
-                    LearnAI
+                    BrainLens
                   </WaspRouterLink>
                   <span className="text-muted-foreground">/</span>
                   <WaspRouterLink 

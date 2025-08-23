@@ -1,5 +1,6 @@
 import React from 'react';
 import { TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { Badge } from '../../../components/ui/badge';
 import { useTopicContext } from '../../context/TopicContext';
 import { useSharedTopicState } from '../../hooks/useSharedTopicState';
 import type { TabId } from '../../hooks/useTabNavigation';
@@ -16,31 +17,31 @@ const tabConfigs: TabConfig[] = [
   {
     id: 'learn',
     label: 'Learn',
-    color: 'bg-blue-500',
+    color: 'bg-primary',
     description: 'Guided learning experience'
   },
   {
     id: 'explore',
     label: 'Explore',
-    color: 'bg-green-500',
+    color: 'bg-success',
     description: 'Browse topic structure'
   },
   {
     id: 'ask',
     label: 'Ask',
-    color: 'bg-purple-500',
+    color: 'bg-secondary',
     description: 'Chat with AI assistant'
   },
   {
     id: 'mindmap',
     label: 'MindMap',
-    color: 'bg-orange-500',
+    color: 'bg-warning',
     description: 'Visual knowledge map'
   },
   {
     id: 'quiz',
     label: 'Quiz',
-    color: 'bg-red-500',
+    color: 'bg-destructive',
     description: 'Test your knowledge'
   }
 ];
@@ -121,27 +122,27 @@ export function TabStatusIndicator() {
   };
 
   return (
-    <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-      <div className="flex items-center space-x-1">
+    <div className="flex items-center space-x-3 text-sm">
+      <Badge variant="outline" className="gap-1.5">
         <div className="w-2 h-2 rounded-full bg-primary" />
-        <span>Active: {activeTab}</span>
-      </div>
+        Active: {activeTab}
+      </Badge>
       
-      <div className="flex items-center space-x-1">
-        <div className="w-2 h-2 rounded-full bg-green-500" />
-        <span>Loaded: {loadedTabs.size}/5 tabs</span>
-      </div>
+      <Badge variant="outline" className="gap-1.5">
+        <div className="w-2 h-2 rounded-full bg-success" />
+        Loaded: {loadedTabs.size}/5
+      </Badge>
       
-      <div className="flex items-center space-x-1">
-        <div className="w-2 h-2 rounded-full bg-blue-500" />
-        <span>Session: {formatDuration(sessionDuration)}</span>
-      </div>
+      <Badge variant="outline" className="gap-1.5">
+        <div className="w-2 h-2 rounded-full bg-primary" />
+        {formatDuration(sessionDuration)}
+      </Badge>
       
       {hasBookmarks && (
-        <div className="flex items-center space-x-1">
-          <div className="w-2 h-2 rounded-full bg-yellow-500" />
-          <span>Bookmarks saved</span>
-        </div>
+        <Badge variant="outline" className="gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-warning" />
+          Bookmarks
+        </Badge>
       )}
     </div>
   );

@@ -4,17 +4,10 @@ import { Link as WaspRouterLink, routes } from 'wasp/client/router';
 import { createTopic } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
-import { HelpSystem } from './components/help/HelpSystem';
+import { Card, CardContent } from '../components/ui/card';
 import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow';
 
-const exampleTopics = [
-  "Machine Learning Fundamentals",
-  "Quantum Computing Basics", 
-  "Sustainable Energy Technologies",
-  "Modern Web Development",
-  "Blockchain and Cryptocurrencies",
-  "Artificial Intelligence Ethics"
-];
+// Removed example topics for cleaner design
 
 export default function TopicInputLandingPage() {
   const [topicInput, setTopicInput] = useState('');
@@ -26,7 +19,6 @@ export default function TopicInputLandingPage() {
     if (!topicInput.trim()) return;
     
     if (!user) {
-      // Redirect to signup if not authenticated
       window.location.href = routes.SignupRoute.to;
       return;
     }
@@ -34,18 +26,13 @@ export default function TopicInputLandingPage() {
     setIsCreating(true);
     
     try {
-      // Create the topic
       const topic = await createTopic({
         title: topicInput.trim(),
         summary: `Learn about ${topicInput.trim()}`,
         description: `Comprehensive learning material for ${topicInput.trim()}`
       });
       
-      // For now, skip the research process and navigate directly
-      // TODO: Implement research pipeline integration
       console.log('Topic created:', topic);
-      
-      // Navigate to the topic page
       window.location.href = `/learn/${topic.slug}`;
     } catch (error) {
       console.error('Failed to create topic:', error);
@@ -54,190 +41,116 @@ export default function TopicInputLandingPage() {
     }
   };
 
-  const handleExampleClick = (topic: string) => {
-    setTopicInput(topic);
-  };
-
   return (
-    <div className='min-h-screen bg-background text-foreground'>
-      <TopGradient />
-      <BottomGradient />
-      
-      {/* Header */}
-      <header className='absolute inset-x-0 top-0 z-50'>
-        <nav className='flex items-center justify-between p-6 lg:px-8' aria-label='Global'>
-          <div className='flex lg:flex-1'>
-            <WaspRouterLink to={routes.LandingPageRoute.to} className='-m-1.5 p-1.5'>
-              <span className='text-xl font-bold text-gradient-primary'>LearnAI</span>
-            </WaspRouterLink>
-          </div>
-          <div className='flex lg:flex-1 lg:justify-end gap-4'>
-            <HelpSystem />
-            <Button variant='ghost' asChild>
-              <WaspRouterLink to="/home">About</WaspRouterLink>
-            </Button>
-            {user ? (
-              <Button variant='default' asChild>
-                <WaspRouterLink to={routes.AccountRoute.to}>Dashboard</WaspRouterLink>
-              </Button>
-            ) : (
-              <>
-                <Button variant='ghost' asChild>
-                  <WaspRouterLink to={routes.LoginRoute.to}>Sign In</WaspRouterLink>
-                </Button>
-                <Button variant='default' asChild>
-                  <WaspRouterLink to={routes.SignupRoute.to}>Get Started</WaspRouterLink>
-                </Button>
-              </>
-            )}
-          </div>
-        </nav>
-      </header>
-
-      {/* Main Content */}
-      <main className='relative isolate px-6 pt-14 lg:px-8'>
-        <div className='mx-auto max-w-4xl py-32 sm:py-48 lg:py-56'>
-          <div className='text-center'>
-            <h1 className='text-4xl font-bold tracking-tight text-foreground sm:text-6xl'>
-              Learn anything with{' '}
-              <span className='text-gradient-primary'>AI-powered research</span>
-            </h1>
-            <p className='mt-6 text-lg leading-8 text-muted-foreground max-w-2xl mx-auto'>
-              Enter any topic and get a comprehensive, structured learning experience. 
-              Our AI researches, organizes, and presents information through multiple learning modalities.
-            </p>
+    <div className='min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950/30'>
+      <main className='flex flex-col items-center justify-center min-h-screen px-6 py-12'>
+        <div className='w-full max-w-2xl mx-auto space-y-12'>
+          
+          {/* Hero Section */}
+          <div className='text-center space-y-8'>
+            <div className='inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 via-purple-600 to-blue-700 rounded-3xl shadow-lg shadow-blue-500/25'>
+              <svg className='w-9 h-9 text-white' fill='none' viewBox='0 0 24 24' stroke='currentColor' strokeWidth={2}>
+                <path strokeLinecap='round' strokeLinejoin='round' d='M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' />
+              </svg>
+            </div>
             
-            {/* Topic Input */}
-            <div className='mt-10 max-w-2xl mx-auto'>
-              <div className='relative'>
+            <div className='space-y-4'>
+              <h1 className='text-5xl md:text-6xl font-bold bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 dark:from-white dark:via-slate-100 dark:to-blue-100 bg-clip-text text-transparent tracking-tight leading-tight'>
+                BrainLens
+              </h1>
+              <p className='text-lg md:text-xl text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed'>
+                Turn any topic into a comprehensive learning experience powered by AI research
+              </p>
+            </div>
+          </div>
+          
+          {/* Main Input Card */}
+          <Card className='border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm'>
+            <CardContent className='p-8 space-y-6'>
+              <div className='text-center space-y-2'>
+                <h2 className='text-xl font-semibold text-slate-900 dark:text-slate-100'>
+                  What would you like to learn?
+                </h2>
+                <p className='text-sm text-slate-500 dark:text-slate-400'>
+                  Enter any topic to get started
+                </p>
+              </div>
+              
+              <div className='space-y-4'>
                 <Textarea
-                  placeholder="What would you like to learn about? (e.g., Machine Learning, Quantum Physics, Web Development...)"
+                  placeholder='e.g., "How neural networks work", "Ancient Roman history", "React hooks patterns"...'
                   value={topicInput}
                   onChange={(e) => setTopicInput(e.target.value)}
-                  className='min-h-[120px] text-base resize-none pr-24'
+                  className='min-h-[120px] text-base resize-none border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 transition-all duration-200 rounded-xl px-4 py-3 placeholder:text-slate-400 dark:placeholder:text-slate-500'
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
                       handleStartLearning();
                     }
                   }}
                 />
-                <Button
-                  onClick={handleStartLearning}
-                  disabled={!topicInput.trim() || isCreating}
-                  className='absolute bottom-3 right-3'
-                  size='sm'
-                >
-                  {isCreating ? 'Creating...' : 'Start Learning →'}
-                </Button>
-              </div>
-              
-              {!user && (
-                <p className='mt-3 text-sm text-muted-foreground'>
-                  Sign up to save your progress and access all features
-                </p>
-              )}
-            </div>
-
-            {/* Example Topics */}
-            <div className='mt-12'>
-              <p className='text-sm font-medium text-muted-foreground mb-4'>
-                Quick start suggestions:
-              </p>
-              <div className='flex flex-wrap justify-center gap-2'>
-                {exampleTopics.map((topic) => (
+                
+                <div className='flex items-center justify-between pt-2'>
+                  <div className='flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500'>
+                    <kbd className='px-2 py-1 text-xs font-mono bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700'>⌘</kbd>
+                    <kbd className='px-2 py-1 text-xs font-mono bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700'>↵</kbd>
+                  </div>
                   <Button
-                    key={topic}
-                    variant='outline'
-                    size='sm'
-                    onClick={() => handleExampleClick(topic)}
-                    className='text-sm'
+                    onClick={handleStartLearning}
+                    disabled={!topicInput.trim() || isCreating}
+                    className='px-8 py-2.5 h-11 font-medium bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-200'
+                    size='lg'
                   >
-                    {topic}
+                    {isCreating ? (
+                      <>
+                        <div className='animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2' />
+                        Creating...
+                      </>
+                    ) : (
+                      'Start Learning →'
+                    )}
                   </Button>
-                ))}
+                </div>
               </div>
+            </CardContent>
+          </Card>
+          
+          {/* Simple Feature Highlight */}
+          <div className='flex items-center justify-center gap-8 text-center'>
+            <div className='flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400'>
+              <div className='w-2 h-2 bg-blue-500 rounded-full'></div>
+              AI Research
             </div>
-
-            {/* Features Preview */}
-            <div className='mt-16 grid grid-cols-1 gap-8 sm:grid-cols-3'>
-              <div className='text-center'>
-                <div className='mx-auto h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4'>
-                  <svg className='h-6 w-6 text-primary' fill='none' viewBox='0 0 24 24' strokeWidth={1.5} stroke='currentColor'>
-                    <path strokeLinecap='round' strokeLinejoin='round' d='M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z' />
-                  </svg>
-                </div>
-                <h3 className='text-lg font-semibold text-foreground'>AI Research</h3>
-                <p className='text-sm text-muted-foreground'>
-                  Comprehensive topic research with multiple specialized AI agents
-                </p>
-              </div>
-              
-              <div className='text-center'>
-                <div className='mx-auto h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4'>
-                  <svg className='h-6 w-6 text-primary' fill='none' viewBox='0 0 24 24' strokeWidth={1.5} stroke='currentColor'>
-                    <path strokeLinecap='round' strokeLinejoin='round' d='M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z' />
-                  </svg>
-                </div>
-                <h3 className='text-lg font-semibold text-foreground'>Multi-Modal Learning</h3>
-                <p className='text-sm text-muted-foreground'>
-                  Learn through guided content, mind maps, quizzes, and conversations
-                </p>
-              </div>
-              
-              <div className='text-center'>
-                <div className='mx-auto h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4'>
-                  <svg className='h-6 w-6 text-primary' fill='none' viewBox='0 0 24 24' strokeWidth={1.5} stroke='currentColor'>
-                    <path strokeLinecap='round' strokeLinejoin='round' d='M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z' />
-                  </svg>
-                </div>
-                <h3 className='text-lg font-semibold text-foreground'>Progress Tracking</h3>
-                <p className='text-sm text-muted-foreground'>
-                  Track your learning journey with detailed progress analytics
-                </p>
-              </div>
+            <div className='flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400'>
+              <div className='w-2 h-2 bg-green-500 rounded-full'></div>
+              Structured Learning
+            </div>
+            <div className='flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400'>
+              <div className='w-2 h-2 bg-purple-500 rounded-full'></div>
+              Progress Tracking
             </div>
           </div>
+          
+          {!user && (
+            <div className='text-center pt-4'>
+              <p className='text-sm text-slate-500 dark:text-slate-400'>
+                <WaspRouterLink 
+                  to={routes.SignupRoute.to} 
+                  className='text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors'
+                >
+                  Sign up
+                </WaspRouterLink>{' '}
+                to save progress and unlock all features
+              </p>
+            </div>
+          )}
         </div>
       </main>
 
-      {/* Onboarding Flow */}
       <OnboardingFlow
         isOpen={showOnboarding}
         onClose={() => setShowOnboarding(false)}
         onComplete={completeOnboarding}
-      />
-    </div>
-  );
-}
-
-function TopGradient() {
-  return (
-    <div
-      className='absolute top-0 right-0 -z-10 transform-gpu overflow-hidden w-full blur-3xl sm:top-0'
-      aria-hidden='true'
-    >
-      <div
-        className='aspect-[1020/880] w-[70rem] flex-none sm:right-1/4 sm:translate-x-1/2 dark:hidden bg-gradient-to-tr from-amber-400 to-purple-300 opacity-10'
-        style={{
-          clipPath: 'polygon(80% 20%, 90% 55%, 50% 100%, 70% 30%, 20% 50%, 50% 0)',
-        }}
-      />
-    </div>
-  );
-}
-
-function BottomGradient() {
-  return (
-    <div
-      className='absolute inset-x-0 top-[calc(100%-40rem)] sm:top-[calc(100%-65rem)] -z-10 transform-gpu overflow-hidden blur-3xl'
-      aria-hidden='true'
-    >
-      <div
-        className='relative aspect-[1020/880] sm:-left-3/4 sm:translate-x-1/4 dark:hidden bg-gradient-to-br from-amber-400 to-purple-300 opacity-10 w-[90rem]'
-        style={{
-          clipPath: 'ellipse(80% 30% at 80% 50%)',
-        }}
       />
     </div>
   );

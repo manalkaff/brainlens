@@ -163,8 +163,8 @@ export function QuizTab() {
       {/* Quiz Generation */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <Brain className="w-5 h-5 mr-2 text-blue-500" />
+          <CardTitle className="flex items-center font-platform">
+            <Brain className="w-5 h-5 mr-2 text-primary" />
             Generate Quiz
           </CardTitle>
           <CardDescription>
@@ -284,7 +284,7 @@ export function QuizTab() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center">
-              <Target className="w-5 h-5 mr-2 text-green-500" />
+              <Target className="w-5 h-5 mr-2 text-success" />
               Quiz Statistics
             </div>
             {quizzes.length > 0 && (
@@ -306,13 +306,13 @@ export function QuizTab() {
                 <div className="text-xs text-muted-foreground">Quizzes Taken</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-success font-platform">
                   {Math.round(averageScore)}%
                 </div>
                 <div className="text-xs text-muted-foreground">Average Score</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-yellow-600">
+                <div className="text-2xl font-bold text-warning font-platform">
                   {completedQuizzes.filter(q => (q.score || 0) >= 90).length}
                 </div>
                 <div className="text-xs text-muted-foreground">Perfect Scores</div>
@@ -333,11 +333,11 @@ export function QuizTab() {
                         </div>
                       </div>
                       {quiz.completed && (
-                        <Badge className={`text-xs ${
-                          (quiz.score || 0) >= 90 ? 'bg-green-100 text-green-800' :
-                          (quiz.score || 0) >= 70 ? 'bg-blue-100 text-blue-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
+                        <Badge variant={
+                          (quiz.score || 0) >= 90 ? 'default' :
+                          (quiz.score || 0) >= 70 ? 'secondary' :
+                          'destructive'
+                        } className="text-xs font-platform">
                           {Math.round(quiz.score || 0)}%
                         </Badge>
                       )}
@@ -359,8 +359,8 @@ export function QuizTab() {
       {/* Achievements */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <Trophy className="w-5 h-5 mr-2 text-yellow-500" />
+          <CardTitle className="flex items-center font-platform">
+            <Trophy className="w-5 h-5 mr-2 text-warning" />
             Achievements & Badges
           </CardTitle>
           <CardDescription>
@@ -371,7 +371,7 @@ export function QuizTab() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Achievement Badges */}
             <div className={`text-center p-3 border rounded-lg ${
-              quizzes.length > 0 ? 'bg-green-50 border-green-200' : 'opacity-50'
+              quizzes.length > 0 ? 'bg-success/10 border-success/20' : 'opacity-50'
             }`}>
               <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
                 🏆
@@ -379,12 +379,12 @@ export function QuizTab() {
               <div className="text-xs font-medium">First Quiz</div>
               <div className="text-xs text-muted-foreground">Complete your first quiz</div>
               {quizzes.length > 0 && (
-                <Badge className="mt-1 text-xs bg-green-100 text-green-800">Earned!</Badge>
+                <Badge className="mt-1 text-xs font-platform" variant="default">Earned!</Badge>
               )}
             </div>
             
             <div className={`text-center p-3 border rounded-lg ${
-              completedQuizzes.some(q => (q.score || 0) === 100) ? 'bg-yellow-50 border-yellow-200' : 'opacity-50'
+              completedQuizzes.some(q => (q.score || 0) === 100) ? 'bg-warning/10 border-warning/20' : 'opacity-50'
             }`}>
               <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
                 🎯
@@ -392,7 +392,7 @@ export function QuizTab() {
               <div className="text-xs font-medium">Perfect Score</div>
               <div className="text-xs text-muted-foreground">Score 100% on a quiz</div>
               {completedQuizzes.some(q => (q.score || 0) === 100) && (
-                <Badge className="mt-1 text-xs bg-yellow-100 text-yellow-800">Earned!</Badge>
+                <Badge className="mt-1 text-xs font-platform" variant="secondary">Earned!</Badge>
               )}
             </div>
             
@@ -405,7 +405,7 @@ export function QuizTab() {
             </div>
             
             <div className={`text-center p-3 border rounded-lg ${
-              completedQuizzes.length >= 5 ? 'bg-purple-50 border-purple-200' : 'opacity-50'
+              completedQuizzes.length >= 5 ? 'bg-secondary/10 border-secondary/20' : 'opacity-50'
             }`}>
               <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
                 📚
@@ -413,7 +413,7 @@ export function QuizTab() {
               <div className="text-xs font-medium">Knowledge Master</div>
               <div className="text-xs text-muted-foreground">Complete 5 quizzes</div>
               {completedQuizzes.length >= 5 && (
-                <Badge className="mt-1 text-xs bg-purple-100 text-purple-800">Earned!</Badge>
+                <Badge className="mt-1 text-xs font-platform" variant="outline">Earned!</Badge>
               )}
             </div>
           </div>

@@ -19,8 +19,8 @@ const TotalSignupsCard = ({ dailyStats, isLoading }: DailyStatsProps) => {
 
       <CardContent className='flex justify-between'>
         <div>
-          <h4 className='text-title-md font-bold text-foreground'>{dailyStats?.userCount}</h4>
-          <span className='text-sm font-medium text-muted-foreground'>Total Signups</span>
+          <h4 className='text-title-md font-bold text-foreground font-platform'>{dailyStats?.userCount}</h4>
+          <span className='text-sm font-medium text-muted-foreground font-platform'>Total Signups</span>
         </div>
 
         <span

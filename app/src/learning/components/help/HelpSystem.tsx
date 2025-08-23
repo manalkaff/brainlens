@@ -29,8 +29,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[80vh]">
         <DialogHeader>
-          <DialogTitle>Learning Platform Guide</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="font-platform">Learning Platform Guide</DialogTitle>
+          <DialogDescription className="font-platform">
             Everything you need to know about using the AI-powered learning platform
           </DialogDescription>
         </DialogHeader>
@@ -58,8 +58,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
                       <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
                         <Search className="h-6 w-6 text-primary" />
                       </div>
-                      <h3 className="font-semibold mb-2">1. Enter Topic</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className="font-semibold mb-2 font-platform">1. Enter Topic</h3>
+                      <p className="text-sm text-muted-foreground font-content">
                         Type any topic you want to learn about. Our AI will research it comprehensively.
                       </p>
                     </div>
@@ -67,8 +67,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
                       <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
                         <Brain className="h-6 w-6 text-primary" />
                       </div>
-                      <h3 className="font-semibold mb-2">2. AI Research</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className="font-semibold mb-2 font-platform">2. AI Research</h3>
+                      <p className="text-sm text-muted-foreground font-content">
                         Multiple AI agents research your topic from different angles and create structured content.
                       </p>
                     </div>
@@ -76,8 +76,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
                       <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
                         <BookOpen className="h-6 w-6 text-primary" />
                       </div>
-                      <h3 className="font-semibold mb-2">3. Multi-Modal Learning</h3>
-                      <p className="text-sm text-muted-foreground">
+                      <h3 className="font-semibold mb-2 font-platform">3. Multi-Modal Learning</h3>
+                      <p className="text-sm text-muted-foreground font-content">
                         Access your content through 5 different learning modes tailored to your preferences.
                       </p>
                     </div>
@@ -87,7 +87,7 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Getting Started</CardTitle>
+                  <CardTitle className="font-platform">Getting Started</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ol className="list-decimal list-inside space-y-2 text-sm">
@@ -106,8 +106,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    <CardTitle className="flex items-center gap-2 font-platform">
+                      <div className="w-3 h-3 rounded-full bg-primary" />
                       Learn Tab
                     </CardTitle>
                     <CardDescription>Guided learning experience</CardDescription>
@@ -124,8 +124,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                    <CardTitle className="flex items-center gap-2 font-platform">
+                      <div className="w-3 h-3 rounded-full bg-success" />
                       Explore Tab
                     </CardTitle>
                     <CardDescription>Tree navigation and content</CardDescription>
@@ -142,8 +142,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-purple-500" />
+                    <CardTitle className="flex items-center gap-2 font-platform">
+                      <div className="w-3 h-3 rounded-full bg-secondary" />
                       Ask Tab
                     </CardTitle>
                     <CardDescription>Conversational learning</CardDescription>
@@ -160,8 +160,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-orange-500" />
+                    <CardTitle className="flex items-center gap-2 font-platform">
+                      <div className="w-3 h-3 rounded-full bg-warning" />
                       MindMap Tab
                     </CardTitle>
                     <CardDescription>Visual knowledge representation</CardDescription>
@@ -178,8 +178,8 @@ export function HelpSystem({ trigger, defaultTab = 'overview' }: HelpSystemProps
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-red-500" />
+                    <CardTitle className="flex items-center gap-2 font-platform">
+                      <div className="w-3 h-3 rounded-full bg-destructive" />
                       Quiz Tab
                     </CardTitle>
                     <CardDescription>Adaptive assessment</CardDescription>

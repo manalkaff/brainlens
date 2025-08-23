@@ -1,14 +1,15 @@
 import { ReactNode } from 'react';
+import { Card, CardContent } from '../components/ui/card';
 
 export function AuthPageLayout({children} : {children: ReactNode }) {
   return (
-    <div className='flex min-h-full flex-col justify-center pt-10 sm:px-6 lg:px-8'>
+    <div className='flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8 bg-background font-platform'>
       <div className='sm:mx-auto sm:w-full sm:max-w-md'>
-        <div className='bg-white py-8 px-4 shadow-xl ring-1 ring-gray-900/10 sm:rounded-lg sm:px-10 dark:bg-white dark:text-gray-900'>
-          <div className='-mt-8'>
-            { children }
-          </div>
-        </div>
+        <Card className="shadow-lg">
+          <CardContent className="p-8">
+            {children}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

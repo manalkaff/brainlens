@@ -32,8 +32,8 @@ export function ChatMessage({ message, onCopy, onFeedback }: ChatMessageProps) {
       {/* Avatar */}
       <Avatar className="w-8 h-8 flex-shrink-0">
         <AvatarFallback className={cn(
-          "text-xs font-medium",
-          isUser ? "bg-blue-500 text-white" : "bg-primary text-primary-foreground"
+          "text-xs font-medium font-platform",
+          isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
         )}>
           {isUser ? "You" : "AI"}
         </AvatarFallback>
@@ -47,16 +47,16 @@ export function ChatMessage({ message, onCopy, onFeedback }: ChatMessageProps) {
         <div className={cn(
           "rounded-lg p-3 shadow-sm",
           isUser 
-            ? "bg-blue-500 text-white ml-auto" 
-            : "bg-background border"
+            ? "bg-primary text-primary-foreground ml-auto" 
+            : "bg-card border"
         )}>
-          <div className="text-sm whitespace-pre-wrap break-words">
+          <div className="text-sm whitespace-pre-wrap break-words font-content">
             {message.content}
           </div>
           
           {/* Metadata for assistant messages */}
           {isAssistant && message.metadata && (
-            <div className="mt-2 pt-2 border-t border-muted text-xs text-muted-foreground">
+            <div className="mt-2 pt-2 border-t border-muted text-xs text-muted-foreground font-platform">
               {(message.metadata as any).confidence && (
                 <div>Confidence: {Math.round((message.metadata as any).confidence * 100)}%</div>
               )}

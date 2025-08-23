@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
+import { Badge } from '../../../components/ui/badge';
+import { Dialog, DialogContent } from '../../../components/ui/dialog';
+import { Progress } from '../../../components/ui/progress';
 import { useTopicContext } from '../../context/TopicContext';
 import { KnowledgeAssessment, AssessmentResult } from '../ui/KnowledgeAssessment';
 import { StartingPointRecommendation, LearningPath } from '../ui/StartingPointRecommendation';
@@ -249,8 +252,8 @@ export function LearnTab() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center">
-                <div className="w-2 h-2 rounded-full bg-green-500 mr-3" />
+              <CardTitle className="flex items-center font-platform">
+                <div className="w-2 h-2 rounded-full bg-success mr-3" />
                 Your Learning Journey
               </CardTitle>
               <CardDescription>
@@ -265,22 +268,27 @@ export function LearnTab() {
         <CardContent>
           <div className="space-y-4">
             {assessment && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <div className="text-sm text-muted-foreground">Knowledge Level</div>
-                  <div className="font-medium">
-                    {assessment.knowledgeLevel <= 2 ? 'Beginner' : 
-                     assessment.knowledgeLevel <= 3 ? 'Intermediate' : 'Advanced'}
-                  </div>
+              <div className="flex flex-wrap gap-3">
+                <Badge variant="secondary" className="font-platform">
+                  Level: {assessment.knowledgeLevel <= 2 ? 'Beginner' : 
+                         assessment.knowledgeLevel <= 3 ? 'Intermediate' : 'Advanced'}
+                </Badge>
+                <Badge variant="outline" className="font-platform">
+                  Styles: {assessment.learningStyles.join(', ')}
+                </Badge>
+                <Badge variant="outline" className="font-platform">
+                  Pace: {assessment.preferences.pacePreference}
+                </Badge>
+              </div>
+            )}
+            
+            {learningProgress > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm font-platform">
+                  <span>Progress</span>
+                  <span>{Math.round(learningProgress)}%</span>
                 </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <div className="text-sm text-muted-foreground">Learning Styles</div>
-                  <div className="font-medium">{assessment.learningStyles.join(', ')}</div>
-                </div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                  <div className="text-sm text-muted-foreground">Preferred Pace</div>
-                  <div className="font-medium capitalize">{assessment.preferences.pacePreference}</div>
-                </div>
+                <Progress value={learningProgress} className="h-2" />
               </div>
             )}
           </div>
@@ -289,32 +297,34 @@ export function LearnTab() {
 
       {/* Streaming Learning Content */}
       {selectedPath && (
-        <StreamingContent
-          topic={{
-            id: topic.id,
-            title: topic.title,
-            summary: topic.summary || undefined
-          }}
-          assessment={assessment!}
-          selectedPath={selectedPath}
-          onProgressUpdate={handleProgressUpdate}
-          onConceptExpand={handleConceptExpand}
-        />
+        <div className="lesson-content">
+          <StreamingContent
+            topic={{
+              id: topic.id,
+              title: topic.title,
+              summary: topic.summary || undefined
+            }}
+            assessment={assessment!}
+            selectedPath={selectedPath}
+            onProgressUpdate={handleProgressUpdate}
+            onConceptExpand={handleConceptExpand}
+          />
+        </div>
       )}
 
       {/* Concept Expansion Modal */}
-      {expandedConcept && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+      <Dialog open={!!expandedConcept} onOpenChange={() => handleConceptClose()}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          {expandedConcept && (
             <ConceptExpansion
               concept={expandedConcept}
               topicTitle={topic.title}
               onClose={handleConceptClose}
               onNavigateToSubtopic={handleNavigateToSubtopic}
             />
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

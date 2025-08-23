@@ -49,8 +49,8 @@ const Dashboard = ({ user }: { user: AuthUser }) => {
         {!stats && (
           <div className='absolute inset-0 flex items-start justify-center bg-background/50'>
             <div className='rounded-lg bg-card p-8 shadow-lg'>
-              <p className='text-2xl font-bold text-foreground'>No daily stats generated yet</p>
-              <p className='mt-2 text-sm text-muted-foreground'>
+              <p className='text-2xl font-bold text-foreground font-platform'>No daily stats generated yet</p>
+              <p className='mt-2 text-sm text-muted-foreground font-platform'>
                 Stats will appear here once the daily stats job has run
               </p>
             </div>
