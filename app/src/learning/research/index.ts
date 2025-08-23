@@ -97,13 +97,13 @@ export {
 // === REAL-TIME STREAMING ===
 export {
   streamingManager, // Singleton instance
+  StreamingManager,
   StreamingUtils,
   type StreamingResearchUpdate,
   type ResearchProgressUpdate,
   type ResearchContentUpdate,
   type ResearchErrorUpdate,
   type ResearchCompleteUpdate,
-  type StreamingManager,
   type StreamingConnection
 } from './streaming';
 
@@ -128,7 +128,6 @@ export {
   ResearchIntegrationManager,
   getResearchManager,
   startTopicResearch,
-  getTopicResearchStatus,
   type ResearchIntegrationConfig
 } from './integration';
 
@@ -143,7 +142,8 @@ export {
 // === RESEARCH OPERATIONS ===
 export {
   startTopicResearch as startResearch,
-  getTopicResearchStatus as getResearchStatus,
+  getTopicResearchStatus,
+  getResearchStatus,
   cancelTopicResearch as cancelResearch,
   getResearchHistory,
   searchTopicContent,
@@ -330,6 +330,7 @@ export async function performSystemHealthCheck(): Promise<{
   try {
     // Check Vector Database
     try {
+      const { vectorStore } = await import('./vectorStore');
       results.details.vectorDatabase = await vectorStore.healthCheck();
       results.components.vectorDatabase = results.details.vectorDatabase;
     } catch (error) {
@@ -338,6 +339,7 @@ export async function performSystemHealthCheck(): Promise<{
 
     // Check Embedding Service
     try {
+      const { embeddingService } = await import('./embeddings');
       results.details.embeddingService = await embeddingService.healthCheck();
       results.components.embeddingService = results.details.embeddingService.openai && results.details.embeddingService.cache;
     } catch (error) {
@@ -346,6 +348,7 @@ export async function performSystemHealthCheck(): Promise<{
 
     // Check SearXNG
     try {
+      const { SearxngClient } = await import('./searxng/client');
       const searxngClient = new SearxngClient();
       results.details.searxngEngine = await searxngClient.testConnection();
       results.components.searxngEngine = results.details.searxngEngine;
@@ -355,6 +358,7 @@ export async function performSystemHealthCheck(): Promise<{
 
     // Check Streaming Service
     try {
+      const { streamingManager } = await import('./streaming');
       results.details.streamingService = streamingManager.getGlobalStatistics();
       results.components.streamingService = true; // If no error, streaming is operational
     } catch (error) {
@@ -363,6 +367,7 @@ export async function performSystemHealthCheck(): Promise<{
 
     // Check Agent Orchestration
     try {
+      const { ResearchAgentFactory } = await import('./agents');
       const agents = ResearchAgentFactory.getAllAgents();
       results.details.agentOrchestration = {
         totalAgents: agents.length,
@@ -381,9 +386,9 @@ export async function performSystemHealthCheck(): Promise<{
     if (healthyComponents === totalComponents) {
       results.overall = 'healthy';
     } else if (healthyComponents >= totalComponents * 0.6) {
-      results.overall = 'degraded';
+      results.overall = 'degraded' as any;
     } else {
-      results.overall = 'critical';
+      results.overall = 'critical' as any;
     }
 
     return results;
@@ -420,6 +425,7 @@ export async function initializeResearchSystem(customConfig?: Partial<typeof PHA
   try {
     // Initialize Vector Store
     try {
+      const { QdrantVectorStore } = await import('./vectorStore');
       const vectorStoreInstance = new QdrantVectorStore(config.vectorStore);
       await vectorStoreInstance.healthCheck();
       result.components.push('Vector Database');
@@ -429,6 +435,7 @@ export async function initializeResearchSystem(customConfig?: Partial<typeof PHA
 
     // Initialize Embedding Service
     try {
+      const { embeddingService } = await import('./embeddings');
       await embeddingService.healthCheck();
       result.components.push('Embedding Service');
     } catch (error) {
@@ -437,6 +444,7 @@ export async function initializeResearchSystem(customConfig?: Partial<typeof PHA
 
     // Initialize SearXNG Client
     try {
+      const { SearxngClient } = await import('./searxng/client');
       const searxngClient = new SearxngClient();
       await searxngClient.testConnection();
       result.components.push('SearXNG Engine');
@@ -446,6 +454,7 @@ export async function initializeResearchSystem(customConfig?: Partial<typeof PHA
 
     // Initialize Research Agents
     try {
+      const { ResearchAgentFactory } = await import('./agents');
       const agents = ResearchAgentFactory.getAllAgents();
       if (agents.length === 5) {
         result.components.push('Research Agents');
@@ -458,6 +467,7 @@ export async function initializeResearchSystem(customConfig?: Partial<typeof PHA
 
     // Initialize Streaming Manager
     try {
+      const { streamingManager } = await import('./streaming');
       streamingManager.getGlobalStatistics();
       result.components.push('Streaming Service');
     } catch (error) {
@@ -495,6 +505,7 @@ export async function quickResearch(
   try {
     const topicId = `quick_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
+    const { RecursiveResearchSystem } = await import('./pipeline');
     const researchSystem = new RecursiveResearchSystem({
       maxDepth: options.maxDepth || 2,
       enableRealTimeUpdates: options.enableStreaming || false

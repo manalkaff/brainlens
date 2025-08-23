@@ -196,6 +196,21 @@ export class ResearchStreamingManager {
     return Array.from(this.topicStreams.keys());
   }
 
+  // Get global statistics for the streaming service
+  getGlobalStatistics(): {
+    totalConnections: number;
+    activeTopics: number;
+    topics: string[];
+    uptime: number;
+  } {
+    return {
+      totalConnections: this.connections.size,
+      activeTopics: this.topicStreams.size,
+      topics: Array.from(this.topicStreams.keys()),
+      uptime: Date.now() - (this as any).startTime || 0
+    };
+  }
+
   // Clean up inactive connections
   cleanup(): void {
     const activeConnections = new Set<string>();
@@ -315,6 +330,17 @@ export const StreamingUtils = {
     );
   }
 };
+
+// Type for streaming connection (simple interface for connection management)
+export interface StreamingConnection {
+  id: string;
+  topicId: string;
+  isActive: boolean;
+  lastUpdate: Date;
+}
+
+// Export class aliases for compatibility
+export const StreamingManager = ResearchStreamingManager;
 
 // Export singleton instance
 export const streamingManager = ResearchStreamingManager.getInstance();

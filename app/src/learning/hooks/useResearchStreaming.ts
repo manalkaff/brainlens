@@ -16,6 +16,8 @@ const DEFAULT_OPTIONS: Partial<UseResearchStreamingOptions> = {
   reconnectDelay: 3000,
 };
 
+export type { UseResearchStreamingOptions, ResearchStreamingState };
+
 export function useResearchStreaming(options: UseResearchStreamingOptions) {
   const {
     topicId,

@@ -10,42 +10,103 @@ export interface ScoringConfig {
     uniqueness: number;
     sourceReliability: number;
     engagement: number; // For community content
+    credibility: number;
+    authorityScore: number;
+    factualAccuracy: number;
   };
   contextBoosts: {
     userLevel: number;
     learningStyle: number;
     topicMatch: number;
     contentType: number;
+    domainExpertise: number;
+    peerValidation: number;
   };
   penalties: {
     duplicateContent: number;
     lowQuality: number;
     outdated: number;
     irrelevant: number;
+    suspiciousContent: number;
+    biasIndicators: number;
+  };
+  credibilityFactors: {
+    domainWeights: Record<string, number>;
+    sourceTypes: Record<string, number>;
+    authorityIndicators: string[];
+    qualityMarkers: string[];
+    suspiciousPatterns: string[];
   };
 }
 
 const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   weights: {
-    relevance: 0.25,
-    confidence: 0.20,
-    quality: 0.20,
-    recency: 0.10,
-    uniqueness: 0.10,
-    sourceReliability: 0.10,
-    engagement: 0.05
+    relevance: 0.20,
+    confidence: 0.15,
+    quality: 0.15,
+    recency: 0.08,
+    uniqueness: 0.08,
+    sourceReliability: 0.12,
+    engagement: 0.05,
+    credibility: 0.10,
+    authorityScore: 0.05,
+    factualAccuracy: 0.02
   },
   contextBoosts: {
     userLevel: 0.15,
     learningStyle: 0.10,
     topicMatch: 0.20,
-    contentType: 0.10
+    contentType: 0.10,
+    domainExpertise: 0.08,
+    peerValidation: 0.07
   },
   penalties: {
     duplicateContent: 0.20,
     lowQuality: 0.25,
     outdated: 0.15,
-    irrelevant: 0.30
+    irrelevant: 0.30,
+    suspiciousContent: 0.40,
+    biasIndicators: 0.15
+  },
+  credibilityFactors: {
+    domainWeights: {
+      'edu': 1.2,
+      'gov': 1.3,
+      'org': 1.1,
+      'com': 0.9,
+      'arxiv.org': 1.4,
+      'pubmed': 1.3,
+      'scholar.google': 1.2,
+      'wikipedia.org': 1.0,
+      'stackoverflow.com': 1.1,
+      'reddit.com': 0.7
+    },
+    sourceTypes: {
+      'academic': 1.3,
+      'governmental': 1.2,
+      'educational': 1.2,
+      'peer-reviewed': 1.4,
+      'commercial': 0.8,
+      'social': 0.6,
+      'blog': 0.5,
+      'forum': 0.6,
+      'news': 0.9
+    },
+    authorityIndicators: [
+      'peer-reviewed', 'published', 'journal', 'research', 'study',
+      'university', 'professor', 'phd', 'dr.', 'institute',
+      'official', 'government', 'verified', 'certified'
+    ],
+    qualityMarkers: [
+      'references', 'bibliography', 'citations', 'doi',
+      'methodology', 'data', 'evidence', 'analysis',
+      'comprehensive', 'detailed', 'systematic', 'empirical'
+    ],
+    suspiciousPatterns: [
+      'click here', 'buy now', 'limited time', 'secret',
+      'guaranteed', '100%', 'miracle', 'breakthrough',
+      'doctors hate', 'weird trick', 'shocking'
+    ]
   }
 };
 
@@ -159,7 +220,10 @@ export class ResultScorer {
       metrics.recency * weights.recency +
       metrics.uniqueness * weights.uniqueness +
       metrics.sourceReliability * weights.sourceReliability +
-      this.calculateEngagementScore(result) * weights.engagement
+      this.calculateEngagementScore(result) * weights.engagement +
+      this.calculateCredibilityScore(result) * weights.credibility +
+      this.calculateAuthorityScore(result) * weights.authorityScore +
+      this.calculateFactualAccuracyScore(result) * weights.factualAccuracy
     );
   }
 
@@ -567,7 +631,8 @@ export class ResultScorer {
     return {
       weights: { ...base.weights, ...override.weights },
       contextBoosts: { ...base.contextBoosts, ...override.contextBoosts },
-      penalties: { ...base.penalties, ...override.penalties }
+      penalties: { ...base.penalties, ...override.penalties },
+      credibilityFactors: { ...base.credibilityFactors, ...override.credibilityFactors }
     };
   }
 
@@ -583,6 +648,355 @@ export class ResultScorer {
    */
   getConfig(): ScoringConfig {
     return JSON.parse(JSON.stringify(this.config));
+  }
+
+  /**
+   * Calculate credibility score based on source and content analysis
+   */
+  private calculateCredibilityScore(result: AggregatedResult): number {
+    let credibilityScore = 0.5; // Base credibility
+
+    // Domain-based credibility
+    try {
+      const url = new URL(result.url);
+      const domain = url.hostname.toLowerCase();
+      
+      // Check for specific domain weights
+      const domainScore = this.getDomainCredibilityScore(domain);
+      credibilityScore += domainScore * 0.4;
+      
+      // Educational or government domains get additional boost
+      if (domain.endsWith('.edu') || domain.endsWith('.gov')) {
+        credibilityScore += 0.1;
+      }
+      
+    } catch (error) {
+      // Invalid URL, reduce credibility
+      credibilityScore -= 0.1;
+    }
+
+    // Source type credibility
+    const sourceTypeScore = this.getSourceTypeCredibility(result);
+    credibilityScore += sourceTypeScore * 0.3;
+
+    // Content-based credibility indicators
+    const contentCredibility = this.analyzeContentCredibility(result);
+    credibilityScore += contentCredibility * 0.2;
+
+    // Authority indicators
+    const authorityBonus = this.detectAuthorityIndicators(result);
+    credibilityScore += authorityBonus * 0.1;
+
+    return Math.max(0, Math.min(1, credibilityScore));
+  }
+
+  /**
+   * Calculate authority score based on author and institutional indicators
+   */
+  private calculateAuthorityScore(result: AggregatedResult): number {
+    let authorityScore = 0.3; // Base authority
+
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+    const metadata = result.metadata;
+
+    // Check for authority indicators
+    const authorityIndicators = this.config.credibilityFactors.authorityIndicators;
+    const foundIndicators = authorityIndicators.filter(indicator => 
+      content.includes(indicator.toLowerCase())
+    );
+
+    authorityScore += Math.min(0.4, foundIndicators.length * 0.08);
+
+    // Check for academic affiliation
+    if (metadata.sourceAttribution.some(source => 
+      source.metadata?.venue?.toLowerCase().includes('university') ||
+      source.metadata?.venue?.toLowerCase().includes('institute') ||
+      source.metadata?.author?.toLowerCase().includes('prof') ||
+      source.metadata?.author?.toLowerCase().includes('dr.')
+    )) {
+      authorityScore += 0.2;
+    }
+
+    // Peer validation (citations, references)
+    if (metadata.sourceAttribution.some(source => 
+      source.metadata?.citations && parseInt(source.metadata.citations) > 10
+    )) {
+      authorityScore += 0.1;
+    }
+
+    return Math.max(0, Math.min(1, authorityScore));
+  }
+
+  /**
+   * Calculate factual accuracy score based on content analysis
+   */
+  private calculateFactualAccuracyScore(result: AggregatedResult): number {
+    let accuracyScore = 0.5; // Neutral starting point
+
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+
+    // Check for quality markers
+    const qualityMarkers = this.config.credibilityFactors.qualityMarkers;
+    const foundMarkers = qualityMarkers.filter(marker => 
+      content.includes(marker.toLowerCase())
+    );
+
+    accuracyScore += Math.min(0.3, foundMarkers.length * 0.05);
+
+    // Check for suspicious patterns
+    const suspiciousPatterns = this.config.credibilityFactors.suspiciousPatterns;
+    const foundSuspicious = suspiciousPatterns.filter(pattern => 
+      content.includes(pattern.toLowerCase())
+    );
+
+    accuracyScore -= foundSuspicious.length * 0.1;
+
+    // Bonus for multiple source confirmation
+    if (result.sources.length > 2) {
+      accuracyScore += 0.1;
+    }
+
+    // Academic sources get accuracy bonus
+    if (result.sources.includes('Academic Research Agent')) {
+      accuracyScore += 0.1;
+    }
+
+    return Math.max(0, Math.min(1, accuracyScore));
+  }
+
+  /**
+   * Get domain-specific credibility score
+   */
+  private getDomainCredibilityScore(domain: string): number {
+    const domainWeights = this.config.credibilityFactors.domainWeights;
+    
+    // Check for exact domain match
+    if (domainWeights[domain]) {
+      return (domainWeights[domain] - 1.0) * 0.5; // Convert multiplier to score adjustment
+    }
+
+    // Check for domain ending patterns
+    const tld = domain.split('.').pop() || '';
+    if (domainWeights[tld]) {
+      return (domainWeights[tld] - 1.0) * 0.3;
+    }
+
+    // Check for subdomain patterns
+    for (const [pattern, weight] of Object.entries(domainWeights)) {
+      if (domain.includes(pattern)) {
+        return (weight - 1.0) * 0.4;
+      }
+    }
+
+    return 0; // No specific credibility information
+  }
+
+  /**
+   * Get source type credibility
+   */
+  private getSourceTypeCredibility(result: AggregatedResult): number {
+    const sourceTypes = this.config.credibilityFactors.sourceTypes;
+    let maxCredibility = 0;
+
+    // Check metadata for source type indicators
+    const types = result.metadata.type;
+    
+    for (const type of types) {
+      for (const [sourceType, weight] of Object.entries(sourceTypes)) {
+        if (type.toLowerCase().includes(sourceType)) {
+          maxCredibility = Math.max(maxCredibility, (weight - 1.0) * 0.5);
+        }
+      }
+    }
+
+    return maxCredibility;
+  }
+
+  /**
+   * Analyze content for credibility indicators
+   */
+  private analyzeContentCredibility(result: AggregatedResult): number {
+    let credibilityScore = 0;
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+
+    // Check for fact-checking indicators
+    const factCheckingTerms = [
+      'according to', 'research shows', 'study found',
+      'data indicates', 'evidence suggests', 'research by'
+    ];
+
+    const foundFactChecking = factCheckingTerms.filter(term => 
+      content.includes(term)
+    );
+    credibilityScore += Math.min(0.3, foundFactChecking.length * 0.1);
+
+    // Check for objectivity indicators
+    const objectiveTerms = [
+      'research', 'study', 'analysis', 'data', 'findings',
+      'results', 'evidence', 'methodology', 'conclusion'
+    ];
+
+    const foundObjective = objectiveTerms.filter(term => 
+      content.includes(term)
+    );
+    credibilityScore += Math.min(0.2, foundObjective.length * 0.03);
+
+    // Penalize overly promotional language
+    const promotionalTerms = [
+      'best', 'amazing', 'incredible', 'revolutionary',
+      'breakthrough', 'ultimate', 'perfect', 'guaranteed'
+    ];
+
+    const foundPromotional = promotionalTerms.filter(term => 
+      content.includes(term)
+    );
+    credibilityScore -= foundPromotional.length * 0.05;
+
+    return credibilityScore;
+  }
+
+  /**
+   * Detect authority indicators in content
+   */
+  private detectAuthorityIndicators(result: AggregatedResult): number {
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+    const authorityIndicators = this.config.credibilityFactors.authorityIndicators;
+
+    const foundIndicators = authorityIndicators.filter(indicator => 
+      content.includes(indicator.toLowerCase())
+    );
+
+    return Math.min(0.3, foundIndicators.length * 0.05);
+  }
+
+  /**
+   * Enhanced context boost calculation with new factors
+   */
+  private calculateEnhancedContextBoosts(result: AggregatedResult, context: RankingContext): number {
+    let totalBoost = this.calculateContextBoosts(result, context);
+
+    // Domain expertise boost
+    if (this.hasDomainExpertise(result, context.topic)) {
+      totalBoost += this.config.contextBoosts.domainExpertise;
+    }
+
+    // Peer validation boost
+    if (this.hasPeerValidation(result)) {
+      totalBoost += this.config.contextBoosts.peerValidation;
+    }
+
+    return totalBoost;
+  }
+
+  /**
+   * Check if result demonstrates domain expertise
+   */
+  private hasDomainExpertise(result: AggregatedResult, topic: string): boolean {
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+    const topicWords = topic.toLowerCase().split(/\s+/);
+
+    // Check for technical depth
+    const technicalTermCount = this.countTechnicalTerms(content, topicWords);
+    
+    // Check for academic or professional indicators
+    const professionalIndicators = [
+      'research', 'analysis', 'methodology', 'framework',
+      'systematic', 'comprehensive', 'empirical', 'theoretical'
+    ];
+
+    const professionalCount = professionalIndicators.filter(term => 
+      content.includes(term)
+    ).length;
+
+    return technicalTermCount > 2 || professionalCount > 1;
+  }
+
+  /**
+   * Check if result has peer validation
+   */
+  private hasPeerValidation(result: AggregatedResult): boolean {
+    // Check for citations, reviews, or validation indicators
+    return result.metadata.sourceAttribution.some(source => 
+      (source.metadata?.citations && parseInt(source.metadata.citations) > 0) ||
+      (source.metadata?.upvotes && parseInt(source.metadata.upvotes) > 10) ||
+      source.metadata?.venue?.toLowerCase().includes('peer')
+    );
+  }
+
+  /**
+   * Count technical terms relevant to the topic
+   */
+  private countTechnicalTerms(content: string, topicWords: string[]): number {
+    // This is a simplified implementation
+    // In a real system, this would use domain-specific dictionaries
+    const technicalSuffixes = ['-tion', '-ism', '-ogy', '-ics', '-ment', '-ance'];
+    const words = content.split(/\s+/);
+    
+    return words.filter(word => 
+      word.length > 6 && 
+      technicalSuffixes.some(suffix => word.endsWith(suffix)) &&
+      topicWords.some(topicWord => word.includes(topicWord) || topicWord.includes(word))
+    ).length;
+  }
+
+  /**
+   * Enhanced penalty calculation with new factors
+   */
+  private calculateEnhancedPenalties(result: AggregatedResult, context: RankingContext): number {
+    let totalPenalty = this.calculatePenalties(result, context);
+
+    // Suspicious content penalty
+    if (this.hasSuspiciousContent(result)) {
+      totalPenalty += this.config.penalties.suspiciousContent;
+    }
+
+    // Bias indicators penalty
+    const biasScore = this.detectBiasIndicators(result);
+    totalPenalty += biasScore * this.config.penalties.biasIndicators;
+
+    return totalPenalty;
+  }
+
+  /**
+   * Detect suspicious content patterns
+   */
+  private hasSuspiciousContent(result: AggregatedResult): boolean {
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+    const suspiciousPatterns = this.config.credibilityFactors.suspiciousPatterns;
+
+    return suspiciousPatterns.some(pattern => 
+      content.includes(pattern.toLowerCase())
+    );
+  }
+
+  /**
+   * Detect bias indicators in content
+   */
+  private detectBiasIndicators(result: AggregatedResult): number {
+    const content = `${result.title} ${result.snippet}`.toLowerCase();
+    let biasScore = 0;
+
+    // Emotional language indicators
+    const emotionalWords = [
+      'terrible', 'horrible', 'amazing', 'incredible',
+      'shocking', 'unbelievable', 'outrageous', 'disgusting'
+    ];
+
+    biasScore += emotionalWords.filter(word => content.includes(word)).length * 0.1;
+
+    // Absolute statements
+    const absoluteWords = [
+      'always', 'never', 'all', 'none', 'every', 'completely',
+      'totally', 'absolutely', 'definitely', 'certainly'
+    ];
+
+    biasScore += absoluteWords.filter(word => content.includes(word)).length * 0.05;
+
+    // Opinion markers without evidence
+    const opinionMarkers = ['i think', 'i believe', 'in my opinion', 'clearly', 'obviously'];
+    biasScore += opinionMarkers.filter(marker => content.includes(marker)).length * 0.1;
+
+    return Math.min(1, biasScore);
   }
 }
 

@@ -351,6 +351,135 @@ function calculateTotalContent(researchResult: RecursiveResearchResult): number 
   return totalContent;
 }
 
+// Get research status API handler
+export const getResearchStatusHandler = async (req: any, res: any, context: any) => {
+  try {
+    if (!context.user) {
+      throw new HttpError(401, 'Authentication required');
+    }
+
+    const { topicId } = req.query;
+    if (!topicId) {
+      throw new HttpError(400, 'Topic ID is required');
+    }
+
+    // Get topic with current status
+    const topic = await context.entities.Topic.findUnique({
+      where: { id: topicId }
+    });
+
+    if (!topic) {
+      throw new HttpError(404, 'Topic not found');
+    }
+
+    // Return status
+    res.json({
+      success: true,
+      data: {
+        topicId,
+        status: topic.status,
+        progress: topic.metadata?.progress || 0,
+        lastUpdate: topic.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Get research status error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Cancel research API handler
+export const cancelResearchHandler = async (req: any, res: any, context: any) => {
+  try {
+    if (!context.user) {
+      throw new HttpError(401, 'Authentication required');
+    }
+
+    const { topicId } = req.body;
+    if (!topicId) {
+      throw new HttpError(400, 'Topic ID is required');
+    }
+
+    // Update topic status to cancelled
+    await context.entities.Topic.update({
+      where: { id: topicId },
+      data: { 
+        status: 'ERROR', // Using ERROR as cancelled status
+        updatedAt: new Date()
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Research cancelled successfully'
+    });
+
+  } catch (error) {
+    console.error('Cancel research error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Get research history API handler
+export const getResearchHistoryHandler = async (req: any, res: any, context: any) => {
+  try {
+    if (!context.user) {
+      throw new HttpError(401, 'Authentication required');
+    }
+
+    const userId = context.user.id;
+    const { limit = 20, offset = 0 } = req.query;
+
+    // Get user's research history
+    const topics = await context.entities.Topic.findMany({
+      where: {
+        userProgress: {
+          some: {
+            userId
+          }
+        }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: parseInt(limit),
+      skip: parseInt(offset),
+      include: {
+        userProgress: {
+          where: { userId }
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        topics: topics.map((topic: any) => ({
+          id: topic.id,
+          title: topic.title,
+          status: topic.status,
+          createdAt: topic.createdAt,
+          updatedAt: topic.updatedAt,
+          progress: topic.userProgress[0]?.progress || 0
+        })),
+        total: topics.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Get research history error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 // Middleware configuration for the research API
 export const researchApiMiddleware: MiddlewareConfigFn = (middlewareConfig) => {
   // Add any custom middleware configuration here

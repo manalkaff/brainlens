@@ -20,7 +20,7 @@ model User {
   subscriptionStatus        String?         // 'active', 'cancel_at_period_end', 'past_due', 'deleted'
   subscriptionPlan          String?         // 'hobby', 'pro'
   datePaid                  DateTime?
-  credits                   Int             @default(3)
+  credits                   Int             @default(10)
 
   gptResponses              GptResponse[]
   contactFormMessages       ContactFormMessage[]

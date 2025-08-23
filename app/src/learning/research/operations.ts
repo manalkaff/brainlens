@@ -255,6 +255,141 @@ export const getResearchStatus: GetResearchStatus<{ topicId: string }, ResearchS
   }
 };
 
+// Add missing operations
+export const getTopicResearchStatus = getResearchStatus; // Alias for compatibility
+
+// Get research history for user
+export const getResearchHistory = async (args: { limit?: number; offset?: number }, context: any) => {
+  if (!context.user) {
+    throw new HttpError(401, 'Authentication required');
+  }
+
+  const { limit = 20, offset = 0 } = args;
+  const userId = context.user.id;
+
+  try {
+    const topics = await context.entities.Topic.findMany({
+      where: {
+        userProgress: {
+          some: { userId }
+        }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        userProgress: {
+          where: { userId }
+        }
+      }
+    });
+
+    return topics.map((topic: any) => ({
+      id: topic.id,
+      title: topic.title,
+      status: topic.status,
+      createdAt: topic.createdAt,
+      updatedAt: topic.updatedAt,
+      progress: topic.userProgress[0]?.progress || 0
+    }));
+  } catch (error) {
+    console.error('Failed to get research history:', error);
+    throw new HttpError(500, 'Failed to get research history');
+  }
+};
+
+// Search topic content
+export const searchTopicContent = async (args: { topicId: string; query: string }, context: any) => {
+  if (!context.user) {
+    throw new HttpError(401, 'Authentication required');
+  }
+
+  const { topicId, query } = args;
+
+  try {
+    const vectorDocs = await context.entities.VectorDocument.findMany({
+      where: { 
+        topicId,
+        content: {
+          contains: query
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+
+    return vectorDocs.map((doc: any) => ({
+      id: doc.id,
+      content: doc.content.substring(0, 200) + '...',
+      createdAt: doc.createdAt,
+      relevance: 0.8 // Placeholder relevance score
+    }));
+  } catch (error) {
+    console.error('Failed to search topic content:', error);
+    throw new HttpError(500, 'Failed to search content');
+  }
+};
+
+// Generate topic content
+export const generateTopicContent = async (args: { topicId: string; contentType: string }, context: any) => {
+  if (!context.user) {
+    throw new HttpError(401, 'Authentication required');
+  }
+
+  const { topicId, contentType } = args;
+
+  try {
+    const topic = await context.entities.Topic.findUnique({
+      where: { id: topicId }
+    });
+
+    if (!topic) {
+      throw new HttpError(404, 'Topic not found');
+    }
+
+    // Placeholder content generation
+    const generatedContent = {
+      summary: `Generated ${contentType} content for ${topic.title}`,
+      keyPoints: [`Key point 1 about ${topic.title}`, `Key point 2 about ${topic.title}`],
+      generatedAt: new Date(),
+      contentType
+    };
+
+    return generatedContent;
+  } catch (error) {
+    console.error('Failed to generate topic content:', error);
+    throw new HttpError(500, 'Failed to generate content');
+  }
+};
+
+// Get topic subtopics
+export const getTopicSubtopics = async (args: { topicId: string }, context: any) => {
+  if (!context.user) {
+    throw new HttpError(401, 'Authentication required');
+  }
+
+  const { topicId } = args;
+
+  try {
+    const subtopics = await context.entities.Topic.findMany({
+      where: { parentId: topicId },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    return subtopics.map((subtopic: any) => ({
+      id: subtopic.id,
+      title: subtopic.title,
+      slug: subtopic.slug,
+      summary: subtopic.summary,
+      depth: subtopic.depth,
+      status: subtopic.status
+    }));
+  } catch (error) {
+    console.error('Failed to get topic subtopics:', error);
+    throw new HttpError(500, 'Failed to get subtopics');
+  }
+};
+
 // Get research results for a topic
 export const getResearchResults: GetResearchResults<{ topicId: string }, ResearchResultsOutput> = async (args, context) => {
   if (!context.user) {

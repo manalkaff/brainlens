@@ -217,52 +217,64 @@ export const SCORING_PRESETS = {
   // Academic focus
   academic: {
     weights: {
-      relevance: 0.2,
-      confidence: 0.25,
-      quality: 0.3,
+      relevance: 0.15,
+      confidence: 0.15,
+      quality: 0.2,
       recency: 0.05,
-      uniqueness: 0.1,
+      uniqueness: 0.08,
       sourceReliability: 0.1,
-      engagement: 0.0
+      engagement: 0.0,
+      credibility: 0.15,
+      authorityScore: 0.1,
+      factualAccuracy: 0.02
     }
   },
   
   // General learning
   general: {
     weights: {
-      relevance: 0.3,
-      confidence: 0.2,
-      quality: 0.2,
-      recency: 0.1,
-      uniqueness: 0.1,
+      relevance: 0.2,
+      confidence: 0.15,
+      quality: 0.15,
+      recency: 0.08,
+      uniqueness: 0.08,
       sourceReliability: 0.05,
-      engagement: 0.05
+      engagement: 0.05,
+      credibility: 0.1,
+      authorityScore: 0.05,
+      factualAccuracy: 0.04
     }
   },
   
   // Community-focused
   community: {
     weights: {
-      relevance: 0.25,
-      confidence: 0.15,
-      quality: 0.15,
-      recency: 0.15,
-      uniqueness: 0.1,
+      relevance: 0.2,
+      confidence: 0.1,
+      quality: 0.12,
+      recency: 0.1,
+      uniqueness: 0.08,
       sourceReliability: 0.05,
-      engagement: 0.15
+      engagement: 0.15,
+      credibility: 0.08,
+      authorityScore: 0.02,
+      factualAccuracy: 0.1
     }
   },
   
   // Video learning
   video: {
     weights: {
-      relevance: 0.3,
-      confidence: 0.2,
-      quality: 0.2,
-      recency: 0.15,
+      relevance: 0.25,
+      confidence: 0.15,
+      quality: 0.15,
+      recency: 0.1,
       uniqueness: 0.05,
       sourceReliability: 0.05,
-      engagement: 0.05
+      engagement: 0.05,
+      credibility: 0.08,
+      authorityScore: 0.02,
+      factualAccuracy: 0.1
     }
   }
 } as const;
