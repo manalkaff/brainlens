@@ -26,15 +26,18 @@ export default function App() {
     return demoNavigationitems;
   }, [isMarketingPage, isLearningPage]);
 
-  const shouldDisplayAppNavBar = useMemo(() => {
-    return (
-      location.pathname !== routes.LoginRoute.build() && location.pathname !== routes.SignupRoute.build()
-    );
-  }, [location]);
-
   const isAdminDashboard = useMemo(() => {
     return location.pathname.startsWith('/admin');
   }, [location]);
+
+  const shouldDisplayAppNavBar = useMemo(() => {
+    return (
+      location.pathname !== routes.LoginRoute.build() && 
+      location.pathname !== routes.SignupRoute.build() &&
+      !isLearningPage &&
+      !isAdminDashboard
+    );
+  }, [location, isLearningPage, isAdminDashboard]);
 
   useEffect(() => {
     if (location.hash) {
@@ -49,7 +52,7 @@ export default function App() {
   return (
     <>
       <div className='min-h-screen bg-background text-foreground'>
-        {isAdminDashboard ? (
+        {isAdminDashboard || isLearningPage ? (
           <Outlet />
         ) : (
           <>

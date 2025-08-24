@@ -207,87 +207,70 @@ export function ExploreTab() {
         `}
         style={{ width: sidebarCollapsed ? '48px' : `${sidebarWidth}px` }}
       >
-        {/* Sidebar Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          {!sidebarCollapsed && (
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-sm">Navigation</h3>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="h-8 w-8 p-0"
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
 
         {/* Navigation Tabs */}
         {!sidebarCollapsed && (
-          <div className="border-b bg-muted/30">
-            <div className="flex">
-              <Button
-                variant={activeTab === 'tree' ? 'default' : 'ghost'}
-                size="sm"
+          <div className="border-b">
+            <div className="flex bg-muted/20">
+              <button
                 onClick={() => setActiveTab('tree')}
-                className="flex-1 rounded-none h-9 text-xs"
+                className={`flex-1 py-2.5 px-1 text-xs font-medium transition-colors border-b-2 flex flex-col items-center gap-1 ${
+                  activeTab === 'tree' 
+                    ? 'border-primary text-primary bg-background' 
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
               >
-                <BookOpen className="w-3 h-3 mr-1" />
-                Tree
-              </Button>
-              <Button
-                variant={activeTab === 'bookmarks' ? 'default' : 'ghost'}
-                size="sm"
+                <BookOpen className="w-3 h-3" />
+                Topics
+              </button>
+              <button
                 onClick={() => setActiveTab('bookmarks')}
-                className="flex-1 rounded-none h-9 text-xs"
+                className={`flex-1 py-2.5 px-1 text-xs font-medium transition-colors border-b-2 flex flex-col items-center gap-1 ${
+                  activeTab === 'bookmarks' 
+                    ? 'border-primary text-primary bg-background' 
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
               >
-                <Bookmark className="w-3 h-3 mr-1" />
+                <Bookmark className="w-3 h-3" />
                 Saved
-              </Button>
-              <Button
-                variant={activeTab === 'recent' ? 'default' : 'ghost'}
-                size="sm"
+              </button>
+              <button
                 onClick={() => setActiveTab('recent')}
-                className="flex-1 rounded-none h-9 text-xs"
+                className={`flex-1 py-2.5 px-1 text-xs font-medium transition-colors border-b-2 flex flex-col items-center gap-1 ${
+                  activeTab === 'recent' 
+                    ? 'border-primary text-primary bg-background' 
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
               >
-                <History className="w-3 h-3 mr-1" />
+                <History className="w-3 h-3" />
                 Recent
-              </Button>
+              </button>
             </div>
           </div>
         )}
 
         {/* Search and Filters */}
         {!sidebarCollapsed && activeTab === 'tree' && (
-          <div className="p-3 border-b space-y-2">
+          <div className="p-3 border-b space-y-3">
             <div className="relative">
-              <Search className="w-3 h-3 absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search topics..."
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
-                className="w-full pl-7 pr-3 py-1.5 text-xs border rounded-md bg-background"
+                className="w-full pl-10 pr-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={showCompletedOnly ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setShowCompletedOnly(!showCompletedOnly)}
-                className="flex-1 h-7 text-xs"
-              >
-                <Eye className="w-3 h-3 mr-1" />
-                {showCompletedOnly ? 'All' : 'Read'}
-              </Button>
-            </div>
+            <Button
+              variant={showCompletedOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowCompletedOnly(!showCompletedOnly)}
+              className="w-full h-8 text-xs"
+            >
+              <Eye className="w-3 h-3 mr-2" />
+              {showCompletedOnly ? 'Show All Topics' : 'Show Read Only'}
+            </Button>
           </div>
         )}
 
@@ -298,13 +281,13 @@ export function ExploreTab() {
               {activeTab === 'tree' && (
                 <div className="h-full p-4">
                   <TopicTree
-                    topics={filteredTopics.length > 0 ? filteredTopics : topicsToShow}
+                    topics={topicsToShow}
                     selectedTopicId={selectedTopic?.id}
                     onTopicSelect={handleTopicSelect}
                     onGenerateSubtopics={generateSubtopics}
                     isGenerating={isGenerating}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
+                    searchQuery={filterText}
+                    onSearchChange={() => {}}
                     compact={true}
                   />
                 </div>
@@ -346,15 +329,6 @@ export function ExploreTab() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Content Header */}
         <div className="border-b bg-card">
-          {/* Breadcrumb Navigation */}
-          {selectedTopic && (
-            <BreadcrumbNavigation
-              topic={selectedTopic}
-              allTopics={topics}
-              onTopicSelect={handleTopicSelect}
-            />
-          )}
-          
           <div className="flex items-center justify-between p-4">
             <div className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
@@ -385,7 +359,19 @@ export function ExploreTab() {
               )}
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="h-8 w-8 p-0"
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <ChevronLeft className="w-4 h-4" />
+                )}
+              </Button>
               {selectedTopic && (
                 <>
                   {isRead(selectedTopic.id) && (
@@ -689,9 +675,11 @@ interface BreadcrumbNavigationProps {
   topic: TopicTreeItem;
   allTopics: TopicTreeItem[];
   onTopicSelect: (topic: TopicTreeItem) => void;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
 }
 
-function BreadcrumbNavigation({ topic, allTopics, onTopicSelect }: BreadcrumbNavigationProps) {
+function BreadcrumbNavigation({ topic, allTopics, onTopicSelect, sidebarCollapsed, setSidebarCollapsed }: BreadcrumbNavigationProps) {
   const buildBreadcrumb = (currentTopic: TopicTreeItem): TopicTreeItem[] => {
     const path: TopicTreeItem[] = [];
     
@@ -721,36 +709,51 @@ function BreadcrumbNavigation({ topic, allTopics, onTopicSelect }: BreadcrumbNav
 
   return (
     <div className="px-4 py-2 bg-muted/30 border-b">
-      <div className="flex items-center gap-1 text-xs">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1 text-xs">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onTopicSelect(breadcrumbPath[0])}
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Home className="w-3 h-3 mr-1" />
+            Root
+          </Button>
+          
+          {breadcrumbPath.slice(0, -1).map((crumb, index) => (
+            <React.Fragment key={crumb.id}>
+              <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onTopicSelect(crumb)}
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground truncate max-w-32"
+                title={crumb.title}
+              >
+                {crumb.title}
+              </Button>
+            </React.Fragment>
+          ))}
+          
+          <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
+          <span className="text-xs font-medium truncate max-w-40" title={topic.title}>
+            {topic.title}
+          </span>
+        </div>
+        
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onTopicSelect(breadcrumbPath[0])}
-          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="h-6 w-6 p-0 ml-2"
         >
-          <Home className="w-3 h-3 mr-1" />
-          Root
+          {sidebarCollapsed ? (
+            <ChevronRight className="w-3 h-3" />
+          ) : (
+            <ChevronLeft className="w-3 h-3" />
+          )}
         </Button>
-        
-        {breadcrumbPath.slice(0, -1).map((crumb, index) => (
-          <React.Fragment key={crumb.id}>
-            <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onTopicSelect(crumb)}
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground truncate max-w-32"
-              title={crumb.title}
-            >
-              {crumb.title}
-            </Button>
-          </React.Fragment>
-        ))}
-        
-        <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
-        <span className="text-xs font-medium truncate max-w-40" title={topic.title}>
-          {topic.title}
-        </span>
       </div>
     </div>
   );

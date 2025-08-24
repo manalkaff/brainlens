@@ -1,21 +1,41 @@
-import React, { Suspense } from 'react';
-import { useAuth } from 'wasp/client/auth';
-import { Link as WaspRouterLink, routes } from 'wasp/client/router';
-import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
-import { Tabs, TabsContent } from '../components/ui/tabs';
-import { TopicProvider, useTopicContext } from './context/TopicContext';
-import { ProgressIndicator } from './components/ui/ProgressIndicator';
-import { TabNavigation, TabStatusIndicator } from './components/ui/TabNavigation';
-import { LearnTab } from './components/tabs/LearnTab';
-import { ExploreTab } from './components/tabs/ExploreTab';
-import { AskTab } from './components/tabs/AskTab';
-import { MindMapTab } from './components/tabs/MindMapTab';
-import { QuizTab } from './components/tabs/QuizTab';
-import { HelpSystem } from './components/help/HelpSystem';
-import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow';
-import StreamingErrorBoundary from './components/ui/StreamingErrorBoundary';
-import { useErrorHandler } from './hooks/useErrorHandler';
+import React, { Suspense } from "react";
+import { useAuth } from "wasp/client/auth";
+import { Link as WaspRouterLink, routes } from "wasp/client/router";
+import { useParams } from "react-router-dom";
+import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
+import { Tabs, TabsContent } from "../components/ui/tabs";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "../components/ui/sidebar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from "../components/ui/breadcrumb";
+import { Separator } from "../components/ui/separator";
+import { TopicProvider, useTopicContext } from "./context/TopicContext";
+import { ProgressIndicator } from "./components/ui/ProgressIndicator";
+import {
+  TabNavigation,
+  TabStatusIndicator,
+} from "./components/ui/TabNavigation";
+import { LearnTab } from "./components/tabs/LearnTab";
+import { ExploreTab } from "./components/tabs/ExploreTab";
+import { AskTab } from "./components/tabs/AskTab";
+import { MindMapTab } from "./components/tabs/MindMapTab";
+import { QuizTab } from "./components/tabs/QuizTab";
+import { HelpSystem } from "./components/help/HelpSystem";
+import {
+  OnboardingFlow,
+  useOnboarding,
+} from "./components/help/OnboardingFlow";
+import StreamingErrorBoundary from "./components/ui/StreamingErrorBoundary";
+import { useErrorHandler } from "./hooks/useErrorHandler";
+import { LearningSidebar } from "./components/ui/LearningSidebar";
 
 // Loading component for tab content
 function TabContentLoader() {
@@ -30,105 +50,65 @@ function TabContentLoader() {
   );
 }
 
-// Topic header component
-function TopicHeader() {
-  const { topic, isLoading, error } = useTopicContext();
+// Header breadcrumb component
+function TopicBreadcrumb() {
+  const { topic, isLoading } = useTopicContext();
 
   if (isLoading) {
     return (
-      <div className="mb-8 animate-pulse">
-        <div className="h-8 bg-muted rounded w-1/2 mb-4" />
-        <div className="h-4 bg-muted rounded w-3/4" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-destructive mb-4">Error Loading Topic</h1>
-        <p className="text-lg text-muted-foreground">{error}</p>
-      </div>
-    );
-  }
-
-  if (!topic) {
-    return (
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-muted-foreground mb-4">Topic Not Found</h1>
-        <p className="text-lg text-muted-foreground">
-          The requested topic could not be found.
-        </p>
-      </div>
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <div className="h-4 bg-muted rounded w-24 animate-pulse" />
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
     );
   }
 
   return (
-    <div className="mb-8">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <h1 className="text-4xl font-bold text-foreground mb-2 font-platform">{topic.title}</h1>
-          {topic.summary && (
-            <p className="text-lg text-muted-foreground mb-4 font-content">{topic.summary}</p>
-          )}
-          {topic.description && (
-            <p className="text-muted-foreground font-content">{topic.description}</p>
-          )}
-        </div>
-      </div>
-      
-      {/* Progress Indicator */}
-      <ProgressIndicator className="mb-6" />
-      
-      {/* Topic Metadata */}
-      <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-        <span>Depth: Level {topic.depth + 1}</span>
-        <span>•</span>
-        <span>Status: {topic.status}</span>
-        {topic.parent && (
-          <>
-            <span>•</span>
-            <span>Parent: {topic.parent.title}</span>
-          </>
-        )}
-        {topic.children.length > 0 && (
-          <>
-            <span>•</span>
-            <span>{topic.children.length} subtopics</span>
-          </>
-        )}
-      </div>
-    </div>
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <span className="text-foreground font-medium">
+            {topic?.title || "Topic"}
+          </span>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }
 
 // Lazy tab content component
-function LazyTabContent({ tabId, children }: { tabId: string; children: React.ReactNode }) {
+function LazyTabContent({
+  tabId,
+  children,
+}: {
+  tabId: string;
+  children: React.ReactNode;
+}) {
   const { isTabLoaded } = useTopicContext();
-  
+
   if (!isTabLoaded(tabId as any)) {
     return <TabContentLoader />;
   }
-  
-  return (
-    <Suspense fallback={<TabContentLoader />}>
-      {children}
-    </Suspense>
-  );
+
+  return <Suspense fallback={<TabContentLoader />}>{children}</Suspense>;
 }
 
 // Main topic page content with tabs
 function TopicPageContent() {
   const { activeTab, setActiveTab, isLoading, error } = useTopicContext();
-  const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
+  const { showOnboarding, setShowOnboarding, completeOnboarding } =
+    useOnboarding();
   const errorHandler = useErrorHandler({
     maxRetries: 3,
     onError: (error) => {
-      console.error('Topic page error:', error);
+      console.error("Topic page error:", error);
     },
     onRetry: (attempt) => {
       console.log(`Retrying topic page operation, attempt ${attempt}`);
-    }
+    },
   });
 
   if (error) {
@@ -136,16 +116,16 @@ function TopicPageContent() {
       <StreamingErrorBoundary
         onRetry={() => window.location.reload()}
         onReset={() => window.location.reload()}
-        showDetails={process.env.NODE_ENV === 'development'}
+        showDetails={process.env.NODE_ENV === "development"}
       >
         <Card>
           <CardContent className="p-6">
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-destructive mb-2">Error Loading Topic</h3>
+              <h3 className="text-lg font-semibold text-destructive mb-2">
+                Error Loading Topic
+              </h3>
               <p className="text-muted-foreground mb-4">{error}</p>
-              <Button onClick={() => window.location.reload()}>
-                Retry
-              </Button>
+              <Button onClick={() => window.location.reload()}>Retry</Button>
             </div>
           </CardContent>
         </Card>
@@ -154,70 +134,82 @@ function TopicPageContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <TopicHeader />
-      
-      {/* Tab Navigation */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4">
+    <div className="h-full flex flex-col">
+      {/* Tab Navigation - moved to top */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as any)}
+        className="h-full flex flex-col"
+      >
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between border-b px-6 py-3 bg-background">
           <TabNavigation />
           <TabStatusIndicator />
         </div>
 
         {/* Tab Content with Lazy Loading and Error Boundaries */}
-        <div className="mt-6">
-          <TabsContent value="learn" className="mt-0">
+        <div className="flex-1 overflow-auto">
+          <TabsContent value="learn" className="mt-0 h-full">
             <StreamingErrorBoundary
               onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === 'development'}
+              showDetails={process.env.NODE_ENV === "development"}
             >
-              <Suspense fallback={<TabContentLoader />}>
-                <LearnTab />
-              </Suspense>
+              <div className="h-full p-6">
+                <Suspense fallback={<TabContentLoader />}>
+                  <LearnTab />
+                </Suspense>
+              </div>
             </StreamingErrorBoundary>
           </TabsContent>
-          
-          <TabsContent value="explore" className="mt-0">
+
+          <TabsContent value="explore" className="mt-0 h-full">
             <StreamingErrorBoundary
               onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === 'development'}
+              showDetails={process.env.NODE_ENV === "development"}
             >
-              <LazyTabContent tabId="explore">
-                <ExploreTab />
-              </LazyTabContent>
+              <div className="h-full p-6">
+                <LazyTabContent tabId="explore">
+                  <ExploreTab />
+                </LazyTabContent>
+              </div>
             </StreamingErrorBoundary>
           </TabsContent>
-          
-          <TabsContent value="ask" className="mt-0">
+
+          <TabsContent value="ask" className="mt-0 h-full">
             <StreamingErrorBoundary
               onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === 'development'}
+              showDetails={process.env.NODE_ENV === "development"}
             >
-              <LazyTabContent tabId="ask">
-                <AskTab />
-              </LazyTabContent>
+              <div className="h-full p-6">
+                <LazyTabContent tabId="ask">
+                  <AskTab />
+                </LazyTabContent>
+              </div>
             </StreamingErrorBoundary>
           </TabsContent>
-          
-          <TabsContent value="mindmap" className="mt-0">
+
+          <TabsContent value="mindmap" className="mt-0 h-full">
             <StreamingErrorBoundary
               onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === 'development'}
+              showDetails={process.env.NODE_ENV === "development"}
             >
-              <LazyTabContent tabId="mindmap">
-                <MindMapTab />
-              </LazyTabContent>
+              <div className="h-full">
+                <LazyTabContent tabId="mindmap">
+                  <MindMapTab />
+                </LazyTabContent>
+              </div>
             </StreamingErrorBoundary>
           </TabsContent>
-          
-          <TabsContent value="quiz" className="mt-0">
+
+          <TabsContent value="quiz" className="mt-0 h-full">
             <StreamingErrorBoundary
               onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === 'development'}
+              showDetails={process.env.NODE_ENV === "development"}
             >
-              <LazyTabContent tabId="quiz">
-                <QuizTab />
-              </LazyTabContent>
+              <div className="h-full p-6">
+                <LazyTabContent tabId="quiz">
+                  <QuizTab />
+                </LazyTabContent>
+              </div>
             </StreamingErrorBoundary>
           </TabsContent>
         </div>
@@ -237,55 +229,34 @@ function TopicPageContent() {
 // Main TopicPage component
 export default function TopicPage() {
   const { data: user } = useAuth();
+  const { slug } = useParams<{ slug: string }>();
 
   return (
     <StreamingErrorBoundary
       onRetry={() => window.location.reload()}
-      onReset={() => window.location.href = '/learn'}
-      showDetails={process.env.NODE_ENV === 'development'}
+      onReset={() => (window.location.href = "/learn")}
+      showDetails={process.env.NODE_ENV === "development"}
     >
       <TopicProvider>
-        <div className="min-h-screen bg-background">
-          {/* Header with Breadcrumb */}
-          <header className="border-b">
-            <div className="container mx-auto px-4 py-4">
-              <nav className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-sm">
-                  <WaspRouterLink 
-                    to={routes.LandingPageRoute.to} 
-                    className="text-xl font-bold text-primary hover:text-primary/80 transition-colors font-platform"
-                  >
-                    BrainLens
-                  </WaspRouterLink>
-                  <span className="text-muted-foreground">/</span>
-                  <WaspRouterLink 
-                    to="/learn" 
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Learn
-                  </WaspRouterLink>
-                  <span className="text-muted-foreground">/</span>
-                  <span className="text-foreground font-medium">Topic</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <HelpSystem />
-                  <Button variant="ghost" asChild>
-                    <WaspRouterLink to="/learn">← Back to Search</WaspRouterLink>
-                  </Button>
-                  <Button variant="ghost" asChild>
-                    <WaspRouterLink to={routes.AccountRoute.to}>Account</WaspRouterLink>
-                  </Button>
-                </div>
-              </nav>
-            </div>
-          </header>
+        <SidebarProvider>
+          <LearningSidebar currentPath={`/learn/${slug}`} />
+          <SidebarInset>
+            {/* Header */}
+            <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+              <TopicBreadcrumb />
+              <div className="ml-auto flex items-center gap-2">
+                <HelpSystem />
+              </div>
+            </header>
 
-          <main className="container mx-auto px-4 py-8">
-            <div className="max-w-6xl mx-auto">
+            {/* Main Content - Full Screen */}
+            <div className="flex-1 overflow-hidden">
               <TopicPageContent />
             </div>
-          </main>
-        </div>
+          </SidebarInset>
+        </SidebarProvider>
       </TopicProvider>
     </StreamingErrorBoundary>
   );

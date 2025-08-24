@@ -112,38 +112,5 @@ export function TabNavigation({ className }: TabNavigationProps) {
 
 // Tab status indicator component
 export function TabStatusIndicator() {
-  const { activeTab, loadedTabs } = useTopicContext();
-  const { sessionDuration, hasBookmarks } = useSharedTopicState();
-
-  const formatDuration = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  };
-
-  return (
-    <div className="flex items-center space-x-3 text-sm">
-      <Badge variant="outline" className="gap-1.5">
-        <div className="w-2 h-2 rounded-full bg-primary" />
-        Active: {activeTab}
-      </Badge>
-      
-      <Badge variant="outline" className="gap-1.5">
-        <div className="w-2 h-2 rounded-full bg-success" />
-        Loaded: {loadedTabs.size}/5
-      </Badge>
-      
-      <Badge variant="outline" className="gap-1.5">
-        <div className="w-2 h-2 rounded-full bg-primary" />
-        {formatDuration(sessionDuration)}
-      </Badge>
-      
-      {hasBookmarks && (
-        <Badge variant="outline" className="gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-warning" />
-          Bookmarks
-        </Badge>
-      )}
-    </div>
-  );
+  return null;
 }
