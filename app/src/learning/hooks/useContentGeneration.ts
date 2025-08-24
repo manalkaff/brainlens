@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from 'wasp/client/operations';
+import { api } from 'wasp/client/api';
 import type { TopicTreeItem } from '../components/ui/TopicTree';
 
 interface ContentSection {
@@ -258,29 +259,19 @@ Happy learning!`;
     setError(null);
 
     try {
-      // Call the content generation API
-      const response = await fetch('/api/learning/generate-content', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          topicId: topic.id,
-          options: {
-            userLevel: 'intermediate', // TODO: Get from user preferences
-            learningStyle: 'textual', // TODO: Get from user preferences
-            contentType: 'exploration',
-            maxTokens: 4000,
-            temperature: 0.7
-          }
-        }),
+      // Call the content generation API using Wasp's authenticated API wrapper
+      const response = await api.post('/api/learning/generate-content', {
+        topicId: topic.id,
+        options: {
+          userLevel: 'intermediate', // TODO: Get from user preferences
+          learningStyle: 'textual', // TODO: Get from user preferences
+          contentType: 'exploration',
+          maxTokens: 4000,
+          temperature: 0.7
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to generate content: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = response.data;
 
       if (result.error) {
         throw new Error(result.error);
@@ -331,7 +322,7 @@ ${err instanceof Error ? err.message : 'Unknown error'}
     } finally {
       setIsGenerating(false);
     }
-  }, [topic, generateSampleContent, parseContentSections]);
+  }, [topic, parseContentSections]);
 
   // Auto-generate content when topic changes
   useEffect(() => {

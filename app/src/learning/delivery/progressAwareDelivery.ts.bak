@@ -1,0 +1,974 @@
+import { AssessmentResult, UserTopicProgress, Topic, DetailedProgressMetrics, LearningInsight } from '@src/learning/types';
+import { LearningStyleProfile } from '@src/learning/analytics/learningStyleDetector';
+import { DetailedLearningPath, PathSection } from '@src/learning/assessment/pathGenerator';
+import { AdvancedProgressTracker } from '@src/learning/analytics/progressTracker';
+import { AdaptiveContentStreamer, StreamingContentRequest, AdaptiveContentChunk } from '@src/learning/streaming/adaptiveContentStreamer';
+import { NextStepsEngine } from '@src/learning/recommendations/nextStepsEngine';
+
+export interface ContentDeliveryContext {
+  userId: string;
+  topicId: string;
+  currentPath: DetailedLearningPath;
+  userProgress: UserTopicProgress;
+  assessmentResult: AssessmentResult;
+  learningStyleProfile: LearningStyleProfile;
+  sessionMetrics: DetailedProgressMetrics;
+  insights: LearningInsight[];
+  currentSection: string;
+  sectionProgress: number; // 0-1
+  
+  // Real-time context
+  timeInCurrentSection: number; // minutes
+  strugglingConcepts: string[];
+  masteredConcepts: string[];
+  engagementLevel: number; // 0-1
+  attentionLevel: number; // 0-1
+  interactionHistory: InteractionEvent[];
+  
+  // Delivery preferences
+  deliveryMode: 'sequential' | 'adaptive' | 'exploratory';
+  pacingPreference: 'user_controlled' | 'system_optimized' | 'mixed';
+  contentGranularity: 'fine' | 'medium' | 'coarse';
+}
+
+export interface InteractionEvent {
+  timestamp: Date;
+  type: 'content_view' | 'concept_expansion' | 'quiz_attempt' | 'navigation' | 'feedback';
+  data: any;
+  duration: number; // milliseconds
+  engagement: number; // 0-1
+}
+
+export interface DeliveryStrategy {
+  id: string;
+  name: string;
+  description: string;
+  applicability: {
+    learningStyles: string[];
+    knowledgeLevels: string[];
+    contexts: string[];
+  };
+  parameters: {
+    chunkSize: 'small' | 'medium' | 'large';
+    sequencing: 'strict' | 'flexible' | 'adaptive';
+    reinforcement: 'minimal' | 'standard' | 'intensive';
+    interactivity: 'low' | 'medium' | 'high';
+  };
+  priority: number;
+}
+
+export interface ContentDeliveryPlan {
+  id: string;
+  userId: string;
+  topicId: string;
+  strategy: DeliveryStrategy;
+  sections: PlannedSection[];
+  adaptationRules: AdaptationRule[];
+  checkpoints: ProgressCheckpoint[];
+  estimatedDuration: number; // minutes
+  created: Date;
+  lastUpdated: Date;
+}
+
+export interface PlannedSection {
+  id: string;
+  title: string;
+  concepts: string[];
+  prerequisites: string[];
+  deliveryOrder: number;
+  estimatedDuration: number;
+  difficulty: number;
+  chunks: PlannedChunk[];
+  adaptationTriggers: string[];
+  checkpointType: 'knowledge' | 'application' | 'synthesis';
+}
+
+export interface PlannedChunk {
+  id: string;
+  type: 'explanation' | 'example' | 'practice' | 'assessment' | 'reflection';
+  content: string;
+  concepts: string[];
+  estimatedTime: number;
+  prerequisites: string[];
+  deliveryConditions: DeliveryCondition[];
+}
+
+export interface DeliveryCondition {
+  type: 'prerequisite_mastery' | 'time_threshold' | 'engagement_level' | 'comprehension_score';
+  condition: string;
+  threshold: number;
+  required: boolean;
+}
+
+export interface AdaptationRule {
+  id: string;
+  trigger: {
+    type: 'performance' | 'engagement' | 'time' | 'interaction';
+    condition: string;
+    threshold: number;
+  };
+  adaptation: {
+    type: 'content' | 'pacing' | 'sequence' | 'support';
+    action: string;
+    parameters: Record<string, any>;
+  };
+  priority: number;
+}
+
+export interface ProgressCheckpoint {
+  id: string;
+  sectionId: string;
+  type: 'prerequisite' | 'mastery' | 'milestone' | 'gate';
+  position: number; // 0-1 within section
+  requirements: CheckpointRequirement[];
+  actions: CheckpointAction[];
+}
+
+export interface CheckpointRequirement {
+  type: 'concept_mastery' | 'skill_demonstration' | 'time_spent' | 'engagement_threshold';
+  target: string;
+  threshold: number;
+  weight: number;
+}
+
+export interface CheckpointAction {
+  type: 'proceed' | 'review' | 'remediate' | 'advance' | 'branch';
+  condition: string;
+  parameters: Record<string, any>;
+}
+
+export interface DeliveryState {
+  currentSection: string;
+  currentChunk: string;
+  completedChunks: string[];
+  availableChunks: string[];
+  waitingConditions: DeliveryCondition[];
+  adaptationHistory: AdaptationEvent[];
+  lastDelivery: Date;
+  nextScheduledDelivery?: Date;
+}
+
+export interface AdaptationEvent {
+  timestamp: Date;
+  trigger: string;
+  adaptation: string;
+  reason: string;
+  impact: {
+    contentChanged: boolean;
+    pacingChanged: boolean;
+    sequenceChanged: boolean;
+  };
+}
+
+class ProgressAwareContentDelivery {
+  private static instance: ProgressAwareContentDelivery;
+  private deliveryPlans: Map<string, ContentDeliveryPlan> = new Map();
+  private deliveryStates: Map<string, DeliveryState> = new Map();
+  private strategies: DeliveryStrategy[] = [];
+  private progressTracker = AdvancedProgressTracker.getInstance();
+  private contentStreamer = AdaptiveContentStreamer.getInstance();
+  private nextStepsEngine = NextStepsEngine.getInstance();
+
+  static getInstance(): ProgressAwareContentDelivery {
+    if (!ProgressAwareContentDelivery.instance) {
+      ProgressAwareContentDelivery.instance = new ProgressAwareContentDelivery();
+      ProgressAwareContentDelivery.instance.initializeStrategies();
+    }
+    return ProgressAwareContentDelivery.instance;
+  }
+
+  /**
+   * Create personalized content delivery plan
+   */
+  async createDeliveryPlan(context: ContentDeliveryContext): Promise<ContentDeliveryPlan> {
+    const planId = `plan-${context.userId}-${context.topicId}-${Date.now()}`;
+    
+    try {
+      // Select optimal delivery strategy
+      const strategy = await this.selectDeliveryStrategy(context);
+      
+      // Plan section delivery based on learning path and progress
+      const sections = await this.planSectionDelivery(context, strategy);
+      
+      // Create adaptation rules for dynamic adjustment
+      const adaptationRules = await this.createAdaptationRules(context, strategy);
+      
+      // Establish progress checkpoints
+      const checkpoints = await this.establishCheckpoints(context, sections);
+      
+      // Calculate estimated duration
+      const estimatedDuration = sections.reduce((total, section) => total + section.estimatedDuration, 0);
+      
+      const plan: ContentDeliveryPlan = {
+        id: planId,
+        userId: context.userId,
+        topicId: context.topicId,
+        strategy,
+        sections,
+        adaptationRules,
+        checkpoints,
+        estimatedDuration,
+        created: new Date(),
+        lastUpdated: new Date()
+      };
+      
+      this.deliveryPlans.set(planId, plan);
+      
+      // Initialize delivery state
+      await this.initializeDeliveryState(planId, plan);
+      
+      return plan;
+    } catch (error) {
+      console.error('Error creating delivery plan:', error);
+      throw new Error(`Failed to create delivery plan: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get next content for delivery
+   */
+  async getNextContent(
+    planId: string,
+    context: ContentDeliveryContext
+  ): Promise<AdaptiveContentChunk | null> {
+    const plan = this.deliveryPlans.get(planId);
+    const state = this.deliveryStates.get(planId);
+    
+    if (!plan || !state) {
+      throw new Error(`Delivery plan ${planId} not found`);
+    }
+
+    try {
+      // Update delivery state based on current context
+      await this.updateDeliveryState(state, context);
+      
+      // Check for needed adaptations
+      const adaptations = await this.evaluateAdaptations(plan, state, context);
+      
+      // Apply adaptations
+      for (const adaptation of adaptations) {
+        await this.applyAdaptation(plan, state, adaptation, context);
+      }
+      
+      // Determine next content chunk
+      const nextChunk = await this.determineNextChunk(plan, state, context);
+      
+      if (nextChunk) {
+        // Generate adaptive content using the streaming system
+        const streamingRequest = this.buildStreamingRequest(context, nextChunk);
+        const contentChunk = await this.contentStreamer.generateAdaptiveChunk(
+          `delivery-${planId}`,
+          streamingRequest
+        );
+        
+        if (contentChunk) {
+          // Update delivery state
+          state.completedChunks.push(nextChunk.id);
+          state.currentChunk = nextChunk.id;
+          state.lastDelivery = new Date();
+          
+          // Update available chunks
+          await this.updateAvailableChunks(plan, state, context);
+        }
+        
+        return contentChunk;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting next content:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Select optimal delivery strategy based on learner profile
+   */
+  private async selectDeliveryStrategy(context: ContentDeliveryContext): Promise<DeliveryStrategy> {
+    const profile = context.learningStyleProfile;
+    const assessment = context.assessmentResult;
+    
+    // Score each strategy based on learner characteristics
+    const strategyScores = this.strategies.map(strategy => ({
+      strategy,
+      score: this.calculateStrategyScore(strategy, context)
+    }));
+    
+    // Sort by score and select the best
+    strategyScores.sort((a, b) => b.score - a.score);
+    
+    return strategyScores[0].strategy;
+  }
+
+  /**
+   * Calculate strategy fitness score for learner
+   */
+  private calculateStrategyScore(strategy: DeliveryStrategy, context: ContentDeliveryContext): number {
+    let score = 0;
+    const profile = context.learningStyleProfile;
+    const assessment = context.assessmentResult;
+    
+    // Learning style compatibility
+    const styleMatch = strategy.applicability.learningStyles.includes(profile.primaryStyle) ? 1 : 0;
+    const secondaryMatch = profile.secondaryStyle && 
+      strategy.applicability.learningStyles.includes(profile.secondaryStyle) ? 0.5 : 0;
+    score += (styleMatch + secondaryMatch) * 30;
+    
+    // Knowledge level compatibility
+    const currentLevel = assessment.knowledgeLevel || 'beginner';
+    const levelMatch = strategy.applicability.knowledgeLevels.includes(currentLevel) ? 1 : 0;
+    score += levelMatch * 25;
+    
+    // Learning velocity consideration
+    if (profile.learningVelocity > 0.7 && strategy.parameters.chunkSize === 'large') {
+      score += 15;
+    } else if (profile.learningVelocity < 0.4 && strategy.parameters.chunkSize === 'small') {
+      score += 15;
+    }
+    
+    // Attention span consideration
+    if (profile.attentionSpan === 'short' && strategy.parameters.interactivity === 'high') {
+      score += 10;
+    } else if (profile.attentionSpan === 'long' && strategy.parameters.sequencing === 'strict') {
+      score += 10;
+    }
+    
+    // Structure preference
+    if (profile.structuredPreference > 0.7 && strategy.parameters.sequencing === 'strict') {
+      score += 10;
+    } else if (profile.structuredPreference < 0.4 && strategy.parameters.sequencing === 'flexible') {
+      score += 10;
+    }
+    
+    // Active vs reflective preference
+    if (profile.activePreference > 0.6 && strategy.parameters.interactivity === 'high') {
+      score += 10;
+    }
+    
+    return score;
+  }
+
+  /**
+   * Plan section delivery order and structure
+   */
+  private async planSectionDelivery(
+    context: ContentDeliveryContext,
+    strategy: DeliveryStrategy
+  ): Promise<PlannedSection[]> {
+    const path = context.currentPath;
+    const progress = context.userProgress;
+    const profile = context.learningStyleProfile;
+    
+    const plannedSections: PlannedSection[] = [];
+    
+    for (let i = 0; i < path.sections.length; i++) {
+      const pathSection = path.sections[i];
+      const sectionProgress = progress.sectionProgress?.[pathSection.id] || 0;
+      
+      // Skip completed sections unless review is needed
+      if (sectionProgress >= 0.9 && !this.needsReview(pathSection, context)) {
+        continue;
+      }
+      
+      const plannedSection: PlannedSection = {
+        id: pathSection.id,
+        title: pathSection.title,
+        concepts: pathSection.concepts || [],
+        prerequisites: pathSection.prerequisites || [],
+        deliveryOrder: i,
+        estimatedDuration: pathSection.estimatedDuration || 20,
+        difficulty: pathSection.difficulty || 0.5,
+        chunks: await this.planSectionChunks(pathSection, context, strategy),
+        adaptationTriggers: this.identifyAdaptationTriggers(pathSection, context),
+        checkpointType: this.determineCheckpointType(pathSection, i, path.sections.length)
+      };
+      
+      plannedSections.push(plannedSection);
+    }
+    
+    return plannedSections;
+  }
+
+  /**
+   * Plan chunks for a section
+   */
+  private async planSectionChunks(
+    section: PathSection,
+    context: ContentDeliveryContext,
+    strategy: DeliveryStrategy
+  ): Promise<PlannedChunk[]> {
+    const chunks: PlannedChunk[] = [];
+    const concepts = section.concepts || [];
+    const chunkSize = strategy.parameters.chunkSize;
+    
+    // Determine concepts per chunk based on strategy
+    const conceptsPerChunk = chunkSize === 'small' ? 1 : chunkSize === 'medium' ? 2 : 3;
+    
+    // Group concepts into chunks
+    for (let i = 0; i < concepts.length; i += conceptsPerChunk) {
+      const chunkConcepts = concepts.slice(i, i + conceptsPerChunk);
+      
+      // Create explanation chunk
+      chunks.push({
+        id: `${section.id}-explanation-${i}`,
+        type: 'explanation',
+        content: `Explanation of ${chunkConcepts.join(', ')}`,
+        concepts: chunkConcepts,
+        estimatedTime: this.estimateChunkTime('explanation', chunkConcepts.length, strategy),
+        prerequisites: this.getConceptPrerequisites(chunkConcepts, section),
+        deliveryConditions: this.createDeliveryConditions('explanation', context)
+      });
+      
+      // Add example chunk if strategy calls for high interactivity
+      if (strategy.parameters.interactivity !== 'low') {
+        chunks.push({
+          id: `${section.id}-example-${i}`,
+          type: 'example',
+          content: `Examples for ${chunkConcepts.join(', ')}`,
+          concepts: chunkConcepts,
+          estimatedTime: this.estimateChunkTime('example', chunkConcepts.length, strategy),
+          prerequisites: [`${section.id}-explanation-${i}`],
+          deliveryConditions: this.createDeliveryConditions('example', context)
+        });
+      }
+      
+      // Add practice chunk for complex concepts
+      if (chunkConcepts.length > 1 || strategy.parameters.reinforcement !== 'minimal') {
+        chunks.push({
+          id: `${section.id}-practice-${i}`,
+          type: 'practice',
+          content: `Practice exercises for ${chunkConcepts.join(', ')}`,
+          concepts: chunkConcepts,
+          estimatedTime: this.estimateChunkTime('practice', chunkConcepts.length, strategy),
+          prerequisites: chunks.slice(-2).map(c => c.id),
+          deliveryConditions: this.createDeliveryConditions('practice', context)
+        });
+      }
+    }
+    
+    // Add section assessment
+    chunks.push({
+      id: `${section.id}-assessment`,
+      type: 'assessment',
+      content: `Assessment for ${section.title}`,
+      concepts,
+      estimatedTime: Math.max(5, concepts.length * 2),
+      prerequisites: chunks.filter(c => c.type !== 'assessment').map(c => c.id),
+      deliveryConditions: [{
+        type: 'prerequisite_mastery',
+        condition: 'all_prerequisites_complete',
+        threshold: 0.7,
+        required: true
+      }]
+    });
+    
+    return chunks;
+  }
+
+  /**
+   * Create adaptation rules for dynamic delivery adjustment
+   */
+  private async createAdaptationRules(
+    context: ContentDeliveryContext,
+    strategy: DeliveryStrategy
+  ): Promise<AdaptationRule[]> {
+    const rules: AdaptationRule[] = [
+      {
+        id: 'low-engagement-increase-interactivity',
+        trigger: {
+          type: 'engagement',
+          condition: 'below_threshold',
+          threshold: 0.4
+        },
+        adaptation: {
+          type: 'content',
+          action: 'increase_interactivity',
+          parameters: { level: 'high', immediate: true }
+        },
+        priority: 9
+      },
+      {
+        id: 'struggling-concepts-add-support',
+        trigger: {
+          type: 'performance',
+          condition: 'concept_difficulty',
+          threshold: 0.5
+        },
+        adaptation: {
+          type: 'support',
+          action: 'add_scaffolding',
+          parameters: { type: 'examples', reinforcement: 'intensive' }
+        },
+        priority: 8
+      },
+      {
+        id: 'fast-progress-advance-pacing',
+        trigger: {
+          type: 'performance',
+          condition: 'above_expectation',
+          threshold: 0.8
+        },
+        adaptation: {
+          type: 'pacing',
+          action: 'accelerate',
+          parameters: { factor: 1.3, skip_optional: true }
+        },
+        priority: 6
+      },
+      {
+        id: 'extended-time-suggest-break',
+        trigger: {
+          type: 'time',
+          condition: 'session_duration',
+          threshold: context.learningStyleProfile.preferredSessionLength * 1.2
+        },
+        adaptation: {
+          type: 'pacing',
+          action: 'suggest_break',
+          parameters: { type: 'scheduled', duration: 10 }
+        },
+        priority: 7
+      }
+    ];
+    
+    return rules;
+  }
+
+  /**
+   * Establish progress checkpoints
+   */
+  private async establishCheckpoints(
+    context: ContentDeliveryContext,
+    sections: PlannedSection[]
+  ): Promise<ProgressCheckpoint[]> {
+    const checkpoints: ProgressCheckpoint[] = [];
+    
+    for (const section of sections) {
+      // Prerequisite checkpoint at section start
+      checkpoints.push({
+        id: `${section.id}-prerequisite`,
+        sectionId: section.id,
+        type: 'prerequisite',
+        position: 0,
+        requirements: section.prerequisites.map(prereq => ({
+          type: 'concept_mastery',
+          target: prereq,
+          threshold: 0.7,
+          weight: 1
+        })),
+        actions: [
+          {
+            type: 'proceed',
+            condition: 'all_requirements_met',
+            parameters: {}
+          },
+          {
+            type: 'remediate',
+            condition: 'requirements_not_met',
+            parameters: { focus: 'missing_prerequisites' }
+          }
+        ]
+      });
+      
+      // Mastery checkpoint at section end
+      checkpoints.push({
+        id: `${section.id}-mastery`,
+        sectionId: section.id,
+        type: 'mastery',
+        position: 1,
+        requirements: section.concepts.map(concept => ({
+          type: 'concept_mastery',
+          target: concept,
+          threshold: 0.75,
+          weight: 1 / section.concepts.length
+        })),
+        actions: [
+          {
+            type: 'proceed',
+            condition: 'mastery_achieved',
+            parameters: {}
+          },
+          {
+            type: 'review',
+            condition: 'partial_mastery',
+            parameters: { focus: 'weak_concepts' }
+          },
+          {
+            type: 'remediate',
+            condition: 'insufficient_mastery',
+            parameters: { comprehensive: true }
+          }
+        ]
+      });
+    }
+    
+    return checkpoints;
+  }
+
+  /**
+   * Initialize delivery state for a plan
+   */
+  private async initializeDeliveryState(planId: string, plan: ContentDeliveryPlan): Promise<void> {
+    const firstSection = plan.sections[0];
+    const availableChunks = firstSection ? 
+      firstSection.chunks.filter(chunk => chunk.deliveryConditions.every(cond => !cond.required)).map(c => c.id) : [];
+    
+    const state: DeliveryState = {
+      currentSection: firstSection?.id || '',
+      currentChunk: '',
+      completedChunks: [],
+      availableChunks,
+      waitingConditions: [],
+      adaptationHistory: [],
+      lastDelivery: new Date()
+    };
+    
+    this.deliveryStates.set(planId, state);
+  }
+
+  /**
+   * Update delivery state based on current context
+   */
+  private async updateDeliveryState(state: DeliveryState, context: ContentDeliveryContext): Promise<void> {
+    // Update based on new interactions
+    context.interactionHistory.forEach(interaction => {
+      if (interaction.type === 'content_view' && interaction.data.chunkId) {
+        if (!state.completedChunks.includes(interaction.data.chunkId)) {
+          state.completedChunks.push(interaction.data.chunkId);
+        }
+      }
+    });
+    
+    // Update current section if needed
+    if (context.currentSection !== state.currentSection) {
+      state.currentSection = context.currentSection;
+    }
+  }
+
+  /**
+   * Evaluate what adaptations are needed
+   */
+  private async evaluateAdaptations(
+    plan: ContentDeliveryPlan,
+    state: DeliveryState,
+    context: ContentDeliveryContext
+  ): Promise<AdaptationRule[]> {
+    const neededAdaptations: AdaptationRule[] = [];
+    
+    for (const rule of plan.adaptationRules) {
+      if (await this.shouldApplyAdaptationRule(rule, state, context)) {
+        neededAdaptations.push(rule);
+      }
+    }
+    
+    return neededAdaptations.sort((a, b) => b.priority - a.priority);
+  }
+
+  /**
+   * Check if adaptation rule should be applied
+   */
+  private async shouldApplyAdaptationRule(
+    rule: AdaptationRule,
+    state: DeliveryState,
+    context: ContentDeliveryContext
+  ): Promise<boolean> {
+    const trigger = rule.trigger;
+    
+    switch (trigger.type) {
+      case 'engagement':
+        return context.engagementLevel < trigger.threshold;
+      case 'performance':
+        const avgScore = context.assessmentResult.sectionScores ? 
+          Object.values(context.assessmentResult.sectionScores).reduce((sum, score) => sum + (score as number), 0) / 
+          Object.values(context.assessmentResult.sectionScores).length : 0.5;
+        return trigger.condition === 'below_threshold' ? 
+          avgScore < trigger.threshold : avgScore > trigger.threshold;
+      case 'time':
+        return context.timeInCurrentSection > trigger.threshold;
+      case 'interaction':
+        return context.interactionHistory.length > 0 && 
+          context.interactionHistory[context.interactionHistory.length - 1].engagement < trigger.threshold;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Apply adaptation to delivery plan
+   */
+  private async applyAdaptation(
+    plan: ContentDeliveryPlan,
+    state: DeliveryState,
+    rule: AdaptationRule,
+    context: ContentDeliveryContext
+  ): Promise<void> {
+    const adaptation = rule.adaptation;
+    
+    const adaptationEvent: AdaptationEvent = {
+      timestamp: new Date(),
+      trigger: rule.trigger.condition,
+      adaptation: rule.adaptation.action,
+      reason: `${rule.trigger.type} ${rule.trigger.condition} threshold: ${rule.trigger.threshold}`,
+      impact: {
+        contentChanged: false,
+        pacingChanged: false,
+        sequenceChanged: false
+      }
+    };
+    
+    switch (adaptation.type) {
+      case 'content':
+        if (adaptation.action === 'increase_interactivity') {
+          // Mark that content should be more interactive
+          adaptationEvent.impact.contentChanged = true;
+        }
+        break;
+      case 'pacing':
+        if (adaptation.action === 'accelerate') {
+          // Skip optional content or reduce chunk time
+          adaptationEvent.impact.pacingChanged = true;
+        } else if (adaptation.action === 'suggest_break') {
+          // Schedule a break
+          state.nextScheduledDelivery = new Date(Date.now() + (adaptation.parameters.duration * 60 * 1000));
+        }
+        break;
+      case 'support':
+        if (adaptation.action === 'add_scaffolding') {
+          // Add supporting content
+          adaptationEvent.impact.contentChanged = true;
+        }
+        break;
+      case 'sequence':
+        // Modify delivery sequence
+        adaptationEvent.impact.sequenceChanged = true;
+        break;
+    }
+    
+    state.adaptationHistory.push(adaptationEvent);
+  }
+
+  /**
+   * Determine next chunk to deliver
+   */
+  private async determineNextChunk(
+    plan: ContentDeliveryPlan,
+    state: DeliveryState,
+    context: ContentDeliveryContext
+  ): Promise<PlannedChunk | null> {
+    const currentSection = plan.sections.find(s => s.id === state.currentSection);
+    if (!currentSection) {
+      return null;
+    }
+    
+    // Find next available chunk
+    const availableChunk = currentSection.chunks.find(chunk => 
+      state.availableChunks.includes(chunk.id) && !state.completedChunks.includes(chunk.id)
+    );
+    
+    return availableChunk || null;
+  }
+
+  /**
+   * Update available chunks based on completion and conditions
+   */
+  private async updateAvailableChunks(
+    plan: ContentDeliveryPlan,
+    state: DeliveryState,
+    context: ContentDeliveryContext
+  ): Promise<void> {
+    const currentSection = plan.sections.find(s => s.id === state.currentSection);
+    if (!currentSection) {
+      return;
+    }
+    
+    // Check which chunks should now be available
+    const newlyAvailable: string[] = [];
+    
+    for (const chunk of currentSection.chunks) {
+      if (!state.availableChunks.includes(chunk.id) && !state.completedChunks.includes(chunk.id)) {
+        // Check if all prerequisites are met
+        const prerequisitesMet = chunk.prerequisites.every(prereq => 
+          state.completedChunks.includes(prereq) || !chunk.deliveryConditions.some(cond => cond.required)
+        );
+        
+        if (prerequisitesMet) {
+          newlyAvailable.push(chunk.id);
+        }
+      }
+    }
+    
+    state.availableChunks.push(...newlyAvailable);
+  }
+
+  /**
+   * Build streaming request for content generation
+   */
+  private buildStreamingRequest(context: ContentDeliveryContext, chunk: PlannedChunk): StreamingContentRequest {
+    return {
+      userId: context.userId,
+      topicId: context.topicId,
+      currentSection: chunk.content,
+      userAssessment: context.assessmentResult,
+      progressMetrics: context.sessionMetrics,
+      learningStyleProfile: context.learningStyleProfile,
+      sessionContext: {
+        timeSpent: context.timeInCurrentSection,
+        strugglingConcepts: context.strugglingConcepts,
+        masteredConcepts: context.masteredConcepts,
+        currentDifficulty: context.assessmentResult.knowledgeLevel || 'intermediate',
+        attentionLevel: context.attentionLevel,
+        engagementScore: context.engagementLevel
+      },
+      preferences: {
+        contentLength: chunk.estimatedTime > 15 ? 'long' : chunk.estimatedTime > 8 ? 'medium' : 'short',
+        explanationDepth: chunk.type === 'explanation' ? 'detailed' : 'overview',
+        exampleType: context.learningStyleProfile.examplePreference > 0.6 ? 'concrete' : 'mixed',
+        interactivityLevel: chunk.type === 'practice' ? 'high' : 'medium'
+      }
+    };
+  }
+
+  // Helper methods
+  private needsReview(section: PathSection, context: ContentDeliveryContext): boolean {
+    const sectionScore = context.assessmentResult.sectionScores?.[section.id];
+    return sectionScore !== undefined && sectionScore < 0.75;
+  }
+
+  private identifyAdaptationTriggers(section: PathSection, context: ContentDeliveryContext): string[] {
+    const triggers: string[] = [];
+    
+    if (section.difficulty && section.difficulty > 0.7) {
+      triggers.push('high_difficulty');
+    }
+    
+    if (section.concepts && section.concepts.length > 5) {
+      triggers.push('concept_overload');
+    }
+    
+    return triggers;
+  }
+
+  private determineCheckpointType(section: PathSection, index: number, totalSections: number): PlannedSection['checkpointType'] {
+    if (index === 0) return 'knowledge';
+    if (index === totalSections - 1) return 'synthesis';
+    return 'application';
+  }
+
+  private estimateChunkTime(type: string, conceptCount: number, strategy: DeliveryStrategy): number {
+    const baseTime = type === 'explanation' ? 8 : type === 'example' ? 6 : type === 'practice' ? 10 : 5;
+    const conceptMultiplier = Math.max(1, conceptCount);
+    const strategyMultiplier = strategy.parameters.chunkSize === 'large' ? 1.5 : 
+                              strategy.parameters.chunkSize === 'small' ? 0.7 : 1;
+    
+    return Math.round(baseTime * conceptMultiplier * strategyMultiplier);
+  }
+
+  private getConceptPrerequisites(concepts: string[], section: PathSection): string[] {
+    // This would normally involve more sophisticated prerequisite mapping
+    return section.prerequisites || [];
+  }
+
+  private createDeliveryConditions(type: string, context: ContentDeliveryContext): DeliveryCondition[] {
+    const conditions: DeliveryCondition[] = [];
+    
+    if (type === 'practice') {
+      conditions.push({
+        type: 'prerequisite_mastery',
+        condition: 'explanation_complete',
+        threshold: 1,
+        required: true
+      });
+    }
+    
+    if (context.learningStyleProfile.attentionSpan === 'short') {
+      conditions.push({
+        type: 'time_threshold',
+        condition: 'max_session_time',
+        threshold: 20, // minutes
+        required: false
+      });
+    }
+    
+    return conditions;
+  }
+
+  /**
+   * Initialize default delivery strategies
+   */
+  private initializeStrategies(): void {
+    this.strategies = [
+      {
+        id: 'structured-sequential',
+        name: 'Structured Sequential Learning',
+        description: 'Step-by-step progression with clear structure',
+        applicability: {
+          learningStyles: ['reading_writing', 'visual'],
+          knowledgeLevels: ['beginner', 'intermediate'],
+          contexts: ['formal_learning', 'skill_building']
+        },
+        parameters: {
+          chunkSize: 'medium',
+          sequencing: 'strict',
+          reinforcement: 'standard',
+          interactivity: 'medium'
+        },
+        priority: 7
+      },
+      {
+        id: 'interactive-adaptive',
+        name: 'Interactive Adaptive Learning',
+        description: 'High interactivity with real-time adaptation',
+        applicability: {
+          learningStyles: ['kinesthetic', 'auditory'],
+          knowledgeLevels: ['beginner', 'intermediate', 'advanced'],
+          contexts: ['exploratory_learning', 'skill_practice']
+        },
+        parameters: {
+          chunkSize: 'small',
+          sequencing: 'adaptive',
+          reinforcement: 'intensive',
+          interactivity: 'high'
+        },
+        priority: 8
+      },
+      {
+        id: 'accelerated-immersive',
+        name: 'Accelerated Immersive Learning',
+        description: 'Fast-paced comprehensive coverage',
+        applicability: {
+          learningStyles: ['multimodal', 'visual'],
+          knowledgeLevels: ['intermediate', 'advanced'],
+          contexts: ['advanced_learning', 'time_constrained']
+        },
+        parameters: {
+          chunkSize: 'large',
+          sequencing: 'flexible',
+          reinforcement: 'minimal',
+          interactivity: 'low'
+        },
+        priority: 6
+      },
+      {
+        id: 'exploratory-flexible',
+        name: 'Exploratory Flexible Learning',
+        description: 'Learner-directed with flexible pathways',
+        applicability: {
+          learningStyles: ['multimodal'],
+          knowledgeLevels: ['intermediate', 'advanced'],
+          contexts: ['research_learning', 'creative_exploration']
+        },
+        parameters: {
+          chunkSize: 'medium',
+          sequencing: 'flexible',
+          reinforcement: 'standard',
+          interactivity: 'medium'
+        },
+        priority: 7
+      }
+    ];
+  }
+}
+
+// Export both default and named exports for compatibility
+export { ProgressAwareContentDelivery };
+export default ProgressAwareContentDelivery;

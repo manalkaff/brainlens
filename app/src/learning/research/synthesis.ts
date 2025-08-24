@@ -1,13 +1,13 @@
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-import { type ResearchResult, type SearchResult } from './agents';
-import { type DeduplicationResult } from './aggregation/deduplication';
-import { type ScoredResult } from './scoring';
+import { openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { type ResearchResult, type SearchResult } from "./agents";
+import { type DeduplicationResult } from "./aggregation/deduplication";
+import { type ScoredResult } from "./scoring";
 
 export interface SynthesisConfig {
   maxTokens: number;
   temperature: number;
-  summaryLength: 'brief' | 'moderate' | 'detailed';
+  summaryLength: "brief" | "moderate" | "detailed";
   includeSourceAttribution: boolean;
   emphasizePerspectives: boolean;
   factCheckingEnabled: boolean;
@@ -48,7 +48,7 @@ export interface FactualHighlight {
   fact: string;
   confidence: number;
   sources: string[];
-  category: 'statistic' | 'definition' | 'process' | 'relationship' | 'example';
+  category: "statistic" | "definition" | "process" | "relationship" | "example";
 }
 
 export interface AgentContribution {
@@ -65,8 +65,13 @@ export interface BiasAssessment {
 }
 
 export interface DetectedBias {
-  type: 'political' | 'commercial' | 'cultural' | 'confirmation' | 'availability';
-  severity: 'low' | 'medium' | 'high';
+  type:
+    | "political"
+    | "commercial"
+    | "cultural"
+    | "confirmation"
+    | "availability";
+  severity: "low" | "medium" | "high";
   evidence: string[];
   sources: string[];
 }
@@ -81,12 +86,12 @@ export interface AdaptedContent {
 const DEFAULT_CONFIG: SynthesisConfig = {
   maxTokens: 2000,
   temperature: 0.3,
-  summaryLength: 'moderate',
+  summaryLength: "moderate",
   includeSourceAttribution: true,
   emphasizePerspectives: true,
   factCheckingEnabled: true,
   biasDetection: true,
-  learningStyleAdaptation: true
+  learningStyleAdaptation: true,
 };
 
 export class ContentSynthesisEngine {
@@ -105,11 +110,16 @@ export class ContentSynthesisEngine {
     scoredResults: ScoredResult[],
     topic: string,
     context?: {
-      userLevel?: 'beginner' | 'intermediate' | 'advanced';
-      learningStyle?: 'visual' | 'textual' | 'interactive' | 'video' | 'conversational';
+      userLevel?: "beginner" | "intermediate" | "advanced";
+      learningStyle?:
+        | "visual"
+        | "textual"
+        | "interactive"
+        | "video"
+        | "conversational";
       specificQuestions?: string[];
       focusAreas?: string[];
-    }
+    },
   ): Promise<SynthesisResult> {
     const startTime = Date.now();
 
@@ -118,48 +128,62 @@ export class ContentSynthesisEngine {
       const preparedContent = await this.prepareContentForSynthesis(
         researchResults,
         scoredResults,
-        topic
+        topic,
       );
 
       // Step 2: Generate core synthesized content
       const synthesizedContent = await this.generateSynthesizedContent(
         preparedContent,
         topic,
-        context
+        context,
       );
 
       // Step 3: Analyze agent contributions
-      const agentContributions = this.analyzeAgentContributions(researchResults);
+      const agentContributions =
+        this.analyzeAgentContributions(researchResults);
 
       // Step 4: Assess bias and factuality
-      const biasAssessment = await this.assessBias(synthesizedContent, researchResults);
-      const factualityScore = await this.assessFactuality(synthesizedContent, researchResults);
+      const biasAssessment = await this.assessBias(
+        synthesizedContent,
+        researchResults,
+      );
+      const factualityScore = await this.assessFactuality(
+        synthesizedContent,
+        researchResults,
+      );
 
       // Step 5: Generate adapted content for different contexts
-      const adaptedContent = context ? await this.generateAdaptedContent(
-        synthesizedContent,
-        topic,
-        context
-      ) : undefined;
+      const adaptedContent = context
+        ? await this.generateAdaptedContent(synthesizedContent, topic, context)
+        : undefined;
 
       const processingTime = Date.now() - startTime;
 
       return {
         synthesizedContent,
         metadata: {
-          sourceCount: researchResults.reduce((sum, r) => sum + r.results.length, 0),
+          sourceCount: researchResults.reduce(
+            (sum, r) => sum + r.results.length,
+            0,
+          ),
           agentContributions,
-          confidenceScore: this.calculateOverallConfidence(researchResults, scoredResults),
+          confidenceScore: this.calculateOverallConfidence(
+            researchResults,
+            scoredResults,
+          ),
           biasAssessment,
           factualityScore,
-          processingTime
+          processingTime,
         },
-        adaptedContent
+        adaptedContent,
       };
-
     } catch (error) {
-      console.error('Content synthesis failed:', error);
-      throw new Error(`Content synthesis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Content synthesis failed:", error);
+      throw new Error(
+        `Content synthesis failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   }
 
@@ -169,7 +193,7 @@ export class ContentSynthesisEngine {
   private async prepareContentForSynthesis(
     researchResults: ResearchResult[],
     scoredResults: ScoredResult[],
-    topic: string
+    topic: string,
   ): Promise<{
     organizedContent: OrganizedContent;
     topResults: SearchResult[];
@@ -178,13 +202,13 @@ export class ContentSynthesisEngine {
     // Get top results based on scoring
     const topResults = scoredResults
       .slice(0, 20) // Take top 20 results
-      .map(sr => ({
+      .map((sr) => ({
         title: sr.title,
         snippet: sr.snippet,
         url: sr.url,
-        source: sr.sources.join(', '),
+        source: sr.sources.join(", "),
         relevanceScore: sr.finalScore,
-        metadata: sr.metadata
+        metadata: sr.metadata,
       }));
 
     // Organize content by type and perspective
@@ -193,15 +217,18 @@ export class ContentSynthesisEngine {
     // Generate agent-specific summaries
     const agentSummaries: { [agentName: string]: string } = {};
     for (const result of researchResults) {
-      if (result.status === 'success' && result.results.length > 0) {
-        agentSummaries[result.agent] = await this.generateAgentSummary(result, topic);
+      if (result.status === "success" && result.results.length > 0) {
+        agentSummaries[result.agent] = await this.generateAgentSummary(
+          result,
+          topic,
+        );
       }
     }
 
     return {
       organizedContent,
       topResults,
-      agentSummaries
+      agentSummaries,
     };
   }
 
@@ -215,7 +242,7 @@ export class ContentSynthesisEngine {
       agentSummaries: { [agentName: string]: string };
     },
     topic: string,
-    context?: any
+    context?: any,
   ): Promise<{
     summary: string;
     keyPoints: string[];
@@ -226,25 +253,25 @@ export class ContentSynthesisEngine {
     const synthesisPrompt = this.createSynthesisPrompt(
       preparedContent,
       topic,
-      context
+      context,
     );
 
     // Call OpenAI for synthesis using AI SDK
     const result = await generateText({
-      model: openai('gpt-4-turbo-preview'),
+      model: openai("gpt-5-mini"),
       system: this.getSynthesisSystemPrompt(),
       prompt: synthesisPrompt,
       temperature: this.config.temperature,
     });
 
-    const synthesisResponse = JSON.parse(result.text || '{}');
+    const synthesisResponse = JSON.parse(result.text || "{}");
 
     // Extract and validate the synthesized content
     return {
-      summary: synthesisResponse.summary || 'No summary generated',
+      summary: synthesisResponse.summary || "No summary generated",
       keyPoints: synthesisResponse.keyPoints || [],
       perspectives: synthesisResponse.perspectives || [],
-      factualHighlights: synthesisResponse.factualHighlights || []
+      factualHighlights: synthesisResponse.factualHighlights || [],
     };
   }
 
@@ -258,44 +285,54 @@ export class ContentSynthesisEngine {
       agentSummaries: { [agentName: string]: string };
     },
     topic: string,
-    context?: any
+    context?: any,
   ): string {
     const { organizedContent, topResults, agentSummaries } = preparedContent;
 
     let prompt = `Please synthesize comprehensive information about "${topic}" based on research from multiple specialized agents.\n\n`;
 
     // Add agent summaries
-    prompt += '## Agent Research Summaries:\n';
+    prompt += "## Agent Research Summaries:\n";
     Object.entries(agentSummaries).forEach(([agent, summary]) => {
       prompt += `**${agent}**: ${summary}\n\n`;
     });
 
     // Add organized content
-    prompt += '## Organized Research Content:\n';
-    
+    prompt += "## Organized Research Content:\n";
+
     if (organizedContent.academic.length > 0) {
-      prompt += `**Academic Sources**: ${organizedContent.academic.map(r => r.snippet).join(' ')}\n\n`;
+      prompt += `**Academic Sources**: ${organizedContent.academic
+        .map((r) => r.snippet)
+        .join(" ")}\n\n`;
     }
-    
+
     if (organizedContent.general.length > 0) {
-      prompt += `**General Sources**: ${organizedContent.general.map(r => r.snippet).join(' ')}\n\n`;
+      prompt += `**General Sources**: ${organizedContent.general
+        .map((r) => r.snippet)
+        .join(" ")}\n\n`;
     }
-    
+
     if (organizedContent.community.length > 0) {
-      prompt += `**Community Insights**: ${organizedContent.community.map(r => r.snippet).join(' ')}\n\n`;
+      prompt += `**Community Insights**: ${organizedContent.community
+        .map((r) => r.snippet)
+        .join(" ")}\n\n`;
     }
-    
+
     if (organizedContent.computational.length > 0) {
-      prompt += `**Technical/Computational**: ${organizedContent.computational.map(r => r.snippet).join(' ')}\n\n`;
+      prompt += `**Technical/Computational**: ${organizedContent.computational
+        .map((r) => r.snippet)
+        .join(" ")}\n\n`;
     }
-    
+
     if (organizedContent.video.length > 0) {
-      prompt += `**Video Content**: ${organizedContent.video.map(r => r.snippet).join(' ')}\n\n`;
+      prompt += `**Video Content**: ${organizedContent.video
+        .map((r) => r.snippet)
+        .join(" ")}\n\n`;
     }
 
     // Add context if provided
     if (context) {
-      prompt += '## Context:\n';
+      prompt += "## Context:\n";
       if (context.userLevel) {
         prompt += `User Level: ${context.userLevel}\n`;
       }
@@ -303,12 +340,14 @@ export class ContentSynthesisEngine {
         prompt += `Learning Style: ${context.learningStyle}\n`;
       }
       if (context.specificQuestions) {
-        prompt += `Specific Questions: ${context.specificQuestions.join(', ')}\n`;
+        prompt += `Specific Questions: ${context.specificQuestions.join(
+          ", ",
+        )}\n`;
       }
       if (context.focusAreas) {
-        prompt += `Focus Areas: ${context.focusAreas.join(', ')}\n`;
+        prompt += `Focus Areas: ${context.focusAreas.join(", ")}\n`;
       }
-      prompt += '\n';
+      prompt += "\n";
     }
 
     // Add synthesis instructions
@@ -346,7 +385,7 @@ Please provide a JSON response with the following structure:
   "keyPoints": [
     "Key point 1 with supporting evidence",
     "Key point 2 with supporting evidence",
-    "..." 
+    "..."
   ],
   "perspectives": [
     {
@@ -379,17 +418,19 @@ Focus on:
   /**
    * Organize content by type/source
    */
-  private organizeContentByType(researchResults: ResearchResult[]): OrganizedContent {
+  private organizeContentByType(
+    researchResults: ResearchResult[],
+  ): OrganizedContent {
     const organized: OrganizedContent = {
       academic: [],
       general: [],
       community: [],
       video: [],
-      computational: []
+      computational: [],
     };
 
-    researchResults.forEach(result => {
-      if (result.status !== 'success') return;
+    researchResults.forEach((result) => {
+      if (result.status !== "success") return;
 
       const agentType = this.classifyAgentType(result.agent);
       if (organized[agentType]) {
@@ -405,36 +446,41 @@ Focus on:
    */
   private classifyAgentType(agentName: string): keyof OrganizedContent {
     const name = agentName.toLowerCase();
-    if (name.includes('academic')) return 'academic';
-    if (name.includes('community')) return 'community';
-    if (name.includes('video')) return 'video';
-    if (name.includes('computational')) return 'computational';
-    return 'general';
+    if (name.includes("academic")) return "academic";
+    if (name.includes("community")) return "community";
+    if (name.includes("video")) return "video";
+    if (name.includes("computational")) return "computational";
+    return "general";
   }
 
   /**
    * Generate agent-specific summary
    */
-  private async generateAgentSummary(result: ResearchResult, topic: string): Promise<string> {
+  private async generateAgentSummary(
+    result: ResearchResult,
+    topic: string,
+  ): Promise<string> {
     if (result.summary && result.summary.length > 50) {
       return result.summary;
     }
 
     // Generate summary from search results
     const topResults = result.results.slice(0, 5);
-    const content = topResults.map(r => `${r.title}: ${r.snippet}`).join('\n');
+    const content = topResults
+      .map((r) => `${r.title}: ${r.snippet}`)
+      .join("\n");
 
     try {
       const aiResult = await generateText({
-        model: openai('gpt-3.5-turbo'),
+        model: openai("gpt-5-mini"),
         system: `Summarize the key insights about "${topic}" from the ${result.agent} in 2-3 sentences.`,
         prompt: content,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
-      return aiResult.text || 'No summary available';
+      return aiResult.text || "No summary available";
     } catch (error) {
-      console.error('Failed to generate agent summary:', error);
+      console.error("Failed to generate agent summary:", error);
       return `${result.agent} found ${result.results.length} results about ${topic}`;
     }
   }
@@ -442,14 +488,20 @@ Focus on:
   /**
    * Analyze contributions from each agent
    */
-  private analyzeAgentContributions(researchResults: ResearchResult[]): AgentContribution[] {
-    const totalResults = researchResults.reduce((sum, r) => sum + r.results.length, 0);
-    
-    return researchResults.map(result => ({
+  private analyzeAgentContributions(
+    researchResults: ResearchResult[],
+  ): AgentContribution[] {
+    const totalResults = researchResults.reduce(
+      (sum, r) => sum + r.results.length,
+      0,
+    );
+
+    return researchResults.map((result) => ({
       agentName: result.agent,
-      contributionPercentage: totalResults > 0 ? (result.results.length / totalResults) * 100 : 0,
+      contributionPercentage:
+        totalResults > 0 ? (result.results.length / totalResults) * 100 : 0,
       uniqueInsights: this.extractUniqueInsights(result),
-      overlap: this.calculateOverlapScore(result, researchResults)
+      overlap: this.calculateOverlapScore(result, researchResults),
     }));
   }
 
@@ -457,17 +509,17 @@ Focus on:
    * Extract unique insights from an agent's results
    */
   private extractUniqueInsights(result: ResearchResult): string[] {
-    if (result.status !== 'success' || result.results.length === 0) return [];
+    if (result.status !== "success" || result.results.length === 0) return [];
 
     // Simple heuristic: take distinctive phrases from top results
     const insights: string[] = [];
     const topResults = result.results.slice(0, 3);
 
-    topResults.forEach(searchResult => {
-      const snippet = searchResult.snippet || '';
+    topResults.forEach((searchResult) => {
+      const snippet = searchResult.snippet || "";
       // Extract sentences that contain domain-specific terms
       const sentences = snippet.split(/[.!?]+/);
-      sentences.forEach(sentence => {
+      sentences.forEach((sentence) => {
         if (this.hasUniqueTerms(sentence, result.agent)) {
           insights.push(sentence.trim());
         }
@@ -485,31 +537,54 @@ Focus on:
     const agentType = this.classifyAgentType(agentName);
 
     const uniqueTerms = {
-      academic: ['research', 'study', 'analysis', 'methodology', 'peer-reviewed'],
-      computational: ['algorithm', 'calculation', 'formula', 'data', 'compute'],
-      video: ['tutorial', 'demonstration', 'visual', 'explanation', 'walkthrough'],
-      community: ['discussion', 'experience', 'community', 'practical', 'real-world'],
-      general: ['overview', 'introduction', 'guide', 'basics', 'information']
+      academic: [
+        "research",
+        "study",
+        "analysis",
+        "methodology",
+        "peer-reviewed",
+      ],
+      computational: ["algorithm", "calculation", "formula", "data", "compute"],
+      video: [
+        "tutorial",
+        "demonstration",
+        "visual",
+        "explanation",
+        "walkthrough",
+      ],
+      community: [
+        "discussion",
+        "experience",
+        "community",
+        "practical",
+        "real-world",
+      ],
+      general: ["overview", "introduction", "guide", "basics", "information"],
     };
 
     const terms = uniqueTerms[agentType] || [];
-    return terms.some(term => lowerSentence.includes(term)) && sentence.length > 30;
+    return (
+      terms.some((term) => lowerSentence.includes(term)) && sentence.length > 30
+    );
   }
 
   /**
    * Calculate overlap score between agents
    */
-  private calculateOverlapScore(result: ResearchResult, allResults: ResearchResult[]): number {
+  private calculateOverlapScore(
+    result: ResearchResult,
+    allResults: ResearchResult[],
+  ): number {
     if (result.results.length === 0) return 0;
 
     let overlapCount = 0;
     let totalComparisons = 0;
 
-    result.results.forEach(searchResult => {
-      allResults.forEach(otherResult => {
+    result.results.forEach((searchResult) => {
+      allResults.forEach((otherResult) => {
         if (otherResult.agent === result.agent) return;
 
-        otherResult.results.forEach(otherSearchResult => {
+        otherResult.results.forEach((otherSearchResult) => {
           totalComparisons++;
           if (this.areResultsSimilar(searchResult, otherSearchResult)) {
             overlapCount++;
@@ -524,17 +599,22 @@ Focus on:
   /**
    * Check if two search results are similar
    */
-  private areResultsSimilar(result1: SearchResult, result2: SearchResult): boolean {
+  private areResultsSimilar(
+    result1: SearchResult,
+    result2: SearchResult,
+  ): boolean {
     // Simple similarity check
-    const title1 = (result1.title || '').toLowerCase();
-    const title2 = (result2.title || '').toLowerCase();
-    
+    const title1 = (result1.title || "").toLowerCase();
+    const title2 = (result2.title || "").toLowerCase();
+
     if (title1 === title2) return true;
-    
+
     const words1 = title1.split(/\s+/);
     const words2 = title2.split(/\s+/);
-    const commonWords = words1.filter(word => words2.includes(word) && word.length > 3);
-    
+    const commonWords = words1.filter(
+      (word) => words2.includes(word) && word.length > 3,
+    );
+
     return commonWords.length >= Math.min(words1.length, words2.length) * 0.5;
   }
 
@@ -547,7 +627,7 @@ Focus on:
       keyPoints: string[];
       perspectives: Perspective[];
     },
-    researchResults: ResearchResult[]
+    researchResults: ResearchResult[],
   ): Promise<BiasAssessment> {
     // Simplified bias assessment
     // In a real implementation, this would use more sophisticated NLP techniques
@@ -555,16 +635,19 @@ Focus on:
     const allText = [
       content.summary,
       ...content.keyPoints,
-      ...content.perspectives.map(p => p.description)
-    ].join(' ');
+      ...content.perspectives.map((p) => p.description),
+    ].join(" ");
 
     const biasIndicators = this.detectSimpleBias(allText);
-    const balanceScore = this.calculateBalanceScore(content.perspectives, researchResults);
+    const balanceScore = this.calculateBalanceScore(
+      content.perspectives,
+      researchResults,
+    );
 
     return {
       overallScore: biasIndicators.length > 0 ? 0.3 : 0.1,
       detectedBiases: biasIndicators,
-      balanceScore
+      balanceScore,
     };
   }
 
@@ -576,24 +659,36 @@ Focus on:
     const lowerText = text.toLowerCase();
 
     // Commercial bias
-    const commercialTerms = ['buy', 'purchase', 'product', 'sale', 'discount', 'offer'];
-    if (commercialTerms.some(term => lowerText.includes(term))) {
+    const commercialTerms = [
+      "buy",
+      "purchase",
+      "product",
+      "sale",
+      "discount",
+      "offer",
+    ];
+    if (commercialTerms.some((term) => lowerText.includes(term))) {
       biases.push({
-        type: 'commercial',
-        severity: 'medium',
-        evidence: commercialTerms.filter(term => lowerText.includes(term)),
-        sources: ['Content Analysis']
+        type: "commercial",
+        severity: "medium",
+        evidence: commercialTerms.filter((term) => lowerText.includes(term)),
+        sources: ["Content Analysis"],
       });
     }
 
     // Confirmation bias (strong assertions without evidence)
-    const strongAssertions = ['obviously', 'clearly', 'definitely', 'without doubt'];
-    if (strongAssertions.some(term => lowerText.includes(term))) {
+    const strongAssertions = [
+      "obviously",
+      "clearly",
+      "definitely",
+      "without doubt",
+    ];
+    if (strongAssertions.some((term) => lowerText.includes(term))) {
       biases.push({
-        type: 'confirmation',
-        severity: 'low',
-        evidence: strongAssertions.filter(term => lowerText.includes(term)),
-        sources: ['Content Analysis']
+        type: "confirmation",
+        severity: "low",
+        evidence: strongAssertions.filter((term) => lowerText.includes(term)),
+        sources: ["Content Analysis"],
       });
     }
 
@@ -603,15 +698,24 @@ Focus on:
   /**
    * Calculate balance score based on perspective representation
    */
-  private calculateBalanceScore(perspectives: Perspective[], researchResults: ResearchResult[]): number {
-    const agentCount = researchResults.filter(r => r.status === 'success').length;
+  private calculateBalanceScore(
+    perspectives: Perspective[],
+    researchResults: ResearchResult[],
+  ): number {
+    const agentCount = researchResults.filter(
+      (r) => r.status === "success",
+    ).length;
     const perspectiveCount = perspectives.length;
-    
+
     // Good balance if we have perspectives from multiple sources
-    const diverseSourceCount = new Set(perspectives.flatMap(p => p.sources)).size;
-    
-    return Math.min(1, (diverseSourceCount / Math.max(1, agentCount)) * 0.7 + 
-                     (perspectiveCount / Math.max(1, agentCount)) * 0.3);
+    const diverseSourceCount = new Set(perspectives.flatMap((p) => p.sources))
+      .size;
+
+    return Math.min(
+      1,
+      (diverseSourceCount / Math.max(1, agentCount)) * 0.7 +
+        (perspectiveCount / Math.max(1, agentCount)) * 0.3,
+    );
   }
 
   /**
@@ -623,29 +727,34 @@ Focus on:
       keyPoints: string[];
       factualHighlights: FactualHighlight[];
     },
-    researchResults: ResearchResult[]
+    researchResults: ResearchResult[],
   ): Promise<number> {
     // Simplified factuality assessment
     let factualityScore = 0.7; // Base score
 
     // Boost for academic sources
-    const hasAcademicSources = researchResults.some(r => 
-      r.agent.toLowerCase().includes('academic') && r.status === 'success'
+    const hasAcademicSources = researchResults.some(
+      (r) =>
+        r.agent.toLowerCase().includes("academic") && r.status === "success",
     );
     if (hasAcademicSources) {
       factualityScore += 0.1;
     }
 
     // Boost for multiple source confirmation
-    if (content.factualHighlights.some(fh => fh.sources.length > 1)) {
+    if (content.factualHighlights.some((fh) => fh.sources.length > 1)) {
       factualityScore += 0.1;
     }
 
     // Boost for high-confidence factual highlights
-    const avgConfidence = content.factualHighlights.length > 0 
-      ? content.factualHighlights.reduce((sum, fh) => sum + fh.confidence, 0) / content.factualHighlights.length
-      : 0.5;
-    
+    const avgConfidence =
+      content.factualHighlights.length > 0
+        ? content.factualHighlights.reduce(
+            (sum, fh) => sum + fh.confidence,
+            0,
+          ) / content.factualHighlights.length
+        : 0.5;
+
     factualityScore += (avgConfidence - 0.5) * 0.2;
 
     return Math.max(0, Math.min(1, factualityScore));
@@ -656,16 +765,21 @@ Focus on:
    */
   private calculateOverallConfidence(
     researchResults: ResearchResult[],
-    scoredResults: ScoredResult[]
+    scoredResults: ScoredResult[],
   ): number {
-    const successfulResults = researchResults.filter(r => r.status === 'success');
-    const successRate = successfulResults.length / Math.max(1, researchResults.length);
-    
-    const avgScore = scoredResults.length > 0
-      ? scoredResults.slice(0, 10).reduce((sum, r) => sum + r.finalScore, 0) / Math.min(10, scoredResults.length)
-      : 0.5;
+    const successfulResults = researchResults.filter(
+      (r) => r.status === "success",
+    );
+    const successRate =
+      successfulResults.length / Math.max(1, researchResults.length);
 
-    return (successRate * 0.4 + avgScore * 0.6);
+    const avgScore =
+      scoredResults.length > 0
+        ? scoredResults.slice(0, 10).reduce((sum, r) => sum + r.finalScore, 0) /
+          Math.min(10, scoredResults.length)
+        : 0.5;
+
+    return successRate * 0.4 + avgScore * 0.6;
   }
 
   /**
@@ -679,11 +793,16 @@ Focus on:
     },
     topic: string,
     context: {
-      userLevel?: 'beginner' | 'intermediate' | 'advanced';
-      learningStyle?: 'visual' | 'textual' | 'interactive' | 'video' | 'conversational';
+      userLevel?: "beginner" | "intermediate" | "advanced";
+      learningStyle?:
+        | "visual"
+        | "textual"
+        | "interactive"
+        | "video"
+        | "conversational";
       specificQuestions?: string[];
       focusAreas?: string[];
-    }
+    },
   ): Promise<{
     userLevel?: AdaptedContent;
     learningStyle?: AdaptedContent;
@@ -698,7 +817,7 @@ Focus on:
       adaptations.userLevel = await this.generateUserLevelAdaptation(
         synthesizedContent,
         topic,
-        context.userLevel
+        context.userLevel,
       );
     }
 
@@ -707,7 +826,7 @@ Focus on:
       adaptations.learningStyle = await this.generateLearningStyleAdaptation(
         synthesizedContent,
         topic,
-        context.learningStyle
+        context.learningStyle,
       );
     }
 
@@ -720,33 +839,37 @@ Focus on:
   private async generateUserLevelAdaptation(
     content: { summary: string; keyPoints: string[] },
     topic: string,
-    userLevel: 'beginner' | 'intermediate' | 'advanced'
+    userLevel: "beginner" | "intermediate" | "advanced",
   ): Promise<AdaptedContent> {
-    const adaptationPrompt = this.createUserLevelAdaptationPrompt(content, topic, userLevel);
+    const adaptationPrompt = this.createUserLevelAdaptationPrompt(
+      content,
+      topic,
+      userLevel,
+    );
 
     try {
       const aiResult = await generateText({
-        model: openai('gpt-3.5-turbo'),
+        model: openai("gpt-5-mini"),
         system: `Adapt content about "${topic}" for ${userLevel} level learners. Focus on appropriate complexity and examples.`,
         prompt: adaptationPrompt,
-        temperature: 0.4
+        temperature: 0.4,
       });
 
-      const response = JSON.parse(aiResult.text || '{}');
-      
+      const response = JSON.parse(aiResult.text || "{}");
+
       return {
         summary: response.summary || content.summary,
-        explanation: response.explanation || '',
+        explanation: response.explanation || "",
         examples: response.examples || [],
-        recommendations: response.recommendations || []
+        recommendations: response.recommendations || [],
       };
     } catch (error) {
-      console.error('Failed to generate user level adaptation:', error);
+      console.error("Failed to generate user level adaptation:", error);
       return {
         summary: content.summary,
-        explanation: '',
+        explanation: "",
         examples: [],
-        recommendations: []
+        recommendations: [],
       };
     }
   }
@@ -757,7 +880,7 @@ Focus on:
   private async generateLearningStyleAdaptation(
     content: { summary: string; keyPoints: string[] },
     topic: string,
-    learningStyle: string
+    learningStyle: string,
   ): Promise<AdaptedContent> {
     // Simplified adaptation based on learning style
     return {
@@ -765,8 +888,8 @@ Focus on:
       explanation: `This content is adapted for ${learningStyle} learning preferences.`,
       examples: [],
       recommendations: [
-        `Consider exploring ${learningStyle} resources for deeper understanding`
-      ]
+        `Consider exploring ${learningStyle} resources for deeper understanding`,
+      ],
     };
   }
 
@@ -776,13 +899,13 @@ Focus on:
   private createUserLevelAdaptationPrompt(
     content: { summary: string; keyPoints: string[] },
     topic: string,
-    userLevel: string
+    userLevel: string,
   ): string {
     return `Please adapt the following content about "${topic}" for ${userLevel} level learners:
 
 Summary: ${content.summary}
 
-Key Points: ${content.keyPoints.join('\n')}
+Key Points: ${content.keyPoints.join("\n")}
 
 Provide a JSON response with:
 {

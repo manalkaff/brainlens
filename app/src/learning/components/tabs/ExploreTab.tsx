@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Separator } from '../../../components/ui/separator';
@@ -16,7 +16,21 @@ import {
   ChevronLeft, 
   ChevronRight,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Search,
+  Filter,
+  Bookmark,
+  BookmarkPlus,
+  History,
+  Star,
+  Clock,
+  Eye,
+  EyeOff,
+  Zap,
+  TrendingUp,
+  Target,
+  Home,
+  ChevronDown
 } from 'lucide-react';
 
 export function ExploreTab() {
@@ -54,6 +68,13 @@ export function ExploreTab() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
 
+  // Enhanced navigation state
+  const [activeTab, setActiveTab] = useState<'tree' | 'bookmarks' | 'recent'>('tree');
+  const [filterText, setFilterText] = useState('');
+  const [showCompletedOnly, setShowCompletedOnly] = useState(false);
+  const [recentTopics, setRecentTopics] = useState<TopicTreeItem[]>([]);
+  const [bookmarkedTopics, setBookmarkedTopics] = useState<string[]>([]);
+
   // Auto-select the current topic when topics load
   useEffect(() => {
     if (topic && topics.length > 0 && !selectedTopic) {
@@ -69,9 +90,56 @@ export function ExploreTab() {
       const currentTopicInTree = findTopicInTree(topics, topic.slug);
       if (currentTopicInTree) {
         selectTopic(currentTopicInTree);
+        // Add to recent topics
+        addToRecentTopics(currentTopicInTree);
       }
     }
   }, [topic, topics, selectedTopic, selectTopic]);
+
+  // Track recent topics
+  const addToRecentTopics = (topic: TopicTreeItem) => {
+    setRecentTopics(prev => {
+      const filtered = prev.filter(t => t.id !== topic.id);
+      return [topic, ...filtered].slice(0, 10); // Keep last 10
+    });
+  };
+
+  // Enhanced topic selection with recent tracking
+  const handleTopicSelect = (topic: TopicTreeItem) => {
+    selectTopic(topic);
+    addToRecentTopics(topic);
+  };
+
+  // Bookmark management
+  const toggleTopicBookmark = (topicId: string) => {
+    setBookmarkedTopics(prev => 
+      prev.includes(topicId) 
+        ? prev.filter(id => id !== topicId)
+        : [...prev, topicId]
+    );
+  };
+
+  // Filter topics based on current criteria
+  const filteredTopics = useMemo(() => {
+    if (!filterText && !showCompletedOnly) return topics;
+    
+    const filterRecursive = (topicList: TopicTreeItem[]): TopicTreeItem[] => {
+      return topicList.filter(t => {
+        const matchesFilter = !filterText || 
+          t.title.toLowerCase().includes(filterText.toLowerCase()) ||
+          t.summary?.toLowerCase().includes(filterText.toLowerCase());
+        
+        const matchesCompletion = !showCompletedOnly || isRead(t.id);
+        
+        return matchesFilter && matchesCompletion;
+      }).map(t => ({
+        ...t,
+        children: t.children ? filterRecursive(t.children) : []
+      }));
+    };
+    
+    return filterRecursive(topics);
+  }, [topics, filterText, showCompletedOnly, isRead]);
 
   // Handle mouse resize for sidebar
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -144,7 +212,7 @@ export function ExploreTab() {
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-sm">Topic Structure</h3>
+              <h3 className="font-semibold text-sm">Navigation</h3>
             </div>
           )}
           <Button
@@ -161,20 +229,106 @@ export function ExploreTab() {
           </Button>
         </div>
 
+        {/* Navigation Tabs */}
+        {!sidebarCollapsed && (
+          <div className="border-b bg-muted/30">
+            <div className="flex">
+              <Button
+                variant={activeTab === 'tree' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('tree')}
+                className="flex-1 rounded-none h-9 text-xs"
+              >
+                <BookOpen className="w-3 h-3 mr-1" />
+                Tree
+              </Button>
+              <Button
+                variant={activeTab === 'bookmarks' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('bookmarks')}
+                className="flex-1 rounded-none h-9 text-xs"
+              >
+                <Bookmark className="w-3 h-3 mr-1" />
+                Saved
+              </Button>
+              <Button
+                variant={activeTab === 'recent' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('recent')}
+                className="flex-1 rounded-none h-9 text-xs"
+              >
+                <History className="w-3 h-3 mr-1" />
+                Recent
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Search and Filters */}
+        {!sidebarCollapsed && activeTab === 'tree' && (
+          <div className="p-3 border-b space-y-2">
+            <div className="relative">
+              <Search className="w-3 h-3 absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search topics..."
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                className="w-full pl-7 pr-3 py-1.5 text-xs border rounded-md bg-background"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showCompletedOnly ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowCompletedOnly(!showCompletedOnly)}
+                className="flex-1 h-7 text-xs"
+              >
+                <Eye className="w-3 h-3 mr-1" />
+                {showCompletedOnly ? 'All' : 'Read'}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Sidebar Content */}
         <div className="flex-1 overflow-hidden">
           {!sidebarCollapsed && (
-            <div className="h-full p-4">
-              <TopicTree
-                topics={topicsToShow}
-                selectedTopicId={selectedTopic?.id}
-                onTopicSelect={selectTopic}
-                onGenerateSubtopics={generateSubtopics}
-                isGenerating={isGenerating}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                compact={true}
-              />
+            <div className="h-full">
+              {activeTab === 'tree' && (
+                <div className="h-full p-4">
+                  <TopicTree
+                    topics={filteredTopics.length > 0 ? filteredTopics : topicsToShow}
+                    selectedTopicId={selectedTopic?.id}
+                    onTopicSelect={handleTopicSelect}
+                    onGenerateSubtopics={generateSubtopics}
+                    isGenerating={isGenerating}
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    compact={true}
+                  />
+                </div>
+              )}
+              
+              {activeTab === 'bookmarks' && (
+                <BookmarksView
+                  bookmarkedTopics={bookmarkedTopics}
+                  allTopics={topics}
+                  onTopicSelect={handleTopicSelect}
+                  onToggleBookmark={toggleTopicBookmark}
+                  selectedTopicId={selectedTopic?.id}
+                />
+              )}
+              
+              {activeTab === 'recent' && (
+                <RecentTopicsView
+                  recentTopics={recentTopics}
+                  onTopicSelect={handleTopicSelect}
+                  onToggleBookmark={toggleTopicBookmark}
+                  bookmarkedTopics={bookmarkedTopics}
+                  selectedTopicId={selectedTopic?.id}
+                />
+              )}
             </div>
           )}
         </div>
@@ -191,41 +345,74 @@ export function ExploreTab() {
       {/* Right Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Content Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-card">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary" />
-            <h3 className="font-semibold text-sm">
-              {selectedTopic ? selectedTopic.title : 'Select a Topic'}
-            </h3>
-            {selectedTopic && selectedTopic.summary && (
-              <>
-                <Separator orientation="vertical" className="h-4" />
-                <p className="text-xs text-muted-foreground truncate max-w-md">
-                  {selectedTopic.summary}
-                </p>
-              </>
-            )}
-          </div>
+        <div className="border-b bg-card">
+          {/* Breadcrumb Navigation */}
+          {selectedTopic && (
+            <BreadcrumbNavigation
+              topic={selectedTopic}
+              allTopics={topics}
+              onTopicSelect={handleTopicSelect}
+            />
+          )}
           
-          <div className="flex items-center gap-2">
-            {selectedTopic && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={generateContent}
-                disabled={isGeneratingContent}
-                className="text-xs"
-              >
-                {isGeneratingContent ? (
-                  <>
-                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  'Generate Content'
-                )}
-              </Button>
-            )}
+          <div className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              <h3 className="font-semibold text-sm">
+                {selectedTopic ? selectedTopic.title : 'Select a Topic'}
+              </h3>
+              {selectedTopic && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleTopicBookmark(selectedTopic.id)}
+                  className="h-6 w-6 p-0 ml-2"
+                >
+                  {bookmarkedTopics.includes(selectedTopic.id) ? (
+                    <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
+                  ) : (
+                    <BookmarkPlus className="w-3 h-3 text-muted-foreground" />
+                  )}
+                </Button>
+              )}
+              {selectedTopic && selectedTopic.summary && (
+                <>
+                  <Separator orientation="vertical" className="h-4" />
+                  <p className="text-xs text-muted-foreground truncate max-w-md">
+                    {selectedTopic.summary}
+                  </p>
+                </>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {selectedTopic && (
+                <>
+                  {isRead(selectedTopic.id) && (
+                    <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                      <Eye className="w-3 h-3" />
+                      Read
+                    </div>
+                  )}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={generateContent}
+                    disabled={isGeneratingContent}
+                    className="text-xs"
+                  >
+                    {isGeneratingContent ? (
+                      <>
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      'Generate Content'
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -252,7 +439,13 @@ export function ExploreTab() {
               />
             )
           ) : (
-            <EmptyState />
+            <EnhancedEmptyState 
+              onStartExploring={() => setActiveTab('tree')}
+              hasRecentTopics={recentTopics.length > 0}
+              hasBookmarks={bookmarkedTopics.length > 0}
+              onViewRecent={() => setActiveTab('recent')}
+              onViewBookmarks={() => setActiveTab('bookmarks')}
+            />
           )}
         </div>
       </div>
@@ -324,31 +517,332 @@ function ContentPlaceholder({ topic, onGenerateContent, isGeneratingContent }: C
   );
 }
 
-// Empty State Component
-function EmptyState() {
+// Bookmarks View Component
+interface BookmarksViewProps {
+  bookmarkedTopics: string[];
+  allTopics: TopicTreeItem[];
+  onTopicSelect: (topic: TopicTreeItem) => void;
+  onToggleBookmark: (topicId: string) => void;
+  selectedTopicId?: string;
+}
+
+function BookmarksView({ 
+  bookmarkedTopics, 
+  allTopics, 
+  onTopicSelect, 
+  onToggleBookmark,
+  selectedTopicId 
+}: BookmarksViewProps) {
+  const findTopicById = (topics: TopicTreeItem[], id: string): TopicTreeItem | null => {
+    for (const topic of topics) {
+      if (topic.id === id) return topic;
+      if (topic.children) {
+        const found = findTopicById(topic.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const bookmarkedTopicItems = bookmarkedTopics
+    .map(id => findTopicById(allTopics, id))
+    .filter(Boolean) as TopicTreeItem[];
+
   return (
-    <div className="flex items-center justify-center h-full">
-      <Card className="w-full max-w-md mx-auto">
-        <CardContent className="p-8 text-center space-y-6">
-          <div className="w-16 h-16 mx-auto bg-muted rounded-full flex items-center justify-center">
-            <BookOpen className="w-8 h-8 text-muted-foreground" />
+    <div className="h-full overflow-auto">
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Star className="w-3 h-3" />
+          <span>{bookmarkedTopics.length} bookmarked topics</span>
+        </div>
+        
+        {bookmarkedTopicItems.length === 0 ? (
+          <div className="text-center py-8 space-y-2">
+            <Bookmark className="w-8 h-8 mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No bookmarks yet</p>
+            <p className="text-xs text-muted-foreground">
+              Click the bookmark icon on topics to save them here
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {bookmarkedTopicItems.map((topic) => (
+              <div
+                key={topic.id}
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                  selectedTopicId === topic.id 
+                    ? 'bg-primary/10 border border-primary/20' 
+                    : 'hover:bg-muted/50'
+                }`}
+                onClick={() => onTopicSelect(topic)}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{topic.title}</p>
+                    {topic.summary && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                        {topic.summary}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleBookmark(topic.id);
+                    }}
+                    className="h-6 w-6 p-0 flex-shrink-0"
+                  >
+                    <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Recent Topics View Component
+interface RecentTopicsViewProps {
+  recentTopics: TopicTreeItem[];
+  onTopicSelect: (topic: TopicTreeItem) => void;
+  onToggleBookmark: (topicId: string) => void;
+  bookmarkedTopics: string[];
+  selectedTopicId?: string;
+}
+
+function RecentTopicsView({ 
+  recentTopics, 
+  onTopicSelect, 
+  onToggleBookmark,
+  bookmarkedTopics,
+  selectedTopicId 
+}: RecentTopicsViewProps) {
+  return (
+    <div className="h-full overflow-auto">
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Clock className="w-3 h-3" />
+          <span>Recently viewed topics</span>
+        </div>
+        
+        {recentTopics.length === 0 ? (
+          <div className="text-center py-8 space-y-2">
+            <History className="w-8 h-8 mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No recent topics</p>
+            <p className="text-xs text-muted-foreground">
+              Topics you explore will appear here
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {recentTopics.map((topic) => (
+              <div
+                key={topic.id}
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                  selectedTopicId === topic.id 
+                    ? 'bg-primary/10 border border-primary/20' 
+                    : 'hover:bg-muted/50'
+                }`}
+                onClick={() => onTopicSelect(topic)}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{topic.title}</p>
+                    {topic.summary && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                        {topic.summary}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleBookmark(topic.id);
+                    }}
+                    className="h-6 w-6 p-0 flex-shrink-0"
+                  >
+                    {bookmarkedTopics.includes(topic.id) ? (
+                      <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
+                    ) : (
+                      <BookmarkPlus className="w-3 h-3 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Breadcrumb Navigation Component
+interface BreadcrumbNavigationProps {
+  topic: TopicTreeItem;
+  allTopics: TopicTreeItem[];
+  onTopicSelect: (topic: TopicTreeItem) => void;
+}
+
+function BreadcrumbNavigation({ topic, allTopics, onTopicSelect }: BreadcrumbNavigationProps) {
+  const buildBreadcrumb = (currentTopic: TopicTreeItem): TopicTreeItem[] => {
+    const path: TopicTreeItem[] = [];
+    
+    const findPath = (topics: TopicTreeItem[], targetId: string, currentPath: TopicTreeItem[]): boolean => {
+      for (const t of topics) {
+        const newPath = [...currentPath, t];
+        
+        if (t.id === targetId) {
+          path.push(...newPath);
+          return true;
+        }
+        
+        if (t.children && findPath(t.children, targetId, newPath)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    findPath(allTopics, currentTopic.id, []);
+    return path;
+  };
+
+  const breadcrumbPath = buildBreadcrumb(topic);
+
+  if (breadcrumbPath.length <= 1) return null;
+
+  return (
+    <div className="px-4 py-2 bg-muted/30 border-b">
+      <div className="flex items-center gap-1 text-xs">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onTopicSelect(breadcrumbPath[0])}
+          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <Home className="w-3 h-3 mr-1" />
+          Root
+        </Button>
+        
+        {breadcrumbPath.slice(0, -1).map((crumb, index) => (
+          <React.Fragment key={crumb.id}>
+            <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onTopicSelect(crumb)}
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground truncate max-w-32"
+              title={crumb.title}
+            >
+              {crumb.title}
+            </Button>
+          </React.Fragment>
+        ))}
+        
+        <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
+        <span className="text-xs font-medium truncate max-w-40" title={topic.title}>
+          {topic.title}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Enhanced Empty State Component
+interface EnhancedEmptyStateProps {
+  onStartExploring: () => void;
+  hasRecentTopics: boolean;
+  hasBookmarks: boolean;
+  onViewRecent: () => void;
+  onViewBookmarks: () => void;
+}
+
+function EnhancedEmptyState({ 
+  onStartExploring, 
+  hasRecentTopics, 
+  hasBookmarks,
+  onViewRecent,
+  onViewBookmarks 
+}: EnhancedEmptyStateProps) {
+  return (
+    <div className="flex items-center justify-center h-full p-8">
+      <div className="text-center space-y-8 max-w-md">
+        <div className="space-y-4">
+          <div className="w-20 h-20 mx-auto bg-gradient-to-br from-primary/20 to-primary/10 rounded-full flex items-center justify-center">
+            <BookOpen className="w-10 h-10 text-primary" />
           </div>
           
           <div className="space-y-2">
-            <h3 className="font-semibold text-lg">Select a Topic</h3>
-            <p className="text-sm text-muted-foreground">
-              Choose a topic from the tree navigation on the left to view its content and learning materials.
+            <h3 className="text-xl font-semibold">Start Exploring</h3>
+            <p className="text-muted-foreground">
+              Discover topics and dive deep into learning with AI-powered content generation.
             </p>
           </div>
+        </div>
 
-          <div className="space-y-2 text-xs text-muted-foreground">
-            <p>• Browse the topic hierarchy</p>
-            <p>• Generate subtopics on demand</p>
-            <p>• Create comprehensive learning content</p>
-            <p>• Track your progress and bookmarks</p>
+        <div className="grid gap-3">
+          <Button 
+            onClick={onStartExploring}
+            className="w-full"
+            size="lg"
+          >
+            <BookOpen className="w-4 h-4 mr-2" />
+            Browse Topic Tree
+          </Button>
+
+          {hasRecentTopics && (
+            <Button 
+              variant="outline"
+              onClick={onViewRecent}
+              className="w-full"
+            >
+              <History className="w-4 h-4 mr-2" />
+              View Recent Topics
+            </Button>
+          )}
+
+          {hasBookmarks && (
+            <Button 
+              variant="outline"
+              onClick={onViewBookmarks}
+              className="w-full"
+            >
+              <Bookmark className="w-4 h-4 mr-2" />
+              View Bookmarked Topics
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <div className="flex items-center justify-center gap-2">
+            <div className="flex items-center gap-1">
+              <BookOpen className="w-3 h-3" />
+              <span>Tree View</span>
+            </div>
+            <span>•</span>
+            <div className="flex items-center gap-1">
+              <Bookmark className="w-3 h-3" />
+              <span>Bookmarks</span>
+            </div>
+            <span>•</span>
+            <div className="flex items-center gap-1">
+              <History className="w-3 h-3" />
+              <span>Recent</span>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <p className="text-xs">
+            Navigate through topics, save favorites, and track your learning progress
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

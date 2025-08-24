@@ -693,15 +693,25 @@ function MindMapVisualizationInner({
             const mindMapNode = node as MindMapNode;
             const topic = mindMapNode.data.topic;
             
-            // Highlight searched nodes
+            // Priority: Search highlight > Progress status
             if (highlightedNodes.has(node.id)) {
-              return '#fbbf24'; // yellow for search results
+              return '#f59e0b'; // Amber for search results
             }
             
-            // Color by completion status
-            if (topic.userProgress?.completed) return '#10b981'; // green
-            if (topic.userProgress && topic.userProgress.timeSpent > 0) return '#3b82f6'; // blue
-            return '#6b7280'; // gray
+            // Enhanced color coding with progress intensity
+            if (topic.userProgress?.completed) {
+              return '#059669'; // Darker green for completed
+            }
+            
+            if (topic.userProgress && topic.userProgress.timeSpent > 0) {
+              // Gradient based on time spent (simplified)
+              const intensity = Math.min(topic.userProgress.timeSpent / 300, 1); // 5 minutes = full intensity
+              const blueIntensity = Math.round(59 + (130 * intensity)); // 59 to 189
+              const greenIntensity = Math.round(130 + (112 * intensity)); // 130 to 242
+              return `rgb(59, ${greenIntensity}, ${blueIntensity})`;
+            }
+            
+            return '#9ca3af'; // Neutral gray for not started
           }}
           maskColor="rgba(0, 0, 0, 0.1)"
           style={{

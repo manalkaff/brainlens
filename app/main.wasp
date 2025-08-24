@@ -432,6 +432,12 @@ api streamingStatus {
   httpRoute: (GET, "/api/research/streaming-status")
 }
 
+// Learning API Namespace for CORS
+apiNamespace learningApis {
+  middlewareConfigFn: import { learningApiMiddleware } from "@src/learning/api/middleware",
+  path: "/api/learning"
+}
+
 // Learning Content Generation API
 api learningContentGeneration {
   fn: import { generateContentHandler } from "@src/learning/api/generateContent",

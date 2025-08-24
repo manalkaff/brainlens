@@ -1,22 +1,26 @@
-import type { Request, Response } from 'express';
-import { generateText } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import type { Request, Response } from "express";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
 
-export const generateSubtopicsHandler = async (req: Request, res: Response, context: any) => {
+export const generateSubtopicsHandler = async (
+  req: Request,
+  res: Response,
+  context: any,
+) => {
   try {
     if (!context.user) {
-      return res.status(401).json({ error: 'Authentication required' });
+      return res.status(401).json({ error: "Authentication required" });
     }
 
     const { topicId, topicTitle, topicSummary, depth } = req.body;
 
     if (!topicId || !topicTitle) {
-      return res.status(400).json({ error: 'Topic ID and title are required' });
+      return res.status(400).json({ error: "Topic ID and title are required" });
     }
 
     // Limit depth to prevent infinite recursion
     if (depth >= 3) {
-      return res.status(400).json({ error: 'Maximum topic depth reached' });
+      return res.status(400).json({ error: "Maximum topic depth reached" });
     }
 
     // Get the topic to understand its context
@@ -24,19 +28,24 @@ export const generateSubtopicsHandler = async (req: Request, res: Response, cont
       where: { id: topicId },
       include: {
         parent: true,
-        children: true
-      }
+        children: true,
+      },
     });
 
     if (!topic) {
-      return res.status(404).json({ error: 'Topic not found' });
+      return res.status(404).json({ error: "Topic not found" });
     }
 
     // Generate intelligent subtopics using AI
-    const prompt = buildSubtopicGenerationPrompt(topicTitle, topicSummary, depth, topic.parent?.title);
-    
+    const prompt = buildSubtopicGenerationPrompt(
+      topicTitle,
+      topicSummary,
+      depth,
+      topic.parent?.title,
+    );
+
     const result = await generateText({
-      model: openai('gpt-4-turbo-preview'),
+      model: openai("gpt-5-mini"),
       prompt,
       temperature: 0.7,
     });
@@ -48,27 +57,28 @@ export const generateSubtopicsHandler = async (req: Request, res: Response, cont
       success: true,
       subtopics,
       parentTopic: topicTitle,
-      depth: depth + 1
+      depth: depth + 1,
     });
-
   } catch (error) {
-    console.error('Subtopic generation error:', error);
-    res.status(500).json({ 
-      error: 'Failed to generate subtopics',
-      details: error instanceof Error ? error.message : 'Unknown error'
+    console.error("Subtopic generation error:", error);
+    res.status(500).json({
+      error: "Failed to generate subtopics",
+      details: error instanceof Error ? error.message : "Unknown error",
     });
   }
-}
+};
 
 function buildSubtopicGenerationPrompt(
-  topicTitle: string, 
-  topicSummary: string | null, 
+  topicTitle: string,
+  topicSummary: string | null,
   currentDepth: number,
-  parentTitle?: string
+  parentTitle?: string,
 ): string {
-  const contextInfo = parentTitle ? `This topic is a subtopic of "${parentTitle}".` : 'This is a root-level topic.';
-  const summaryInfo = topicSummary ? `Topic summary: ${topicSummary}` : '';
-  
+  const contextInfo = parentTitle
+    ? `This topic is a subtopic of "${parentTitle}".`
+    : "This is a root-level topic.";
+  const summaryInfo = topicSummary ? `Topic summary: ${topicSummary}` : "";
+
   return `You are an expert curriculum designer creating educational subtopics for "${topicTitle}".
 
 Context:
@@ -102,9 +112,9 @@ Generate subtopics for: "${topicTitle}"`;
 }
 
 function parseSubtopicsFromResponse(response: string): string[] {
-  const lines = response.split('\n');
+  const lines = response.split("\n");
   const subtopics: string[] = [];
-  
+
   for (const line of lines) {
     // Match numbered list items (1. , 2. , etc.)
     const match = line.match(/^\d+\.\s*(.+)$/);
@@ -115,7 +125,7 @@ function parseSubtopicsFromResponse(response: string): string[] {
       }
     }
   }
-  
+
   // Fallback: if no numbered items found, try bullet points
   if (subtopics.length === 0) {
     for (const line of lines) {
@@ -128,17 +138,17 @@ function parseSubtopicsFromResponse(response: string): string[] {
       }
     }
   }
-  
+
   // Ensure we have at least some subtopics
   if (subtopics.length === 0) {
     return [
-      'Introduction and Overview',
-      'Core Concepts',
-      'Practical Applications',
-      'Advanced Topics',
-      'Best Practices'
+      "Introduction and Overview",
+      "Core Concepts",
+      "Practical Applications",
+      "Advanced Topics",
+      "Best Practices",
     ];
   }
-  
+
   return subtopics.slice(0, 6); // Limit to 6 subtopics
 }

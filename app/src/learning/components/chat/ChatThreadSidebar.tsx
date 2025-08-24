@@ -162,9 +162,8 @@ export function ChatThreadSidebar({
       {/* Export Dialog */}
       {exportDialogThread && (
         <ChatExportDialog
-          threadId={exportDialogThread.id}
-          threadTitle={exportDialogThread.title || 'Untitled Chat'}
-          messageCount={exportDialogThread.messageCount}
+          thread={exportDialogThread}
+          topicTitle="Chat Conversation"
           onClose={() => setExportDialogThread(undefined)}
         />
       )}

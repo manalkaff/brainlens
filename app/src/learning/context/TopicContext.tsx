@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useMemo } from
 import { useParams } from 'react-router-dom';
 import { getTopic, getTopicProgressSummary, useQuery } from 'wasp/client/operations';
 import { useTabNavigation, type TabId } from '../hooks/useTabNavigation';
+import { useSharedState, useSharedObject } from '../hooks/useSharedState';
 import type { Topic, UserTopicProgress } from 'wasp/entities';
 
 // Types for the context
@@ -42,6 +43,14 @@ interface TopicContextState {
   isTabLoaded: (tab: TabId) => boolean;
   loadTab: (tab: TabId) => void;
   loadedTabs: Set<TabId>;
+  
+  // Shared state across tabs
+  selectedTopicId: string | null;
+  setSelectedTopicId: (topicId: string | null) => void;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  userPreferences: any;
+  updateUserPreferences: (preferences: any) => void;
   
   // Actions
   refreshTopic: () => void;
@@ -87,6 +96,20 @@ export function TopicProvider({ children }: TopicProviderProps) {
     enableUrlSync: true
   });
 
+  // Shared state hooks
+  const [selectedTopicId, setSelectedTopicId] = useSharedState<string | null>('selectedTopicId', null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useSharedState<boolean>('sidebarCollapsed', false);
+  const [userPreferences, { update: updateUserPreferences }] = useSharedObject('userPreferences', {
+    theme: 'light',
+    fontSize: 'medium',
+    autoSave: true,
+    notifications: true
+  });
+
+  // Sync current topic across tabs
+  const [, setCurrentTopic] = useSharedState<string>('currentTopic');
+  const [, setCurrentTab] = useSharedState<string>('currentTab');
+
   // Fetch topic data
   const { 
     data: topic, 
@@ -124,6 +147,24 @@ export function TopicProvider({ children }: TopicProviderProps) {
     refetchProgress();
   };
 
+  // Sync current topic and tab when they change
+  useEffect(() => {
+    if (topic?.slug) {
+      setCurrentTopic(topic.slug);
+    }
+  }, [topic?.slug, setCurrentTopic]);
+
+  useEffect(() => {
+    setCurrentTab(tabNavigation.activeTab);
+  }, [tabNavigation.activeTab, setCurrentTab]);
+
+  // Set selected topic ID when topic loads
+  useEffect(() => {
+    if (topic?.id && !selectedTopicId) {
+      setSelectedTopicId(topic.id);
+    }
+  }, [topic?.id, selectedTopicId, setSelectedTopicId]);
+
   // Memoize context value to prevent unnecessary re-renders
   const contextValue: TopicContextState = useMemo(() => ({
     // Topic data
@@ -140,6 +181,14 @@ export function TopicProvider({ children }: TopicProviderProps) {
     loadTab: tabNavigation.loadTab,
     loadedTabs: tabNavigation.loadedTabs,
     
+    // Shared state across tabs
+    selectedTopicId: selectedTopicId ?? null,
+    setSelectedTopicId,
+    sidebarCollapsed: sidebarCollapsed ?? false,
+    setSidebarCollapsed,
+    userPreferences,
+    updateUserPreferences,
+    
     // Actions
     refreshTopic
   }), [
@@ -147,6 +196,12 @@ export function TopicProvider({ children }: TopicProviderProps) {
     progressSummary,
     state.isLoading,
     state.error,
+    selectedTopicId,
+    setSelectedTopicId,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    userPreferences,
+    updateUserPreferences,
     tabNavigation.activeTab,
     tabNavigation.setActiveTab,
     tabNavigation.isTabLoaded,
