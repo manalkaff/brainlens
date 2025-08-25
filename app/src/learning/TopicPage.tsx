@@ -96,11 +96,31 @@ function LazyTabContent({
   return <Suspense fallback={<TabContentLoader />}>{children}</Suspense>;
 }
 
-// Main topic page content with tabs
+
+// Main TopicPage component
+export default function TopicPage() {
+  const { data: user } = useAuth();
+  const { slug } = useParams<{ slug: string }>();
+
+  return (
+    <StreamingErrorBoundary
+      onRetry={() => window.location.reload()}
+      onReset={() => (window.location.href = "/learn")}
+      showDetails={process.env.NODE_ENV === "development"}
+    >
+      <TopicProvider>
+        <TopicPageContent />
+      </TopicProvider>
+    </StreamingErrorBoundary>
+  );
+}
+
+// Topic page content with combined navbar
 function TopicPageContent() {
   const { activeTab, setActiveTab, isLoading, error } = useTopicContext();
   const { showOnboarding, setShowOnboarding, completeOnboarding } =
     useOnboarding();
+  const { slug } = useParams<{ slug: string }>();
   const errorHandler = useErrorHandler({
     maxRetries: 3,
     onError: (error) => {
@@ -134,130 +154,115 @@ function TopicPageContent() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Tab Navigation - moved to top */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as any)}
-        className="h-full flex flex-col"
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between border-b px-6 py-3 bg-background">
-          <TabNavigation />
-          <TabStatusIndicator />
+    <SidebarProvider>
+      <LearningSidebar currentPath={`/learn/${slug}`} />
+      <SidebarInset>
+        {/* Combined Header with Tab Navigation */}
+        <header className="flex h-16 shrink-0 items-center gap-4 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          
+          {/* Tab Navigation on the left */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as any)}
+            className="flex items-center"
+          >
+            <TabNavigation className="h-auto" />
+          </Tabs>
+          
+          {/* Title/Breadcrumb in center */}
+          <div className="flex-1 flex justify-center">
+            <TopicBreadcrumb />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <HelpSystem />
+          </div>
+        </header>
+
+        {/* Main Content - Full Screen */}
+        <div className="flex-1 overflow-hidden">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as any)}
+            className="h-full"
+          >
+            <TabsContent value="learn" className="mt-0 h-full">
+              <StreamingErrorBoundary
+                onRetry={() => window.location.reload()}
+                showDetails={process.env.NODE_ENV === "development"}
+              >
+                <div className="h-full p-6">
+                  <Suspense fallback={<TabContentLoader />}>
+                    <LearnTab />
+                  </Suspense>
+                </div>
+              </StreamingErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="explore" className="mt-0 h-full">
+              <StreamingErrorBoundary
+                onRetry={() => window.location.reload()}
+                showDetails={process.env.NODE_ENV === "development"}
+              >
+                <div className="h-full p-6">
+                  <LazyTabContent tabId="explore">
+                    <ExploreTab />
+                  </LazyTabContent>
+                </div>
+              </StreamingErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="ask" className="mt-0 h-full">
+              <StreamingErrorBoundary
+                onRetry={() => window.location.reload()}
+                showDetails={process.env.NODE_ENV === "development"}
+              >
+                <div className="h-full p-6">
+                  <LazyTabContent tabId="ask">
+                    <AskTab />
+                  </LazyTabContent>
+                </div>
+              </StreamingErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="mindmap" className="mt-0 h-full">
+              <StreamingErrorBoundary
+                onRetry={() => window.location.reload()}
+                showDetails={process.env.NODE_ENV === "development"}
+              >
+                <div className="h-full">
+                  <LazyTabContent tabId="mindmap">
+                    <MindMapTab />
+                  </LazyTabContent>
+                </div>
+              </StreamingErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="quiz" className="mt-0 h-full">
+              <StreamingErrorBoundary
+                onRetry={() => window.location.reload()}
+                showDetails={process.env.NODE_ENV === "development"}
+              >
+                <div className="h-full p-6">
+                  <LazyTabContent tabId="quiz">
+                    <QuizTab />
+                  </LazyTabContent>
+                </div>
+              </StreamingErrorBoundary>
+            </TabsContent>
+          </Tabs>
         </div>
 
-        {/* Tab Content with Lazy Loading and Error Boundaries */}
-        <div className="flex-1 overflow-auto">
-          <TabsContent value="learn" className="mt-0 h-full">
-            <StreamingErrorBoundary
-              onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === "development"}
-            >
-              <div className="h-full p-6">
-                <Suspense fallback={<TabContentLoader />}>
-                  <LearnTab />
-                </Suspense>
-              </div>
-            </StreamingErrorBoundary>
-          </TabsContent>
-
-          <TabsContent value="explore" className="mt-0 h-full">
-            <StreamingErrorBoundary
-              onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === "development"}
-            >
-              <div className="h-full p-6">
-                <LazyTabContent tabId="explore">
-                  <ExploreTab />
-                </LazyTabContent>
-              </div>
-            </StreamingErrorBoundary>
-          </TabsContent>
-
-          <TabsContent value="ask" className="mt-0 h-full">
-            <StreamingErrorBoundary
-              onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === "development"}
-            >
-              <div className="h-full p-6">
-                <LazyTabContent tabId="ask">
-                  <AskTab />
-                </LazyTabContent>
-              </div>
-            </StreamingErrorBoundary>
-          </TabsContent>
-
-          <TabsContent value="mindmap" className="mt-0 h-full">
-            <StreamingErrorBoundary
-              onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === "development"}
-            >
-              <div className="h-full">
-                <LazyTabContent tabId="mindmap">
-                  <MindMapTab />
-                </LazyTabContent>
-              </div>
-            </StreamingErrorBoundary>
-          </TabsContent>
-
-          <TabsContent value="quiz" className="mt-0 h-full">
-            <StreamingErrorBoundary
-              onRetry={() => window.location.reload()}
-              showDetails={process.env.NODE_ENV === "development"}
-            >
-              <div className="h-full p-6">
-                <LazyTabContent tabId="quiz">
-                  <QuizTab />
-                </LazyTabContent>
-              </div>
-            </StreamingErrorBoundary>
-          </TabsContent>
-        </div>
-      </Tabs>
-
-      {/* Onboarding Flow */}
-      <OnboardingFlow
-        isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-        onComplete={completeOnboarding}
-        currentTab={activeTab}
-      />
-    </div>
-  );
-}
-
-// Main TopicPage component
-export default function TopicPage() {
-  const { data: user } = useAuth();
-  const { slug } = useParams<{ slug: string }>();
-
-  return (
-    <StreamingErrorBoundary
-      onRetry={() => window.location.reload()}
-      onReset={() => (window.location.href = "/learn")}
-      showDetails={process.env.NODE_ENV === "development"}
-    >
-      <TopicProvider>
-        <SidebarProvider>
-          <LearningSidebar currentPath={`/learn/${slug}`} />
-          <SidebarInset>
-            {/* Header */}
-            <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <TopicBreadcrumb />
-              <div className="ml-auto flex items-center gap-2">
-                <HelpSystem />
-              </div>
-            </header>
-
-            {/* Main Content - Full Screen */}
-            <div className="flex-1 overflow-hidden">
-              <TopicPageContent />
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
-      </TopicProvider>
-    </StreamingErrorBoundary>
+        {/* Onboarding Flow */}
+        <OnboardingFlow
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          onComplete={completeOnboarding}
+          currentTab={activeTab}
+        />
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

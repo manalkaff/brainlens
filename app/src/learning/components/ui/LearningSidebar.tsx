@@ -64,12 +64,37 @@ function LearningSidebarContent({ currentPath }: LearningSidebarProps) {
 
   // Quick stats component
   const QuickStats = () => {
+    const { state } = useSidebar();
+    const isCollapsed = state === 'collapsed';
+    
     if (isLoading || !progressStats) {
+      if (isCollapsed) {
+        return (
+          <div className="px-2 py-3 flex justify-center">
+            <div className="animate-pulse">
+              <div className="h-8 w-8 bg-muted rounded-full" />
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="px-2 py-3">
           <div className="animate-pulse space-y-2">
             <div className="h-4 bg-muted rounded w-3/4" />
             <div className="h-2 bg-muted rounded w-full" />
+          </div>
+        </div>
+      );
+    }
+
+    if (isCollapsed) {
+      return (
+        <div className="px-2 py-3 flex justify-center">
+          <div className="relative">
+            <Trophy className="h-8 w-8 text-yellow-500" />
+            <div className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
+              {Math.round(progressStats?.completionPercentage || 0)}
+            </div>
           </div>
         </div>
       );
@@ -107,6 +132,14 @@ function LearningSidebarContent({ currentPath }: LearningSidebarProps) {
 
   // Topic history component
   const TopicHistory = () => {
+    const { state } = useSidebar();
+    const isCollapsed = state === 'collapsed';
+    
+    // Hide topic history when collapsed
+    if (isCollapsed) {
+      return null;
+    }
+    
     if (isLoading || !progressStats?.recentActivity) {
       return (
         <SidebarGroup>
@@ -196,6 +229,8 @@ function LearningSidebarContent({ currentPath }: LearningSidebarProps) {
 
   // User menu component
   const UserMenu = () => {
+    const { state } = useSidebar();
+    const isCollapsed = state === 'collapsed';
     const [colorMode, setColorMode] = useColorMode();
     
     const toggleDarkMode = () => {
@@ -203,6 +238,49 @@ function LearningSidebarContent({ currentPath }: LearningSidebarProps) {
         setColorMode(colorMode === 'light' ? 'dark' : 'light');
       }
     };
+    
+    if (isCollapsed) {
+      return (
+        <div className="flex justify-center p-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={undefined} />
+                  <AvatarFallback className="text-xs">{getUserInitials()}</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <WaspRouterLink to={routes.AccountRoute.to}>
+                  <User className="h-4 w-4 mr-2" />
+                  Account Settings
+                </WaspRouterLink>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={toggleDarkMode}>
+                {colorMode === 'dark' ? (
+                  <>
+                    <Sun className="h-4 w-4 mr-2" />
+                    Light Mode
+                  </>
+                ) : (
+                  <>
+                    <Moon className="h-4 w-4 mr-2" />
+                    Dark Mode
+                  </>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => window.location.href = '/api/auth/logout'}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    }
     
     return (
       <div className="flex items-center gap-2 p-2">
@@ -255,19 +333,24 @@ function LearningSidebarContent({ currentPath }: LearningSidebarProps) {
     );
   };
 
+  const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
+
   return (
     <>
       {/* Header */}
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-1">
-          <Brain className="h-6 w-6 text-primary" />
-          <span className="font-bold text-lg text-primary">BrainLens</span>
+          <Brain className="h-6 w-6 text-primary flex-shrink-0" />
+          {!isCollapsed && (
+            <span className="font-bold text-lg text-primary">BrainLens</span>
+          )}
         </div>
         <div className="px-2 pb-2">
           <Button asChild className="w-full" size="sm">
             <WaspRouterLink to="/learn">
-              <Plus className="h-4 w-4 mr-2" />
-              New Topic
+              <Plus className="h-4 w-4 flex-shrink-0" />
+              {!isCollapsed && <span className="ml-2">New Topic</span>}
             </WaspRouterLink>
           </Button>
         </div>
