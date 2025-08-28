@@ -48,11 +48,12 @@ export function ExploreTab() {
 
   const {
     content,
+    sources,
     isGenerating: isGeneratingContent,
     generateContent
   } = useContentGeneration({
     topic: selectedTopic,
-    autoGenerate: false
+    autoGenerate: true // Changed to true for automatic generation
   });
 
   const {
@@ -380,22 +381,24 @@ export function ExploreTab() {
                       Read
                     </div>
                   )}
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={generateContent}
-                    disabled={isGeneratingContent}
-                    className="text-xs"
-                  >
-                    {isGeneratingContent ? (
-                      <>
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      'Generate Content'
-                    )}
-                  </Button>
+                  {isGeneratingContent && (
+                    <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Generating content...
+                    </div>
+                  )}
+                  {/* Only show manual generate button for subtopics or if auto-generation failed */}
+                  {!content && !isGeneratingContent && selectedTopic.depth > 0 && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={generateContent}
+                      disabled={isGeneratingContent}
+                      className="text-xs"
+                    >
+                      Generate Content
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -410,6 +413,7 @@ export function ExploreTab() {
                 <MDXContent
                   content={content}
                   topicTitle={selectedTopic.title}
+                  sources={sources}
                   bookmarks={bookmarks}
                   onToggleBookmark={toggleBookmark}
                   isBookmarked={isBookmarked}
@@ -447,12 +451,19 @@ interface ContentPlaceholderProps {
 }
 
 function ContentPlaceholder({ topic, onGenerateContent, isGeneratingContent }: ContentPlaceholderProps) {
+  // For main topics (depth 0), show automatic generation message
+  const isMainTopic = topic.depth === 0;
+  
   return (
     <div className="flex items-center justify-center h-full">
       <Card className="w-full max-w-md mx-auto">
         <CardContent className="p-8 text-center space-y-6">
           <div className="w-16 h-16 mx-auto bg-muted rounded-full flex items-center justify-center">
-            <FileText className="w-8 h-8 text-muted-foreground" />
+            {isGeneratingContent ? (
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            ) : (
+              <FileText className="w-8 h-8 text-muted-foreground" />
+            )}
           </div>
           
           <div className="space-y-2">
@@ -463,38 +474,51 @@ function ContentPlaceholder({ topic, onGenerateContent, isGeneratingContent }: C
           </div>
 
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              No content has been generated for this topic yet. Click the button below to create comprehensive learning material.
-            </p>
-            
-            <Button
-              onClick={onGenerateContent}
-              disabled={isGeneratingContent}
-              size="lg"
-              className="w-full"
-            >
-              {isGeneratingContent ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating Content...
-                </>
-              ) : (
-                <>
+            {isGeneratingContent ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  AI is analyzing research data and generating comprehensive content for this topic...
+                </p>
+                <div className="space-y-2">
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div className="bg-primary h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This may take a moment. Content will appear automatically when ready.
+                  </p>
+                </div>
+              </>
+            ) : isMainTopic ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Content is being prepared automatically from the research data. If this is taking too long, the research might still be in progress.
+                </p>
+                <Button
+                  onClick={onGenerateContent}
+                  disabled={isGeneratingContent}
+                  size="lg"
+                  variant="outline"
+                  className="w-full"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Retry Content Generation
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  No content has been generated for this subtopic yet. Click the button below to create comprehensive learning material.
+                </p>
+                <Button
+                  onClick={onGenerateContent}
+                  disabled={isGeneratingContent}
+                  size="lg"
+                  className="w-full"
+                >
                   <FileText className="w-4 h-4 mr-2" />
                   Generate Content
-                </>
-              )}
-            </Button>
-
-            {isGeneratingContent && (
-              <div className="space-y-2">
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-primary h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Analyzing research data and generating comprehensive content...
-                </p>
-              </div>
+                </Button>
+              </>
             )}
           </div>
         </CardContent>

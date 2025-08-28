@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 
-export type TabId = 'learn' | 'explore' | 'ask' | 'mindmap' | 'quiz';
+export type TabId = 'learn' | 'explore' | 'ask' | 'mindmap' | 'quiz' | 'sources';
 
 interface UseTabNavigationOptions {
   defaultTab?: TabId;
@@ -27,7 +27,7 @@ export function useTabNavigation(options: UseTabNavigationOptions = {}): TabNavi
 
     const getTabFromHash = (): TabId => {
       const hash = window.location.hash.replace('#', '');
-      const validTabs: TabId[] = ['learn', 'explore', 'ask', 'mindmap', 'quiz'];
+      const validTabs: TabId[] = ['learn', 'explore', 'ask', 'mindmap', 'quiz', 'sources'];
       return validTabs.includes(hash as TabId) ? (hash as TabId) : defaultTab;
     };
 
@@ -42,7 +42,7 @@ export function useTabNavigation(options: UseTabNavigationOptions = {}): TabNavi
 
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
-      const validTabs: TabId[] = ['learn', 'explore', 'ask', 'mindmap', 'quiz'];
+      const validTabs: TabId[] = ['learn', 'explore', 'ask', 'mindmap', 'quiz', 'sources'];
       
       if (validTabs.includes(hash as TabId)) {
         const newTab = hash as TabId;

@@ -17,6 +17,16 @@ export interface ContentGenerationOptions {
   temperature?: number;
 }
 
+// Source attribution interface
+export interface SourceAttribution {
+  id: string;
+  title: string;
+  url?: string;
+  source: string;
+  contentType: "article" | "video" | "academic" | "discussion" | "documentation";
+  relevanceScore?: number;
+}
+
 // Generated content interface
 export interface GeneratedContent {
   content: string;
@@ -27,6 +37,7 @@ export interface GeneratedContent {
     tokensUsed: number;
     generatedAt: Date;
     sections?: string[];
+    sources?: SourceAttribution[];
   };
 }
 
@@ -118,6 +129,16 @@ export class AIContentGenerator {
       temperature: options.temperature || this.defaultTemperature,
     });
 
+    // Convert research results to source attributions
+    const sources: SourceAttribution[] = researchResults.map((result, index) => ({
+      id: `source-${index + 1}`,
+      title: result.title,
+      url: result.url,
+      source: result.source,
+      contentType: result.contentType,
+      relevanceScore: result.relevanceScore,
+    }));
+
     return {
       content: result.text,
       metadata: {
@@ -127,6 +148,7 @@ export class AIContentGenerator {
         tokensUsed: 0, // Usage info not available in this version
         generatedAt: new Date(),
         sections: this.extractSections(result.text),
+        sources,
       },
     };
   }
@@ -172,8 +194,9 @@ export class AIContentGenerator {
   async generateExplorationContent(
     topic: Topic,
     subtopics: string[],
+    researchResults?: ResearchResult[],
   ): Promise<MDXContent> {
-    const prompt = this.buildExplorationContentPrompt(topic, subtopics);
+    const prompt = this.buildExplorationContentPrompt(topic, subtopics, researchResults);
 
     const result = await generateText({
       model: this.model,
@@ -249,10 +272,8 @@ export class AIContentGenerator {
     const researchContext = researchResults
       .slice(0, 10) // Limit to top 10 results
       .map(
-        (result) =>
-          `Source: ${result.source}\nTitle: ${
-            result.title
-          }\nContent: ${result.content.slice(0, 500)}...`,
+        (result, index) =>
+          `[Source ${index + 1}] ${result.source} - "${result.title}"\nContent: ${result.content.slice(0, 500)}...`,
       )
       .join("\n\n");
 
@@ -293,6 +314,8 @@ Instructions:
 - Use the research context below to ensure accuracy and depth
 - Structure content with clear headings and sections
 - Include practical examples and real-world applications
+- **IMPORTANT**: When referencing information from the research sources, add a source reference like [Source 1] at the end of the relevant paragraph or sentence
+- Use multiple sources when possible to provide comprehensive coverage
 
 Topic Information:
 Title: ${topic.title}
@@ -306,7 +329,7 @@ Generate comprehensive ${
       options.contentType
     } content that helps the user understand "${
       topic.title
-    }" according to their learning preferences.`;
+    }" according to their learning preferences. Remember to include source references [Source X] throughout the content when drawing from the research context.`;
   }
 
   /**
@@ -350,13 +373,31 @@ Ensure the path is tailored to their specific interests, prior knowledge, and le
   private buildExplorationContentPrompt(
     topic: Topic,
     subtopics: string[],
+    researchResults?: ResearchResult[],
   ): string {
+    // Build research context if available
+    let researchContext = '';
+    if (researchResults && researchResults.length > 0) {
+      researchContext = `
+
+Research Context to Reference:
+${researchResults
+  .slice(0, 10) // Limit to top 10 results
+  .map(
+    (result, index) =>
+      `[Source ${index + 1}] ${result.source} - "${result.title}"\nContent: ${result.content.slice(0, 500)}...`,
+  )
+  .join("\n\n")}
+
+IMPORTANT: When referencing information from the research sources, add a source reference like [Source 1] at the end of the relevant paragraph or sentence. Use multiple sources when possible to provide comprehensive coverage.`;
+    }
+
     return `You are creating comprehensive exploration content about "${
       topic.title
     }" in MDX format.
 
 Subtopics to cover:
-${subtopics.map((subtopic) => `- ${subtopic}`).join("\n")}
+${subtopics.map((subtopic) => `- ${subtopic}`).join("\n")}${researchContext}
 
 Create structured MDX content with:
 1. Frontmatter with title, description, tags, difficulty, and estimated read time
@@ -365,10 +406,12 @@ Create structured MDX content with:
 4. Code examples where relevant
 5. Practical applications and examples
 6. Key takeaways and next steps
+${researchResults && researchResults.length > 0 ? '7. Source references [Source X] throughout the content when drawing from research' : ''}
 
 Format as valid MDX with proper headings, code blocks, and markdown formatting.
 Include interactive elements like callouts, tips, and warnings where appropriate.
-Make the content comprehensive but accessible, with clear progression from basic to advanced concepts.`;
+Make the content comprehensive but accessible, with clear progression from basic to advanced concepts.
+${researchResults && researchResults.length > 0 ? 'Remember to include source references [Source X] throughout the content when drawing from the research context.' : ''}`;
   }
 
   /**

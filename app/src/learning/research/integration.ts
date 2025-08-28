@@ -192,7 +192,7 @@ export class ResearchIntegrationManager {
 
           await context.entities.VectorDocument.create({
             data: {
-              topicId: result.topic,
+              topicId: result.topicId,
               content,
               embedding: JSON.stringify([]), // Placeholder for actual embeddings
               metadata: {

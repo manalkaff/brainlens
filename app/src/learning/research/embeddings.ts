@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import Redis from 'ioredis';
+import { createHash } from 'crypto';
 import { type SearchResult, type ResearchResult } from './agents';
 import { type ExtractedSubtopic } from './subtopicExtractor';
 
@@ -372,8 +373,7 @@ export class EmbeddingService {
    */
   private getCacheKey(text: string): string {
     // Use a hash of the text to create a consistent key
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha256').update(text).digest('hex');
+    const hash = createHash('sha256').update(text).digest('hex');
     return `embedding:${hash}`;
   }
 

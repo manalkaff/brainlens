@@ -28,6 +28,7 @@ import { ExploreTab } from "./components/tabs/ExploreTab";
 import { AskTab } from "./components/tabs/AskTab";
 import { MindMapTab } from "./components/tabs/MindMapTab";
 import { QuizTab } from "./components/tabs/QuizTab";
+import { SourcesTab } from "./components/tabs/SourcesTab";
 import { HelpSystem } from "./components/help/HelpSystem";
 import {
   OnboardingFlow,
@@ -248,6 +249,19 @@ function TopicPageContent() {
                 <div className="h-full p-6">
                   <LazyTabContent tabId="quiz">
                     <QuizTab />
+                  </LazyTabContent>
+                </div>
+              </StreamingErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="sources" className="mt-0 h-full">
+              <StreamingErrorBoundary
+                onRetry={() => window.location.reload()}
+                showDetails={process.env.NODE_ENV === "development"}
+              >
+                <div className="h-full p-6">
+                  <LazyTabContent tabId="sources">
+                    <SourcesTab />
                   </LazyTabContent>
                 </div>
               </StreamingErrorBoundary>

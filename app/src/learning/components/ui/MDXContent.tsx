@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Separator } from '../../../components/ui/separator';
 import { Input } from '../../../components/ui/input';
 import { 
@@ -17,9 +17,19 @@ import {
   Search
 } from 'lucide-react';
 
+interface SourceAttribution {
+  id: string;
+  title: string;
+  url?: string;
+  source: string;
+  contentType: string;
+  relevanceScore?: number;
+}
+
 interface MDXContentProps {
   content: string;
   topicTitle: string;
+  sources?: SourceAttribution[];
   bookmarks: string[];
   onToggleBookmark: (sectionId: string) => void;
   onMarkAsRead: (sectionId: string) => void;
@@ -38,6 +48,7 @@ interface TableOfContentsItem {
 export function MDXContent({
   content,
   topicTitle,
+  sources = [],
   bookmarks,
   onToggleBookmark,
   onMarkAsRead,
@@ -194,7 +205,7 @@ export function MDXContent({
       if (line.trim()) {
         elements.push(
           <p key={i} className="mb-4 text-sm leading-relaxed">
-            {renderInlineElements(line)}
+            {renderContentWithSources(line)}
           </p>
         );
       }
@@ -206,6 +217,40 @@ export function MDXContent({
     }
 
     return elements;
+  };
+
+  // Function to render content with proper source badges
+  const renderContentWithSources = (text: string) => {
+    // Split text by source references
+    const sourceRefRegex = /\[Source (\d+)\]/g;
+    const parts = text.split(sourceRefRegex);
+    const elements: React.ReactNode[] = [];
+    
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0) {
+        // Regular text
+        if (parts[i]) {
+          elements.push(renderInlineElements(parts[i]));
+        }
+      } else {
+        // Source reference number
+        const sourceNum = parseInt(parts[i]);
+        const sourceIndex = sourceNum - 1;
+        const source = sources[sourceIndex];
+        
+        if (source) {
+          elements.push(
+            <SourceBadge
+              key={`source-${sourceNum}`}
+              source={source}
+              sourceNumber={sourceNum}
+            />
+          );
+        }
+      }
+    }
+    
+    return <>{elements}</>;
   };
 
   const renderInlineElements = (text: string) => {
@@ -402,6 +447,43 @@ export function MDXContent({
             </CardContent>
           </Card>
 
+          {/* Sources List */}
+          {sources.length > 0 && (
+            <Card className="mt-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ExternalLink className="w-4 h-4" />
+                  Sources
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {sources.map((source, index) => (
+                  <div key={source.id} className="text-xs p-2 bg-muted/30 rounded border">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">
+                        {index + 1}
+                      </Badge>
+                      <span className="font-medium truncate">{source.title}</span>
+                    </div>
+                    <div className="text-muted-foreground mt-1">
+                      {source.source}
+                    </div>
+                    {source.url && (
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline text-[10px] flex items-center gap-1 mt-1"
+                      >
+                        Visit source <ExternalLink className="w-2 h-2" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Export Actions */}
           <Card className="mt-4">
             <CardContent className="p-3">
@@ -555,5 +637,34 @@ function CodeBlock({ code, language, onCopy, copied }: CodeBlockProps) {
         <code className="text-xs font-mono">{code.trim()}</code>
       </pre>
     </div>
+  );
+}
+
+// Source Badge Component
+interface SourceBadgeProps {
+  source: SourceAttribution;
+  sourceNumber: number;
+}
+
+function SourceBadge({ source, sourceNumber }: SourceBadgeProps) {
+  const handleSourceClick = () => {
+    if (source.url) {
+      window.open(source.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  return (
+    <Badge 
+      variant="secondary" 
+      className={`
+        inline-flex items-center gap-1 text-[10px] px-2 py-0.5 ml-1
+        ${source.url ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : ''}
+      `}
+      onClick={source.url ? handleSourceClick : undefined}
+      title={`${source.source}: ${source.title}${source.url ? ' (Click to visit)' : ''}`}
+    >
+      <span>Source {sourceNumber}</span>
+      {source.url && <ExternalLink className="w-2 h-2" />}
+    </Badge>
   );
 }

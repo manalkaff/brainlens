@@ -383,6 +383,37 @@ query getResearchResults {
   entities: [Topic, VectorDocument]
 }
 
+// Sources Operations
+query getTopicSources {
+  fn: import { getTopicSources } from "@src/learning/sources/operations",
+  entities: [Topic, VectorDocument]
+}
+
+query debugTopicData {
+  fn: import { debugTopicData } from "@src/learning/sources/operations",
+  entities: [Topic, VectorDocument, GeneratedContent]
+}
+
+action fixTopicSources {
+  fn: import { fixTopicSources } from "@src/learning/sources/operations",
+  entities: [Topic, VectorDocument, GeneratedContent]
+}
+
+query getSourceDetails {
+  fn: import { getSourceDetails } from "@src/learning/sources/operations",
+  entities: [VectorDocument, Topic]
+}
+
+query getSourcesByAgent {
+  fn: import { getSourcesByAgent } from "@src/learning/sources/operations",
+  entities: [Topic, VectorDocument]
+}
+
+action exportTopicSources {
+  fn: import { exportTopicSources } from "@src/learning/sources/operations",
+  entities: [Topic, VectorDocument]
+}
+
 // Assessment Content Generation Operations
 action generateAssessmentContent {
   fn: import { generateAssessmentContent } from "@src/learning/assessment/operations",
@@ -441,7 +472,7 @@ apiNamespace learningApis {
 // Learning Content Generation API
 api learningContentGeneration {
   fn: import { generateContentHandler } from "@src/learning/api/generateContent",
-  entities: [Topic, UserTopicProgress, VectorDocument],
+  entities: [Topic, UserTopicProgress, VectorDocument, GeneratedContent],
   httpRoute: (POST, "/api/learning/generate-content")
 }
 

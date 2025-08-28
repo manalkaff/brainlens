@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { Link as WaspRouterLink, routes } from 'wasp/client/router';
-import { createTopic } from 'wasp/client/operations';
+import { createTopic, startTopicResearch } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent } from '../components/ui/card';
@@ -12,6 +12,7 @@ import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow'
 export default function TopicInputLandingPage() {
   const [topicInput, setTopicInput] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [researchStatus, setResearchStatus] = useState('');
   const { data: user } = useAuth();
   const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
 
@@ -26,6 +27,8 @@ export default function TopicInputLandingPage() {
     setIsCreating(true);
     
     try {
+      // Step 1: Create the topic
+      setResearchStatus('Creating topic...');
       const topic = await createTopic({
         title: topicInput.trim(),
         summary: `Learn about ${topicInput.trim()}`,
@@ -33,11 +36,35 @@ export default function TopicInputLandingPage() {
       });
       
       console.log('Topic created:', topic);
-      window.location.href = `/learn/${topic.slug}`;
+      
+      // Step 2: Start research automatically
+      setResearchStatus('Starting AI research...');
+      try {
+        await startTopicResearch({ 
+          topicId: topic.id,
+          userContext: {
+            userLevel: 'intermediate', // Default level, can be customized later
+            learningStyle: 'mixed'
+          }
+        });
+        console.log('Research started for topic:', topic.id);
+        setResearchStatus('Research started successfully!');
+      } catch (researchError) {
+        console.warn('Failed to start research automatically:', researchError);
+        // Don't block navigation if research fails - user can trigger it manually later
+        setResearchStatus('Topic created successfully!');
+      }
+      
+      // Navigate to topic page
+      setTimeout(() => {
+        window.location.href = `/learn/${topic.slug}`;
+      }, 500); // Brief delay to show success message
+      
     } catch (error) {
       console.error('Failed to create topic:', error);
       alert('Failed to create topic. Please try again.');
       setIsCreating(false);
+      setResearchStatus('');
     }
   };
 
@@ -104,7 +131,7 @@ export default function TopicInputLandingPage() {
                     {isCreating ? (
                       <>
                         <div className='animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2' />
-                        Creating...
+                        {researchStatus || 'Creating...'}
                       </>
                     ) : (
                       'Start Learning →'

@@ -54,21 +54,20 @@ valkey:
 
 # Engines configuration - optimized for research agents
 engines:
-
   # General Web Search Engines (General Research Agent)
   - name: bing
     engine: bing
     shortcut: bi
     categories: [general, web]
     disabled: false
-    
+
   - name: google
     engine: google
     shortcut: go
     categories: [general, web]
     disabled: false
     use_mobile_ui: false
-    
+
   - name: duckduckgo
     engine: duckduckgo
     shortcut: ddg
@@ -81,25 +80,25 @@ engines:
     shortcut: arx
     categories: [science, it]
     disabled: false
-    
+
   - name: google scholar
     engine: google_scholar
     shortcut: gs
     categories: [science]
     disabled: false
-    
+
   - name: pubmed
     engine: pubmed
     shortcut: pub
     categories: [science]
     disabled: false
-    
+
   - name: semantic scholar
     engine: semantic_scholar
     shortcut: ss
     categories: [science]
     disabled: false
-    
+
   - name: crossref
     engine: crossref
     shortcut: cr
@@ -109,7 +108,7 @@ engines:
   # Computational Engines (Computational Agent)
   # Note: WolframAlpha requires API key and is not available in this SearXNG build
   # Using Wikipedia as fallback for computational queries
-    
+
   - name: wikipedia
     engine: wikipedia
     shortcut: wp
@@ -122,13 +121,13 @@ engines:
     shortcut: yt
     categories: [videos]
     disabled: false
-    
+
   - name: vimeo
     engine: vimeo
     shortcut: vm
     categories: [videos]
     disabled: false
-    
+
   - name: dailymotion
     engine: dailymotion
     shortcut: dm
@@ -139,7 +138,7 @@ engines:
   - name: reddit
     engine: reddit
     shortcut: re
-    categories: ['social media']
+    categories: ["social media"]
     disabled: false
 
   # Additional useful engines
@@ -148,7 +147,7 @@ engines:
     shortcut: gh
     categories: [it]
     disabled: false
-    
+
   - name: gitlab
     engine: gitlab
     shortcut: gl
@@ -179,6 +178,17 @@ categories_as_tabs:
     - social media
   map:
     - map
+
+# DOI resolver configuration
+doi_resolvers:
+  oadoi.org: 'https://oadoi.org/'
+  doi.org: 'https://doi.org/'
+  doai.io: 'https://dissem.in/'
+  sci-hub.se: 'https://sci-hub.se/'
+  sci-hub.st: 'https://sci-hub.st/'
+  sci-hub.ru: 'https://sci-hub.ru/'
+
+default_doi_resolver: 'oadoi.org'
 
 # Outgoing requests configuration
 outgoing:

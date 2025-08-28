@@ -138,6 +138,7 @@ model Topic {
   chatThreads     ChatThread[]
   quizzes         Quiz[]
   vectorDocuments VectorDocument[]
+  generatedContent GeneratedContent[]
   
   @@index([slug])
   @@index([parentId])
@@ -147,6 +148,27 @@ model Topic {
   @@index([updatedAt])
   @@index([status, depth])
   @@index([parentId, depth])
+}
+
+model GeneratedContent {
+  id          String   @id @default(uuid())
+  topicId     String   
+  contentType String   // 'exploration', 'learning', 'quiz', etc.
+  content     String   // The generated MDX content
+  metadata    Json?    // Additional metadata like user preferences, generation settings
+  sources     Json?    // Array of source attributions
+  userLevel   String?  // 'beginner', 'intermediate', 'advanced'
+  learningStyle String? // 'textual', 'visual', 'interactive', etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  
+  @@unique([topicId, contentType, userLevel, learningStyle])
+  @@index([topicId])
+  @@index([contentType])
+  @@index([createdAt])
+  @@index([topicId, contentType])
 }
 
 model UserTopicProgress {

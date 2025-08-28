@@ -43,6 +43,12 @@ const tabConfigs: TabConfig[] = [
     label: 'Quiz',
     color: 'bg-destructive',
     description: 'Test your knowledge'
+  },
+  {
+    id: 'sources',
+    label: 'Sources',
+    color: 'bg-blue-600',
+    description: 'View all research sources'
   }
 ];
 
@@ -55,7 +61,7 @@ export function TabNavigation({ className }: TabNavigationProps) {
   const { sharedState } = useSharedTopicState();
 
   return (
-    <TabsList className={`grid w-full grid-cols-5 lg:w-auto lg:inline-flex ${className}`}>
+    <TabsList className={`grid w-full grid-cols-6 lg:w-auto lg:inline-flex ${className}`}>
       {tabConfigs.map((tab) => {
         const isActive = activeTab === tab.id;
         const isLoaded = isTabLoaded(tab.id);

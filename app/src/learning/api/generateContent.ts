@@ -20,6 +20,30 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(400).json({ error: 'Content generation options are required' });
     }
 
+    // Check if content already exists for this configuration
+    const existingContent = await context.entities.GeneratedContent.findUnique({
+      where: {
+        topicId_contentType_userLevel_learningStyle: {
+          topicId,
+          contentType: options.contentType || 'exploration',
+          userLevel: options.userLevel || null,
+          learningStyle: options.learningStyle || null
+        }
+      }
+    });
+
+    if (existingContent) {
+      console.log('Found existing content, returning cached version');
+      return res.json({
+        success: true,
+        content: existingContent.content,
+        metadata: existingContent.metadata,
+        sources: existingContent.sources || [],
+        topicId: existingContent.topicId,
+        cached: true
+      });
+    }
+
     // Get the topic
     const topic = await context.entities.Topic.findUnique({
       where: { id: topicId },
@@ -35,14 +59,50 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(404).json({ error: 'Topic not found' });
     }
 
-    // Convert vector documents to research results
-    const researchResults = topic.vectorDocuments.map((doc: any) => ({
-      title: `Research Document ${doc.id.slice(0, 8)}`,
-      content: doc.content,
-      source: 'Research Database',
-      relevanceScore: 0.8,
-      contentType: 'article' as const
-    }));
+    // Check if we have research results (vector documents) - if not, we need to research first
+    if (!topic.vectorDocuments || topic.vectorDocuments.length === 0) {
+      return res.status(400).json({ 
+        error: 'No research data available for this topic',
+        message: 'Please run research for this topic first before generating content',
+        suggestion: 'Use the "Start Research" action in the Explore tab to gather sources, then try generating content again',
+        needsResearch: true,
+        topicId: topic.id
+      });
+    }
+
+    // Convert vector documents to research results with better source attribution
+    const researchResults = topic.vectorDocuments.map((doc: any, index: number) => {
+      // Try to parse metadata for better source info
+      let sourceInfo = {
+        title: `Research Document ${doc.id.slice(0, 8)}`,
+        source: 'Research Database',
+        url: undefined,
+        contentType: 'article' as const
+      };
+
+      // If the document has metadata, use it for better attribution
+      if (doc.metadata && typeof doc.metadata === 'object') {
+        const metadata = doc.metadata;
+        if (metadata.sourceAgent) {
+          sourceInfo.source = `${metadata.sourceAgent.charAt(0).toUpperCase() + metadata.sourceAgent.slice(1)} Research Agent`;
+        }
+        if (metadata.sourceUrl) {
+          sourceInfo.url = metadata.sourceUrl;
+        }
+        if (metadata.sourceTitle) {
+          sourceInfo.title = metadata.sourceTitle;
+        }
+        if (metadata.sourceType) {
+          sourceInfo.contentType = metadata.sourceType;
+        }
+      }
+
+      return {
+        ...sourceInfo,
+        content: doc.content,
+        relevanceScore: 0.8
+      };
+    });
 
     // Generate content based on the content type
     let generatedContent;
@@ -54,9 +114,21 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       const subtopics = await generateSubtopics(topic, context);
       console.log('Generated subtopics:', subtopics);
       
-      const mdxContent = await aiContentGenerator.generateExplorationContent(topic, subtopics);
+      const mdxContent = await aiContentGenerator.generateExplorationContent(topic, subtopics, researchResults);
       console.log('Generated MDX content length:', mdxContent.content.length);
+      console.log('Research results available:', researchResults.length);
+      console.log('Content preview:', mdxContent.content.substring(0, 500) + '...');
       
+      // Convert research results to source attributions for exploration content too
+      const sources = researchResults.map((result: any, index: number) => ({
+        id: `source-${index + 1}`,
+        title: result.title,
+        url: result.url,
+        source: result.source,
+        contentType: result.contentType,
+        relevanceScore: result.relevanceScore,
+      }));
+
       generatedContent = {
         content: mdxContent.content,
         metadata: {
@@ -66,7 +138,8 @@ export const generateContentHandler = async (req: Request, res: Response, contex
           learningStyle: options.learningStyle,
           tokensUsed: 0,
           generatedAt: new Date(),
-          sections: mdxContent.sections.map(s => s.title)
+          sections: mdxContent.sections.map(s => s.title),
+          sources
         }
       };
     } else {
@@ -81,13 +154,34 @@ export const generateContentHandler = async (req: Request, res: Response, contex
     
     console.log('Final generated content length:', generatedContent.content.length);
 
-    // Return the generated content
+    // Save the generated content to the database
+    try {
+      const savedContent = await context.entities.GeneratedContent.create({
+        data: {
+          topicId: topic.id,
+          contentType: options.contentType || 'exploration',
+          content: generatedContent.content,
+          metadata: generatedContent.metadata,
+          sources: generatedContent.metadata?.sources || [],
+          userLevel: options.userLevel || null,
+          learningStyle: options.learningStyle || null
+        }
+      });
+      console.log('Successfully saved generated content to database');
+    } catch (saveError) {
+      console.error('Failed to save generated content to database:', saveError);
+      // Don't fail the request if saving fails, just log the error
+    }
+
+    // Return the generated content with source attribution
     res.json({
       success: true,
       content: generatedContent.content,
       metadata: generatedContent.metadata,
+      sources: generatedContent.metadata?.sources || [],
       topicId: topic.id,
-      topicTitle: topic.title
+      topicTitle: topic.title,
+      cached: false
     });
 
   } catch (error) {

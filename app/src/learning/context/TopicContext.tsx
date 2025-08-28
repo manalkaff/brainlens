@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { getTopic, getTopicProgressSummary, useQuery } from 'wasp/client/operations';
+import { getTopic, getTopicProgressSummary, getResearchStatus, useQuery } from 'wasp/client/operations';
 import { useTabNavigation, type TabId } from '../hooks/useTabNavigation';
 import { useSharedState, useSharedObject } from '../hooks/useSharedState';
 import type { Topic, UserTopicProgress } from 'wasp/entities';
@@ -29,6 +29,18 @@ export interface TopicProgressSummary {
   };
 }
 
+export interface ResearchStatus {
+  topicId: string;
+  status: 'inactive' | 'queued' | 'active' | 'completed' | 'error';
+  progress?: number;
+  activeAgents?: string[];
+  completedAgents?: number;
+  totalAgents?: number;
+  estimatedCompletion?: Date;
+  errors?: string[];
+  lastUpdate?: Date;
+}
+
 interface TopicContextState {
   // Topic data
   topic: TopicData | null;
@@ -36,6 +48,11 @@ interface TopicContextState {
   userProgress: UserTopicProgress | null;
   isLoading: boolean;
   error: string | null;
+  
+  // Research status
+  researchStatus: ResearchStatus | null;
+  isResearchLoading: boolean;
+  isResearching: boolean;
   
   // Tab navigation
   activeTab: TabId;
@@ -130,6 +147,23 @@ export function TopicProvider({ children }: TopicProviderProps) {
     enabled: !!topic?.id
   });
 
+  // Fetch research status
+  const { 
+    data: researchStatus, 
+    isLoading: researchLoading,
+    error: researchError,
+    refetch: refetchResearchStatus
+  } = useQuery(getResearchStatus, { topicId: topic?.id || '' }, {
+    enabled: !!topic?.id,
+    refetchInterval: (data: any) => {
+      // Poll more frequently when research is active
+      if (data?.status === 'active' || data?.status === 'queued') {
+        return 2000; // Poll every 2 seconds during active research
+      }
+      return 10000; // Poll every 10 seconds otherwise
+    }
+  });
+
   // Update loading state
   useEffect(() => {
     dispatch({ type: 'SET_LOADING', payload: topicLoading || progressLoading });
@@ -137,14 +171,15 @@ export function TopicProvider({ children }: TopicProviderProps) {
 
   // Update error state
   useEffect(() => {
-    const error = topicError || progressError;
+    const error = topicError || progressError || researchError;
     dispatch({ type: 'SET_ERROR', payload: error ? error.message : null });
-  }, [topicError, progressError]);
+  }, [topicError, progressError, researchError]);
 
   const refreshTopic = () => {
     dispatch({ type: 'REFRESH' });
     refetchTopic();
     refetchProgress();
+    refetchResearchStatus();
   };
 
   // Sync current topic and tab when they change
@@ -165,6 +200,9 @@ export function TopicProvider({ children }: TopicProviderProps) {
     }
   }, [topic?.id, selectedTopicId, setSelectedTopicId]);
 
+  // Compute derived research state
+  const isResearching = researchStatus?.status === 'active' || researchStatus?.status === 'queued';
+  
   // Memoize context value to prevent unnecessary re-renders
   const contextValue: TopicContextState = useMemo(() => ({
     // Topic data
@@ -173,6 +211,11 @@ export function TopicProvider({ children }: TopicProviderProps) {
     userProgress: topic?.userProgress || null,
     isLoading: state.isLoading || false,
     error: state.error || null,
+    
+    // Research status
+    researchStatus: researchStatus || null,
+    isResearchLoading: researchLoading || false,
+    isResearching,
     
     // Tab navigation
     activeTab: tabNavigation.activeTab,
@@ -196,6 +239,9 @@ export function TopicProvider({ children }: TopicProviderProps) {
     progressSummary,
     state.isLoading,
     state.error,
+    researchStatus,
+    researchLoading,
+    isResearching,
     selectedTopicId,
     setSelectedTopicId,
     sidebarCollapsed,

@@ -1,4 +1,5 @@
 import { HttpError } from 'wasp/server';
+import { randomUUID } from 'crypto';
 import { 
   ResearchAgentFactory, 
   ResearchAgent, 
@@ -32,6 +33,7 @@ export interface ResearchStatus {
 
 export interface AgentCoordinationResult {
   topic: string;
+  topicId: string;
   depth: number;
   agentResults: ResearchResult[];
   aggregatedContent: AggregatedContent;
@@ -148,6 +150,7 @@ export class MultiAgentCoordinator {
 
       return {
         topic,
+        topicId,
         depth,
         agentResults,
         aggregatedContent,
@@ -381,7 +384,7 @@ export class MultiAgentCoordinator {
       // Store aggregated summary
       if (aggregatedContent.summary) {
         documents.push({
-          id: `${topicId}-summary-${depth}`,
+          id: randomUUID(),
           content: aggregatedContent.summary,
           metadata: {
             topicId,
@@ -400,7 +403,7 @@ export class MultiAgentCoordinator {
       aggregatedContent.keyPoints.forEach((keyPoint, index) => {
         if (keyPoint.trim()) {
           documents.push({
-            id: `${topicId}-keypoint-${depth}-${index}`,
+            id: randomUUID(),
             content: keyPoint,
             metadata: {
               topicId,
@@ -419,7 +422,7 @@ export class MultiAgentCoordinator {
       agentResults.forEach((result, agentIndex) => {
         if (result.status === 'success' && result.summary) {
           documents.push({
-            id: `${topicId}-agent-${result.agent}-${depth}`,
+            id: randomUUID(),
             content: result.summary,
             metadata: {
               topicId,
@@ -438,7 +441,7 @@ export class MultiAgentCoordinator {
         result.results.slice(0, 3).forEach((searchResult, resultIndex) => {
           if (searchResult.snippet && searchResult.snippet.length > 50) {
             documents.push({
-              id: `${topicId}-search-${result.agent}-${depth}-${resultIndex}`,
+              id: randomUUID(),
               content: `${searchResult.title}\n\n${searchResult.snippet}`,
               metadata: {
                 topicId,

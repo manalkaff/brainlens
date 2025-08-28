@@ -1,0 +1,27 @@
+# SearXNG Bot Detection Configuration
+# Based on the official SearXNG limiter.toml schema
+
+[real_ip]
+# IPv4 and IPv6 prefix settings for network identification
+x_for = 1
+ipv4_prefix = 32
+ipv6_prefix = 48
+
+[botdetection.ip_limit]
+# To get unlimited access in a local network, by default link-local addresses
+# (networks) are not monitored by the ip_limit
+filter_link_local = false
+
+# The link_token method evaluates a request as suspicious if the URL
+# /client<token>.css is not requested by the client.
+link_token = false
+
+[botdetection.ip_lists]
+# Activate passlist of (hardcoded) IPs from the SearXNG organization
+pass_searxng_org = true
+
+# Block specific IPs
+block_ip = []
+
+# Allow specific IPs/networks
+pass_ip = []

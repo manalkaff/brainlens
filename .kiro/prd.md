@@ -137,13 +137,15 @@ const results = await Promise.allSettled(searchPromises);
   - Visual indicators for read/unread content
   
 - **Right Content Area**:
-  - MDX-rendered documents
+  - MDX-rendered documents with source attribution
   - Rich media support (diagrams, code blocks, tables)
   - Clickable headers for navigation
   - On-demand generation for unexplored topics
 
 **Features:**
-- **Lazy Loading**: Generate content only when requested
+- **Automatic Content Generation**: Main topics automatically generate content when research is complete
+- **Source Attribution**: Every paragraph displays clickable "Source" badges that link to original research sources
+- **Lazy Loading**: Generate content only when requested for subtopics
 - **Breadcrumb Navigation**: Show current location in knowledge tree
 - **Bookmarking**: Save interesting sections
 - **Export Options**: Download as PDF/Markdown
@@ -346,7 +348,9 @@ export const multiAgentSearch = async (query: string) => {
 ### 7. User Journey
 
 1. **Discovery**: User enters topic in search box
-2. **Processing**: Loading animation with status updates
+2. **Processing**: Automatic research initiation with loading animation and status updates
+   - "Creating topic..."
+   - "Starting AI research..."
    - "Understanding your topic..."
    - "Deploying research agents..."
    - "Searching academic sources..."
@@ -358,9 +362,10 @@ export const multiAgentSearch = async (query: string) => {
 3. **Landing**: Arrives at `/{topic-slug}` with Learn tab open
 4. **Onboarding**: Quick setup (skippable for returning users)
 5. **Learning**: Engages with content through preferred method
-6. **Exploration**: Switches between tabs based on needs
-7. **Assessment**: Takes quizzes to validate understanding
-8. **Completion**: Achievement celebration and next topic suggestions
+6. **Exploration**: Content automatically available in Explore tab with source attribution
+7. **Source Verification**: Can click source badges to verify and explore original research
+8. **Assessment**: Takes quizzes to validate understanding
+9. **Completion**: Achievement celebration and next topic suggestions
 
 ### 8. MVP Scope
 
@@ -371,11 +376,13 @@ export const multiAgentSearch = async (query: string) => {
 - Vercel AI SDK 4.0 for multi llm integration
 - Real-time UI updates with agent progress indicators
 - Learn tab with personalization
-- Explore tab with tree navigation
+- Explore tab with tree navigation and automatic content generation
+- Source attribution system with clickable badges linking to original sources
 - Basic RAG for Ask tab with source attribution
 - Simple mindmap visualization
 - Auto-generated quizzes
 - Progress tracking
+- Automatic research initiation when topics are created
 
 **Nice to Have:**
 - Multiple learning style implementations

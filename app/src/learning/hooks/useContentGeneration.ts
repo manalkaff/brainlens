@@ -17,9 +17,19 @@ interface UseContentGenerationOptions {
   autoGenerate?: boolean;
 }
 
+interface SourceAttribution {
+  id: string;
+  title: string;
+  url?: string;
+  source: string;
+  contentType: string;
+  relevanceScore?: number;
+}
+
 interface UseContentGenerationReturn {
   content: string;
   sections: ContentSection[];
+  sources: SourceAttribution[];
   isGenerating: boolean;
   error: Error | null;
   generateContent: () => Promise<void>;
@@ -32,6 +42,7 @@ export function useContentGeneration({
 }: UseContentGenerationOptions): UseContentGenerationReturn {
   const [content, setContent] = useState<string>('');
   const [sections, setSections] = useState<ContentSection[]>([]);
+  const [sources, setSources] = useState<SourceAttribution[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -283,9 +294,11 @@ Happy learning!`;
 
       const generatedContent = result.content;
       const parsedSections = parseContentSections(generatedContent);
+      const sourcesFromAPI = result.sources || [];
 
       setContent(generatedContent);
       setSections(parsedSections);
+      setSources(sourcesFromAPI);
     } catch (err) {
       console.error('=== CONTENT GENERATION ERROR ===');
       console.error('Error details:', err);
@@ -336,6 +349,7 @@ ${err instanceof Error ? err.message : 'Unknown error'}
     if (topic) {
       setContent('');
       setSections([]);
+      setSources([]);
       setError(null);
     }
   }, [topic?.id]);
@@ -347,6 +361,7 @@ ${err instanceof Error ? err.message : 'Unknown error'}
   return {
     content,
     sections,
+    sources,
     isGenerating,
     error,
     generateContent,
