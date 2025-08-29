@@ -2,6 +2,11 @@ import { openai } from "@ai-sdk/openai";
 import { generateText, streamText } from "ai";
 import type { Topic, UserTopicProgress } from "wasp/entities";
 import { TopicStatus } from "@prisma/client";
+import { 
+  multiAgentContentOrchestrator, 
+  type MultiAgentContent 
+} from "./multiAgentContentGenerator";
+import type { ResearchResult as AgentResearchResult } from "../research/agents";
 
 // Content generation options interface
 export interface ContentGenerationOptions {
@@ -189,12 +194,116 @@ export class AIContentGenerator {
   }
 
   /**
-   * Generate exploration content with MDX formatting
+   * Generate exploration content with MDX formatting using multi-agent approach
    */
   async generateExplorationContent(
     topic: Topic,
     subtopics: string[],
     researchResults?: ResearchResult[],
+    context?: any
+  ): Promise<MDXContent> {
+    console.log(`🎯 Legacy contentGenerator.generateExplorationContent called for: ${topic.title}`);
+    console.log(`📊 Legacy research results: ${researchResults?.length || 0}`);
+    console.log(`🔍 Subtopics: ${subtopics.length}`);
+    
+    if (researchResults && researchResults.length > 0) {
+      console.log('📋 Sample research result:', {
+        title: researchResults[0].title,
+        source: researchResults[0].source,
+        contentType: researchResults[0].contentType,
+        contentLength: researchResults[0].content.length
+      });
+    }
+
+    // Convert ResearchResult format to AgentResearchResult format if needed
+    const agentResearchResults: AgentResearchResult[] = researchResults?.map(result => ({
+      agent: result.source || 'General Research Agent',
+      topic: topic.title,
+      results: [{
+        title: result.title,
+        url: result.url || '',
+        snippet: result.content,
+        source: result.source,
+        relevanceScore: result.relevanceScore,
+        metadata: {
+          contentType: result.contentType
+        }
+      }],
+      summary: result.content.slice(0, 200) + '...',
+      subtopics: [],
+      status: 'success' as const,
+      timestamp: new Date()
+    })) || [];
+
+    try {
+      // Use the new multi-agent content orchestrator
+      const multiAgentResult: MultiAgentContent = await multiAgentContentOrchestrator.generateExplorationContent(
+        topic,
+        subtopics,
+        agentResearchResults,
+        context
+      );
+
+      // Convert MultiAgentContent to MDXContent format
+      return this.convertMultiAgentToMDX(multiAgentResult, topic);
+
+    } catch (error) {
+      console.warn('Multi-agent content generation failed, falling back to legacy system:', error);
+      
+      // Fallback to the legacy system if the new one fails
+      return this.generateExplorationContentFallback(topic, subtopics, researchResults);
+    }
+  }
+
+  /**
+   * Convert MultiAgentContent to legacy MDXContent format
+   */
+  private convertMultiAgentToMDX(multiAgentResult: MultiAgentContent, topic: Topic): MDXContent {
+    // Extract frontmatter from the content
+    const frontmatterMatch = multiAgentResult.content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    
+    let frontmatter: any = {
+      title: topic.title,
+      difficulty: "intermediate",
+      estimatedReadTime: multiAgentResult.metadata.estimatedReadTime,
+    };
+    
+    let mainContent = multiAgentResult.content;
+
+    if (frontmatterMatch) {
+      try {
+        const frontmatterText = frontmatterMatch[1];
+        const lines = frontmatterText.split("\n");
+        for (const line of lines) {
+          const [key, ...valueParts] = line.split(":");
+          if (key && valueParts.length > 0) {
+            const value = valueParts.join(":").trim();
+            frontmatter[key.trim()] = value.replace(/^["']|["']$/g, "");
+          }
+        }
+        mainContent = frontmatterMatch[2];
+      } catch (error) {
+        console.warn("Failed to parse multi-agent frontmatter:", error);
+      }
+    }
+
+    // Extract sections from the content
+    const sections = this.extractSectionsWithContent(mainContent);
+
+    return {
+      content: mainContent,
+      frontmatter,
+      sections,
+    };
+  }
+
+  /**
+   * Legacy fallback for exploration content generation
+   */
+  private async generateExplorationContentFallback(
+    topic: Topic,
+    subtopics: string[],
+    researchResults?: ResearchResult[]
   ): Promise<MDXContent> {
     const prompt = this.buildExplorationContentPrompt(topic, subtopics, researchResults);
 

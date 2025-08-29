@@ -180,6 +180,16 @@ export class ResearchIntegrationManager {
   // Handle depth completion
   private async handleDepthCompletion(result: any, context: any): Promise<void> {
     try {
+      // Verify the topic exists before creating vector documents
+      const existingTopic = await context.entities.Topic.findUnique({
+        where: { id: result.topicId }
+      });
+
+      if (!existingTopic) {
+        console.warn(`Topic with ID ${result.topicId} not found, skipping vector document creation`);
+        return;
+      }
+
       // Store research results as vector documents
       for (const agentResult of result.agentResults) {
         if (agentResult.status === 'success' && agentResult.results.length > 0) {
@@ -190,19 +200,25 @@ export class ResearchIntegrationManager {
             subtopics: agentResult.subtopics
           });
 
-          await context.entities.VectorDocument.create({
-            data: {
-              topicId: result.topicId,
-              content,
-              embedding: JSON.stringify([]), // Placeholder for actual embeddings
-              metadata: {
-                agent: agentResult.agent,
+          try {
+            await context.entities.VectorDocument.create({
+              data: {
+                topicId: result.topicId,
+                content,
+                embedding: JSON.stringify([]), // Placeholder for actual embeddings
+                metadata: {
+                  agent: agentResult.agent,
                 depth: result.depth,
                 timestamp: agentResult.timestamp,
                 resultCount: agentResult.results.length
               }
             }
           });
+          
+          console.log(`Created vector document for ${agentResult.agent} (topic: ${result.topic})`);
+          } catch (createError) {
+            console.error(`Failed to create vector document for agent ${agentResult.agent}:`, createError);
+          }
         }
       }
 
