@@ -109,7 +109,7 @@ export function TopicProvider({ children }: TopicProviderProps) {
 
   // Tab navigation hook
   const tabNavigation = useTabNavigation({
-    defaultTab: 'learn',
+    defaultTab: 'explore', // Changed to make Explore the default tab
     enableUrlSync: true
   });
 
@@ -193,12 +193,32 @@ export function TopicProvider({ children }: TopicProviderProps) {
     setCurrentTab(tabNavigation.activeTab);
   }, [tabNavigation.activeTab, setCurrentTab]);
 
-  // Set selected topic ID when topic loads
+  // Set selected topic ID when topic loads and auto-redirect to explore tab
   useEffect(() => {
     if (topic?.id && !selectedTopicId) {
       setSelectedTopicId(topic.id);
+      
+      // Auto-redirect to Explore tab for new topics
+      // This ensures users immediately see the AI learning engine at work
+      if (tabNavigation.activeTab !== 'explore') {
+        console.log(`🎯 Auto-redirecting to Explore tab for new topic: ${topic.title}`);
+        tabNavigation.setActiveTab('explore');
+      }
     }
-  }, [topic?.id, selectedTopicId, setSelectedTopicId]);
+  }, [topic?.id, selectedTopicId, setSelectedTopicId, tabNavigation]);
+
+  // Additional logic: If a new topic slug is loaded, also switch to explore tab
+  useEffect(() => {
+    if (slug && topic?.slug === slug && tabNavigation.activeTab !== 'explore') {
+      // Only auto-switch if we're not already on a tab the user explicitly selected
+      const hasUserInteracted = tabNavigation.loadedTabs.size > 1; // More than just the default tab
+      
+      if (!hasUserInteracted) {
+        console.log(`🎯 New topic loaded: "${slug}", switching to Explore tab`);
+        tabNavigation.setActiveTab('explore');
+      }
+    }
+  }, [slug, topic?.slug, tabNavigation]);
 
   // Compute derived research state
   const isResearching = researchStatus?.status === 'active' || researchStatus?.status === 'queued';

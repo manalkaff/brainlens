@@ -15,16 +15,16 @@ interface TabConfig {
 
 const tabConfigs: TabConfig[] = [
   {
-    id: 'learn',
-    label: 'Learn',
-    color: 'bg-primary',
-    description: 'Guided learning experience'
-  },
-  {
     id: 'explore',
     label: 'Explore',
+    color: 'bg-primary',
+    description: 'AI-powered deep topic exploration'
+  },
+  {
+    id: 'learn',
+    label: 'Learn',
     color: 'bg-success',
-    description: 'Browse topic structure'
+    description: 'Guided learning experience'
   },
   {
     id: 'ask',

@@ -435,6 +435,47 @@ action streamAssessmentContent {
   entities: [Topic, UserTopicProgress]
 }
 
+// Iterative Research Operations (AI Learning Engine)
+action startIterativeResearch {
+  fn: import { startIterativeResearch } from "@src/server/operations/iterativeResearch",
+  entities: [Topic, UserTopicProgress, VectorDocument, GeneratedContent]
+}
+
+action expandTopicDepth {
+  fn: import { expandTopicDepth } from "@src/server/operations/iterativeResearch",
+  entities: [Topic, UserTopicProgress, VectorDocument]
+}
+
+action generateSubtopicsForTopic {
+  fn: import { generateSubtopics } from "@src/server/operations/iterativeResearch",
+  entities: [Topic, UserTopicProgress]
+}
+
+query getTopicHierarchy {
+  fn: import { getTopicHierarchy } from "@src/server/operations/iterativeResearch",
+  entities: [Topic]
+}
+
+query getResearchStats {
+  fn: import { getResearchStats } from "@src/server/operations/iterativeResearch",
+  entities: [Topic, UserTopicProgress, VectorDocument]
+}
+
+query getCacheStatistics {
+  fn: import { getCacheStatistics } from "@src/server/operations/iterativeResearch",
+  entities: [GeneratedContent, Topic]
+}
+
+action cleanupCache {
+  fn: import { cleanupCache } from "@src/server/operations/iterativeResearch",
+  entities: [GeneratedContent, Topic]
+}
+
+query checkResearchFreshness {
+  fn: import { checkResearchFreshness } from "@src/server/operations/iterativeResearch",
+  entities: [Topic, GeneratedContent]
+}
+
 // Research Pipeline API
 api researchTopic {
   fn: import { researchTopicHandler } from "@src/learning/research/api",

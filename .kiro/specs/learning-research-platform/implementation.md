@@ -146,8 +146,8 @@ export const AGENT_SEARCH_CONFIGS: Record<string, AgentSearchConfig> = {
 
 export class AgentSearchService {
   async searchForAgent(
-    agentName: string, 
-    query: string, 
+    agentName: string,
+    query: string,
     context?: any
   ): Promise<SearchResult[]> {
     const config = AGENT_SEARCH_CONFIGS[agentName];
@@ -165,7 +165,7 @@ export class AgentSearchService {
       };
 
       const response = await searxngService.search(query, searchOptions);
-      
+
       return this.transformResults(response.results, agentName, query)
         .slice(0, config.maxResults);
     } catch (error) {
@@ -175,8 +175,8 @@ export class AgentSearchService {
   }
 
   private transformResults(
-    results: SearxngSearchResult[], 
-    agentName: string, 
+    results: SearxngSearchResult[],
+    agentName: string,
     query: string
   ): SearchResult[] {
     return results.map((result, index) => ({
@@ -196,28 +196,28 @@ export class AgentSearchService {
   }
 
   private calculateRelevanceScore(
-    result: SearxngSearchResult, 
-    query: string, 
+    result: SearxngSearchResult,
+    query: string,
     position: number
   ): number {
     let score = 1.0 - (position * 0.05); // Position-based scoring
-    
+
     // Boost score based on title relevance
     const titleWords = result.title?.toLowerCase().split(/\s+/) || [];
     const queryWords = query.toLowerCase().split(/\s+/);
-    const titleMatches = queryWords.filter(word => 
+    const titleMatches = queryWords.filter(word =>
       titleWords.some(titleWord => titleWord.includes(word))
     ).length;
-    
+
     score += (titleMatches / queryWords.length) * 0.3;
-    
+
     // Boost score based on content relevance
     if (result.content) {
       const contentWords = result.content.toLowerCase().split(/\s+/);
       const contentMatches = queryWords.filter(word =>
         contentWords.some(contentWord => contentWord.includes(word))
       ).length;
-      
+
       score += (contentMatches / queryWords.length) * 0.2;
     }
 
@@ -254,7 +254,7 @@ export class RealGeneralResearchAgent implements ResearchAgent {
     try {
       const enhancedContext = getEnhancedContext(this.name, topic, context);
       const optimizedQueries = getOptimizedQueries(this.name, topic, enhancedContext);
-      
+
       // Execute multiple optimized queries
       const allResults: SearchResult[] = [];
       for (const query of optimizedQueries.slice(0, 5)) {
@@ -294,13 +294,13 @@ export class RealGeneralResearchAgent implements ResearchAgent {
   private async generateAISummary(results: SearchResult[], topic: string): Promise<string> {
     if (results.length === 0) return `No results found for ${topic}`;
 
-    const content = results.slice(0, 10).map(r => 
+    const content = results.slice(0, 10).map(r =>
       `Title: ${r.title}\nContent: ${r.snippet}`
     ).join('\n\n');
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [{
           role: 'user',
           content: `Based on the following search results about "${topic}", create a comprehensive summary that covers the key concepts, applications, and current developments. Keep it informative but concise (300-500 words):\n\n${content}`
@@ -323,7 +323,7 @@ export class RealGeneralResearchAgent implements ResearchAgent {
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [{
           role: 'user',
           content: `Based on the following content about "${topic}", identify 5-8 important subtopics that someone learning about ${topic} should explore. Return only the subtopic names, one per line:\n\n${content.substring(0, 3000)}`
@@ -349,7 +349,7 @@ export class RealGeneralResearchAgent implements ResearchAgent {
   private extractKeywordsAsSubtopics(content: string, topic: string): string[] {
     const words = content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
     const frequency: Record<string, number> = {};
-    
+
     words.forEach(word => {
       if (!word.includes(topic.toLowerCase()) && word.length > 3) {
         frequency[word] = (frequency[word] || 0) + 1;
@@ -400,10 +400,10 @@ export class RealAcademicResearchAgent implements ResearchAgent {
   private async generateAcademicSummary(results: SearchResult[], topic: string): Promise<string> {
     // Academic-focused summary generation
     const academicContent = results.map(r => `${r.title}: ${r.snippet}`).join('\n');
-    
+
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [{
           role: 'user',
           content: `Based on these academic sources about "${topic}", create a scholarly summary focusing on research findings, methodologies, and theoretical frameworks:\n\n${academicContent}`
@@ -447,7 +447,7 @@ export class RealResearchAgentFactory {
   static async executeAllAgents(topic: string, context?: any): Promise<ResearchResult[]> {
     const agents = this.getAllAgents();
     const promises = agents.map(agent => agent.execute(topic, context));
-    
+
     const results = await Promise.allSettled(promises);
     return results.map((result, index) => {
       if (result.status === 'fulfilled') {
@@ -497,9 +497,9 @@ export class AssessmentContentGenerator {
   ): Promise<GeneratedAssessmentContent> {
     try {
       const prompt = this.createAssessmentPrompt(topic, assessment, topicSummary);
-      
+
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1500,
         temperature: 0.7
@@ -518,9 +518,9 @@ export class AssessmentContentGenerator {
     assessment: AssessmentResult,
     topicSummary?: string
   ): string {
-    const knowledgeLevel = assessment.knowledgeLevel <= 2 ? 'beginner' : 
+    const knowledgeLevel = assessment.knowledgeLevel <= 2 ? 'beginner' :
                           assessment.knowledgeLevel <= 3 ? 'intermediate' : 'advanced';
-    
+
     return `
 Create a personalized learning plan for someone wanting to learn about "${topic}".
 
@@ -579,7 +579,7 @@ Format as JSON:
   }
 
   private getFallbackContent(topic: string, assessment: AssessmentResult): GeneratedAssessmentContent {
-    const knowledgeLevel = assessment.knowledgeLevel <= 2 ? 'beginner' : 
+    const knowledgeLevel = assessment.knowledgeLevel <= 2 ? 'beginner' :
                           assessment.knowledgeLevel <= 3 ? 'intermediate' : 'advanced';
 
     return {
@@ -638,12 +638,12 @@ export interface StreamingContentOptions {
 export class StreamingContentGenerator {
   async *generateStreamingContent(options: StreamingContentOptions): AsyncGenerator<string, void, unknown> {
     const { topic, assessment, selectedPath } = options;
-    
+
     try {
       const prompt = this.createStreamingPrompt(options);
-      
+
       const stream = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-nano',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2000,
         temperature: 0.7,
@@ -664,7 +664,7 @@ export class StreamingContentGenerator {
 
   private createStreamingPrompt(options: StreamingContentOptions): string {
     const { topic, assessment, selectedPath } = options;
-    const knowledgeLevel = assessment.knowledgeLevel <= 2 ? 'beginner' : 
+    const knowledgeLevel = assessment.knowledgeLevel <= 2 ? 'beginner' :
                           assessment.knowledgeLevel <= 3 ? 'intermediate' : 'advanced';
 
     return `
@@ -691,7 +691,7 @@ Write in markdown format with clear section headers.
 
   private async *getFallbackStreamingContent(options: StreamingContentOptions): AsyncGenerator<string, void, unknown> {
     const { topic, selectedPath } = options;
-    
+
     const fallbackContent = `
 # Welcome to Your ${topic} Learning Journey
 
@@ -949,7 +949,7 @@ const handleAssessmentComplete = async (result: AssessmentResult) => {
     });
 
     const generatedContent = await response.json();
-    
+
     // Store assessment and generated content
     const preferences = {
       assessment: result,

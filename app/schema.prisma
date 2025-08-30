@@ -130,6 +130,14 @@ model Topic {
   children    Topic[]  @relation("TopicHierarchy")
   status      TopicStatus @default(RESEARCHING)
   metadata    Json?
+  
+  // Research tracking fields
+  lastResearched DateTime?    // Last time this topic was researched
+  researchVersion String?      // Version identifier for research data
+  cacheStatus CacheStatus @default(STALE) // Cache status for intelligent refresh
+  researchPriority Int @default(5) // Priority for research queue (1=highest, 5=lowest)
+  subtopicsGenerated Boolean @default(false) // Whether subtopics have been generated
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -148,17 +156,27 @@ model Topic {
   @@index([updatedAt])
   @@index([status, depth])
   @@index([parentId, depth])
+  @@index([lastResearched])
+  @@index([cacheStatus])
+  @@index([researchPriority])
+  @@index([cacheStatus, lastResearched])
+  @@index([status, researchPriority])
 }
 
 model GeneratedContent {
   id          String   @id @default(uuid())
   topicId     String   
-  contentType String   // 'exploration', 'learning', 'quiz', etc.
+  contentType String   // 'exploration', 'learning', 'quiz', 'cache', etc.
   content     String   // The generated MDX content
-  metadata    Json?    // Additional metadata like user preferences, generation settings
+  metadata    Json?    // Additional metadata like user preferences, generation settings, research data
   sources     Json?    // Array of source attributions
-  userLevel   String?  // 'beginner', 'intermediate', 'advanced'
-  learningStyle String? // 'textual', 'visual', 'interactive', etc.
+  userLevel   String?  // 'beginner', 'intermediate', 'advanced', 'cache'
+  learningStyle String? // 'textual', 'visual', 'interactive', 'cache', etc.
+  cacheKey    String?  // Cache key for intelligent caching
+  accessCount Int      @default(0) // Track cache access frequency
+  lastAccess  DateTime @default(now()) // Last time this content was accessed
+  researchVersion String? // Version of research used to generate content
+  freshnessTtl Int?     // TTL in days for this specific content
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -169,6 +187,10 @@ model GeneratedContent {
   @@index([contentType])
   @@index([createdAt])
   @@index([topicId, contentType])
+  @@index([cacheKey])
+  @@index([lastAccess])
+  @@index([accessCount])
+  @@index([contentType, createdAt])
 }
 
 model UserTopicProgress {
@@ -282,6 +304,13 @@ enum TopicStatus {
   COMPLETED
   ERROR
   PENDING
+}
+
+enum CacheStatus {
+  FRESH      // Content is up to date
+  STALE      // Content needs refresh
+  REFRESHING // Currently being refreshed
+  ERROR      // Error during refresh
 }
 
 enum MessageRole {

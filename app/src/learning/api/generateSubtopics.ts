@@ -45,7 +45,7 @@ export const generateSubtopicsHandler = async (
     );
 
     const result = await generateText({
-      model: openai("gpt-5-mini"),
+      model: openai("gpt-5-nano"),
       prompt,
       temperature: 0.7,
     });

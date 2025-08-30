@@ -258,7 +258,7 @@ export class ContentSynthesisEngine {
 
     // Call OpenAI for synthesis using AI SDK
     const result = await generateText({
-      model: openai("gpt-5-mini"),
+      model: openai("gpt-5-nano"),
       system: this.getSynthesisSystemPrompt(),
       prompt: synthesisPrompt,
       temperature: this.config.temperature,
@@ -472,7 +472,7 @@ Focus on:
 
     try {
       const aiResult = await generateText({
-        model: openai("gpt-5-mini"),
+        model: openai("gpt-5-nano"),
         system: `Summarize the key insights about "${topic}" from the ${result.agent} in 2-3 sentences.`,
         prompt: content,
         temperature: 0.3,
@@ -849,7 +849,7 @@ Focus on:
 
     try {
       const aiResult = await generateText({
-        model: openai("gpt-5-mini"),
+        model: openai("gpt-5-nano"),
         system: `Adapt content about "${topic}" for ${userLevel} level learners. Focus on appropriate complexity and examples.`,
         prompt: adaptationPrompt,
         temperature: 0.4,

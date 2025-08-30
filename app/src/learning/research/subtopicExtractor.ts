@@ -164,7 +164,7 @@ export class SubtopicExtractor {
     );
 
     const result = await generateText({
-      model: openai("gpt-5-mini"),
+      model: openai("gpt-5-nano"),
       system: this.getExtractionSystemPrompt(),
       prompt: extractionPrompt,
       temperature: 0.2,

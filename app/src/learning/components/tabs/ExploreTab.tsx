@@ -8,6 +8,7 @@ import { MDXContent } from '../ui/MDXContent';
 import { LoadingSkeleton } from '../ui/LoadingSkeleton';
 import { useTopicTree, useTopicContent } from '../../hooks/useTopicTree';
 import { useContentGeneration, useContentBookmarks } from '../../hooks/useContentGeneration';
+import { useIterativeResearch } from '../../hooks/useIterativeResearch';
 import type { TopicTreeItem } from '../ui/TopicTree';
 import { 
   BookOpen, 
@@ -35,6 +36,29 @@ import {
 
 export function ExploreTab() {
   const { topic, isLoading: topicLoading } = useTopicContext();
+  
+  // New iterative research system
+  const {
+    isResearching,
+    researchProgress,
+    error: researchError,
+    researchResult,
+    hierarchy,
+    startResearch,
+    expandDepth,
+    generateTopicSubtopics,
+    refreshResearch,
+    clearError,
+    isTopicExpanded,
+    getResearchStats
+  } = useIterativeResearch({
+    topicSlug: topic?.slug,
+    autoStart: true,
+    maxDepth: 3,
+    userContext: { level: 'intermediate', interests: [] }
+  });
+
+  // Legacy system for compatibility (we'll gradually phase this out)
   const {
     topics,
     isLoading: treeLoading,
@@ -53,7 +77,7 @@ export function ExploreTab() {
     generateContent
   } = useContentGeneration({
     topic: selectedTopic,
-    autoGenerate: true // Changed to true for automatic generation
+    autoGenerate: false // Turn off auto-generation to use new system
   });
 
   const {
@@ -182,6 +206,64 @@ export function ExploreTab() {
           <p className="text-muted-foreground">Topic not found</p>
         </CardContent>
       </Card>
+    );
+  }
+
+  // Show research progress if actively researching
+  if (isResearching) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-200px)] bg-background">
+        <Card className="w-full max-w-lg mx-auto">
+          <CardContent className="p-8 text-center space-y-6">
+            <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="font-semibold text-lg">AI Learning Engine at Work</h3>
+              <p className="text-sm text-muted-foreground">
+                Our AI agent is researching "{topic.title}" comprehensively using multiple sources and learning iteratively.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="w-full bg-muted rounded-full h-3">
+                <div 
+                  className="bg-primary h-3 rounded-full transition-all duration-500 ease-out" 
+                  style={{ width: `${researchProgress}%` }} 
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {researchProgress < 30 && "Planning research strategy..."}
+                {researchProgress >= 30 && researchProgress < 60 && "Researching with multiple specialized agents..."}
+                {researchProgress >= 60 && researchProgress < 85 && "Analyzing and synthesizing findings..."}
+                {researchProgress >= 85 && "Generating comprehensive content..."}
+              </p>
+              
+              {getResearchStats().totalTopics > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Processing {getResearchStats().totalTopics} topics • {getResearchStats().completedTopics} completed
+                </div>
+              )}
+            </div>
+
+            {researchError && (
+              <div className="p-4 bg-destructive/10 text-destructive rounded-lg text-sm">
+                <p className="font-medium">Research Error</p>
+                <p>{researchError}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={clearError} 
+                  className="mt-2"
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -407,7 +489,111 @@ export function ExploreTab() {
 
         {/* Content Display Area */}
         <div className="flex-1 overflow-auto">
-          {selectedTopic ? (
+          {/* Show research results if available */}
+          {researchResult ? (
+            <div className="p-6">
+              {/* Main topic content */}
+              <div className="space-y-6">
+                <div className="border-b pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-2xl font-bold">{researchResult.mainTopic.topic}</h1>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Researched by AI Learning Engine • {researchResult.totalTopicsProcessed} topics explored
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={refreshResearch}
+                        disabled={isResearching}
+                      >
+                        {isResearching ? (
+                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        ) : (
+                          <Zap className="w-4 h-4 mr-2" />
+                        )}
+                        Refresh Research
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Research metadata */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-lg font-semibold">{researchResult.mainTopic.sources.length}</div>
+                    <div className="text-xs text-muted-foreground">Sources Used</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold">{Math.round(researchResult.totalProcessingTime / 1000)}s</div>
+                    <div className="text-xs text-muted-foreground">Research Time</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold">{Math.round(researchResult.mainTopic.metadata.confidenceScore * 100)}%</div>
+                    <div className="text-xs text-muted-foreground">Confidence</div>
+                  </div>
+                </div>
+
+                {/* Main content */}
+                <MDXContent
+                  content={researchResult.mainTopic.content.content}
+                  topicTitle={researchResult.mainTopic.topic}
+                  sources={researchResult.mainTopic.sources.map(s => ({
+                    id: s.id,
+                    title: s.title,
+                    url: s.url,
+                    source: s.source,
+                    engine: s.engine,
+                    relevanceScore: s.relevanceScore,
+                    contentType: s.contentType
+                  }))}
+                  bookmarks={bookmarks}
+                  onToggleBookmark={toggleBookmark}
+                  isBookmarked={isBookmarked}
+                  onMarkAsRead={markAsRead}
+                  isRead={isRead}
+                />
+
+                {/* Subtopics section */}
+                {researchResult.mainTopic.subtopics.length > 0 && (
+                  <div className="mt-8 border-t pt-6">
+                    <h2 className="text-xl font-semibold mb-4">Explore Further</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {researchResult.mainTopic.subtopics.map((subtopic, index) => (
+                        <Card key={index} className="cursor-pointer hover:shadow-md transition-shadow">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h3 className="font-medium text-sm">{subtopic.title}</h3>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {subtopic.description}
+                                </p>
+                              </div>
+                              <div className="ml-2 flex-shrink-0">
+                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                                  subtopic.complexity === 'beginner' ? 'bg-green-100 text-green-800' :
+                                  subtopic.complexity === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-red-100 text-red-800'
+                                }`}>
+                                  {subtopic.complexity}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                              <span>Priority: {subtopic.priority}</span>
+                              <span>{subtopic.estimatedReadTime}min read</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : selectedTopic ? (
             content ? (
               <div className="p-6">
                 <MDXContent
