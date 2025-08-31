@@ -16,10 +16,10 @@ const SubtopicsSchema = z.object({
         .number()
         .min(1)
         .max(5)
-        .describe("Priority level (1=highest, 5=lowest)"),
+        .describe("Priority level (1=highest, 5=lowest) - MUST be an integer between 1 and 5"),
       complexity: z
         .enum(["beginner", "intermediate", "advanced"])
-        .describe("Complexity level"),
+        .describe("Complexity level - MUST be exactly one of: beginner, intermediate, or advanced (no combinations or hyphens)"),
     }),
   ),
 });
@@ -30,7 +30,7 @@ const ResearchPlanSchema = z.object({
       query: z.string().describe("The search query to execute"),
       engine: z
         .enum(["general", "academic", "video", "community", "computational"])
-        .describe("Which SearXNG engine to use"),
+        .describe("Which SearXNG engine to use - MUST be exactly one of: general, academic, video, community, computational"),
       reasoning: z
         .string()
         .describe("Why this query and engine combination will be valuable"),
@@ -42,6 +42,41 @@ const ResearchPlanSchema = z.object({
   expectedOutcomes: z
     .array(z.string())
     .describe("What we expect to learn from this research"),
+});
+
+const TopicUnderstandingSchema = z.object({
+  definition: z
+    .string()
+    .describe("Clear, concise definition of what this topic is about"),
+  category: z
+    .enum([
+      "academic",
+      "technical", 
+      "cultural",
+      "historical",
+      "scientific",
+      "artistic",
+      "business",
+      "social",
+      "philosophical",
+      "practical"
+    ])
+    .describe("Primary category this topic belongs to"),
+  complexity: z
+    .enum(["beginner", "intermediate", "advanced"])
+    .describe("Complexity level based on research findings - MUST be exactly one of: beginner, intermediate, or advanced"),
+  relevantDomains: z
+    .array(z.string())
+    .describe("Related fields/areas this topic touches"),
+  engineRecommendations: z.object({
+    academic: z.boolean().describe("Whether academic engine would be valuable"),
+    video: z.boolean().describe("Whether video content would be helpful"),
+    community: z.boolean().describe("Whether community discussions are relevant"),
+    computational: z.boolean().describe("Whether computational analysis applies"),
+  }),
+  researchApproach: z
+    .enum(["broad-overview", "focused-deep-dive", "comparative", "historical"])
+    .describe("Recommended research approach based on topic nature"),
 });
 
 const ContentStructureSchema = z.object({
@@ -72,6 +107,30 @@ const ContentStructureSchema = z.object({
 });
 
 // Types for the learning engine
+export interface TopicUnderstanding {
+  definition: string;
+  category: 
+    | "academic"
+    | "technical" 
+    | "cultural"
+    | "historical"
+    | "scientific"
+    | "artistic"
+    | "business"
+    | "social"
+    | "philosophical"
+    | "practical";
+  complexity: "beginner" | "intermediate" | "advanced";
+  relevantDomains: string[];
+  engineRecommendations: {
+    academic: boolean;
+    video: boolean;
+    community: boolean;
+    computational: boolean;
+  };
+  researchApproach: "broad-overview" | "focused-deep-dive" | "comparative" | "historical";
+}
+
 export interface TopicResearchRequest {
   topic: string;
   depth: number;
@@ -82,6 +141,7 @@ export interface TopicResearchRequest {
     interests?: string[];
     previousKnowledge?: string[];
   };
+  understanding?: TopicUnderstanding;
 }
 
 export interface TopicResearchResult {
@@ -159,6 +219,109 @@ export class AILearningAgent {
   private fastModel = openai("gpt-5-nano");
 
   /**
+   * Understand a topic from scratch using basic research
+   * This function performs initial research to understand what a topic is about
+   * without relying on AI's pre-trained knowledge
+   */
+  async understandTopic(topic: string): Promise<TopicUnderstanding> {
+    console.log(`🔍 Understanding topic from scratch: "${topic}"`);
+    
+    try {
+      // Step 1: Basic definitional search
+      const basicQuery = `What is "${topic}" definition meaning explanation`;
+      
+      console.log(`🔎 Basic research query: "${basicQuery}"`);
+      const searchResponse = await SearxngUtils.searchWithAgent("general", basicQuery);
+      
+      if (!searchResponse.results || searchResponse.results.length === 0) {
+        throw new Error(`No search results found for topic: ${topic}`);
+      }
+      
+      // Take top 5 results for understanding
+      const topResults = searchResponse.results.slice(0, 5);
+      
+      // Step 2: Build research context from sources
+      const researchContext = topResults
+        .map((result, index) => 
+          `[Source ${index + 1}] ${result.title}\n${result.content || result.snippet}\nURL: ${result.url}\n`
+        )
+        .join("\n");
+      
+      // Step 3: AI analyzes research to understand the topic
+      const analysisPrompt = `You are a research analyst tasked with understanding a topic based ONLY on the research provided below. You have NO prior knowledge about this topic.
+
+RESEARCH FINDINGS:
+${researchContext}
+
+Based ONLY on what you learned from these research sources, analyze the topic "${topic}" and provide:
+
+1. DEFINITION: What is this topic according to the research?
+
+2. CATEGORY: What primary field/domain does this belong to based on the sources?
+   Must be ONE of: academic, technical, cultural, historical, scientific, artistic, business, social, philosophical, practical
+
+3. COMPLEXITY: How complex does this topic appear based on the language and concepts in the sources?
+   Must be EXACTLY one of: beginner, intermediate, advanced
+   - "beginner": Simple language, basic concepts, introductory level
+   - "intermediate": Some technical terms, moderate complexity  
+   - "advanced": Complex terminology, expert-level concepts
+
+4. RELEVANT_DOMAINS: What related fields/areas are mentioned in the research?
+
+5. ENGINE_RECOMMENDATIONS: Based on the nature of this topic from research, which search engines would be most valuable?
+   - Academic: Would scholarly papers/research be valuable? (true/false)
+   - Video: Would visual/video content help explain this? (true/false)
+   - Community: Would discussions/forums provide useful insights? (true/false)  
+   - Computational: Would quantitative/data analysis be relevant? (true/false)
+
+6. RESEARCH_APPROACH: What approach would work best for deeper research?
+   Must be ONE of: broad-overview, focused-deep-dive, comparative, historical
+
+IMPORTANT: Use ONLY the exact enum values specified above. Be analytical and logical. Base your recommendations ONLY on what the research sources reveal about this topic.`;
+
+      const result = await (generateObject as any)({
+        model: this.fastModel,
+        prompt: analysisPrompt,
+        schema: TopicUnderstandingSchema,
+        temperature: 0.3, // Low temperature for analytical consistency
+      });
+
+      // Validate the result structure
+      if (!result.object || typeof result.object !== 'object') {
+        throw new Error('Invalid topic understanding structure generated');
+      }
+      
+      const understanding = result.object;
+      
+      console.log(`✅ Topic understanding complete:`);
+      console.log(`   Definition: ${understanding.definition.substring(0, 100)}...`);
+      console.log(`   Category: ${understanding.category}`);
+      console.log(`   Complexity: ${understanding.complexity}`);
+      console.log(`   Recommended engines: ${Object.entries(understanding.engineRecommendations).filter(([_, value]) => value).map(([key]) => key).join(', ')}`);
+      
+      return understanding;
+      
+    } catch (error) {
+      console.error(`❌ Failed to understand topic "${topic}":`, error);
+      
+      // Fallback understanding if research fails
+      return {
+        definition: `A topic requiring research to understand: ${topic}`,
+        category: "academic",
+        complexity: "beginner",
+        relevantDomains: [topic],
+        engineRecommendations: {
+          academic: true,
+          video: false,
+          community: false,
+          computational: false,
+        },
+        researchApproach: "broad-overview",
+      };
+    }
+  }
+
+  /**
    * Main research and generation function
    * This is the core function that recursively explores topics
    */
@@ -173,10 +336,23 @@ export class AILearningAgent {
     request.maxDepth = 1;
 
     try {
-      // Step 1: Plan the research strategy
+      // Step 0: Understand the topic from scratch (NEW - only for root topics)
+      let understanding: TopicUnderstanding;
+      if (request.understanding) {
+        // Use provided understanding (for subtopics)
+        understanding = request.understanding;
+        console.log(`📖 Using provided topic understanding for: "${request.topic}"`);
+      } else {
+        // Generate understanding for root topics
+        console.log("🔍 Step 0: Understanding topic from research...");
+        understanding = await this.understandTopic(request.topic);
+      }
+
+      // Step 1: Plan the research strategy (MODIFIED - now uses understanding)
       console.log("📋 Step 1: Planning research strategy...");
       const researchPlan = await this.planResearch(
         request.topic,
+        understanding,
         request.userContext,
       );
 
@@ -250,38 +426,119 @@ export class AILearningAgent {
   }
 
   /**
-   * Plan the research strategy using AI
+   * Plan the research strategy using research-based understanding (NOT AI knowledge)
    */
-  private async planResearch(topic: string, userContext?: any): Promise<any> {
-    const prompt = `You are an expert research strategist. Plan a comprehensive research strategy for the topic: "${topic}".
+  private async planResearch(
+    topic: string, 
+    understanding: TopicUnderstanding, 
+    userContext?: any
+  ): Promise<any> {
+    const prompt = `You are a research strategist creating a plan based ONLY on the topic understanding provided below. You have NO prior knowledge about "${topic}".
+
+RESEARCH-BASED TOPIC UNDERSTANDING:
+- Definition: ${understanding.definition}
+- Category: ${understanding.category}  
+- Complexity: ${understanding.complexity}
+- Relevant Domains: ${understanding.relevantDomains.join(", ")}
+- Research Approach: ${understanding.researchApproach}
+
+ENGINE RECOMMENDATIONS (based on research findings):
+${Object.entries(understanding.engineRecommendations)
+  .map(([engine, recommended]) => `- ${engine}: ${recommended ? "RECOMMENDED" : "not recommended"} based on topic analysis`)
+  .join("\n")}
 
 Available research engines:
 - general: Broad web search across multiple sources
-- academic: Scientific papers, research, scholarly articles
+- academic: Scientific papers, research, scholarly articles  
 - video: Educational videos, tutorials, demonstrations
 - community: Forums, discussions, real-world experiences
 - computational: Mathematical, algorithmic, technical data
 
-${
-  userContext
-    ? `User context: Level=${
-        userContext.level
-      }, Interests=[${userContext.interests?.join(", ")}]`
-    : ""
-}
+${userContext ? `User context: Level=${userContext.level}, Interests=[${userContext.interests?.join(", ")}]` : ""}
 
-Create a research plan that will provide comprehensive coverage of this topic. Think like a student who wants to become an expert - what would you need to research to truly understand this topic?
+INSTRUCTIONS:
+1. Base your research plan ONLY on the understanding provided above
+2. Use the engine recommendations from the research analysis
+3. Focus on ${understanding.researchApproach} approach as indicated by the research
+4. Create 4-6 targeted research queries that will build upon the basic understanding
+5. Do NOT use engines that were marked "not recommended" unless absolutely essential
+6. Each query should be specific and progressive - building from basic to more detailed understanding
 
-Plan 4-6 research queries using different engines strategically.`;
+Your goal: Create targeted searches that will expand knowledge from the basic definition to comprehensive understanding, following the research-driven recommendations above.`;
 
-    const result = await (generateObject as any)({
-      model: this.model,
-      prompt,
-      schema: ResearchPlanSchema,
-      temperature: 0.7,
-    });
+    try {
+      const result = await (generateObject as any)({
+        model: this.model,
+        prompt,
+        schema: ResearchPlanSchema,
+        temperature: 0.6, // Lower temperature for more consistent, logical planning
+      });
 
-    return result.object;
+      // Validate the result structure
+      if (!result.object || !result.object.researchQueries || !Array.isArray(result.object.researchQueries)) {
+        throw new Error('Invalid research plan structure generated');
+      }
+
+      return result.object;
+      
+    } catch (error) {
+      console.error('Structured research plan generation failed, creating fallback plan:', error);
+      
+      // Fallback research plan based on understanding
+      const fallbackQueries: { query: string; engine: string; reasoning: string }[] = [];
+      
+      // Always include general search
+      fallbackQueries.push({
+        query: `${topic} overview introduction basics`,
+        engine: "general",
+        reasoning: "Basic overview to understand fundamental concepts"
+      });
+
+      // Add engine-specific queries based on recommendations
+      if (understanding.engineRecommendations.academic) {
+        fallbackQueries.push({
+          query: `${topic} research studies academic papers`,
+          engine: "academic", 
+          reasoning: "Academic research for scholarly perspective"
+        });
+      }
+
+      if (understanding.engineRecommendations.video && fallbackQueries.length < 5) {
+        fallbackQueries.push({
+          query: `${topic} tutorial explanation video`,
+          engine: "video",
+          reasoning: "Visual content for better understanding"
+        });
+      }
+
+      if (understanding.engineRecommendations.community && fallbackQueries.length < 5) {
+        fallbackQueries.push({
+          query: `${topic} discussion forum community insights`,
+          engine: "community",
+          reasoning: "Community perspectives and practical insights"
+        });
+      }
+
+      // Pad with general queries if needed
+      while (fallbackQueries.length < 4) {
+        fallbackQueries.push({
+          query: `${topic} detailed information guide`,
+          engine: "general",
+          reasoning: "Additional general information for comprehensive coverage"
+        });
+      }
+
+      return {
+        researchQueries: fallbackQueries.slice(0, 6), // Max 6 queries
+        researchStrategy: `Fallback research strategy for ${topic} focusing on ${understanding.researchApproach} approach`,
+        expectedOutcomes: [
+          `Basic understanding of ${topic}`,
+          `Key concepts and terminology`,
+          `Practical applications and examples`,
+          `Different perspectives and approaches`
+        ]
+      };
+    }
   }
 
   /**
@@ -362,17 +619,32 @@ Plan 4-6 research queries using different engines strategically.`;
       )
       .join("\n");
 
-    const prompt = `Analyze the following research results for the topic "${topic}" and provide insights:
+    const prompt = `You are a research analyst with NO prior knowledge about "${topic}". Your job is to synthesize insights based SOLELY on the research data provided below.
 
-RESEARCH RESULTS:
+RESEARCH DATA FROM MULTIPLE SOURCES:
 ${researchContext}
 
-Analyze this research data and provide:
-1. Key insights that emerge from the data
-2. Main content themes to organize the information
-3. Assessment of source quality and comprehensiveness
+ANALYSIS INSTRUCTIONS:
+1. Extract KEY INSIGHTS that emerge from examining all these sources together
+2. Identify MAIN THEMES and patterns that appear across multiple sources  
+3. Assess SOURCE QUALITY based on:
+   - Consistency between sources
+   - Depth of information provided
+   - Credibility indicators (domains, publication types)
+   - Coverage breadth across the topic
 
-Focus on what we can LEARN from this research, not just what it says.`;
+IMPORTANT: 
+- Base your analysis ONLY on what these sources reveal
+- Look for patterns and connections between different sources
+- Identify gaps where sources disagree or lack information
+- Do NOT add information from your own knowledge
+- Focus on what can be LEARNED and UNDERSTOOD from this specific research data
+
+Provide your synthesis focusing on:
+1. What the research collectively tells us about "${topic}"
+2. How the different sources complement or contradict each other
+3. What themes and patterns emerge from the data
+4. Assessment of the research quality and comprehensiveness`;
 
     const result = await generateText({
       model: this.model,
@@ -402,12 +674,12 @@ Focus on what we can LEARN from this research, not just what it says.`;
     synthesis: any,
     userContext?: any,
   ): Promise<GeneratedContent> {
-    const prompt = `You are an expert educator creating comprehensive learning content about "${topic}".
+    const prompt = `You are an educational content creator with NO prior knowledge about "${topic}". You can ONLY use the research insights provided below to create learning content.
 
-RESEARCH INSIGHTS:
+RESEARCH-BASED INSIGHTS (your only source of knowledge):
 ${synthesis.keyInsights?.join("\n- ") || ""}
 
-CONTENT THEMES:
+RESEARCH-IDENTIFIED THEMES:
 ${synthesis.contentThemes?.join("\n- ") || ""}
 
 ${
@@ -418,19 +690,28 @@ ${
     : ""
 }
 
-Create comprehensive educational content that goes deep into this topic. This is NOT a summary - you are teaching someone to become knowledgeable about this topic.
+CONTENT CREATION INSTRUCTIONS:
+1. Create educational content using ONLY the research insights and themes above
+2. Structure the content logically based on the themes discovered in research
+3. Explain concepts using ONLY what you learned from the research synthesis
+4. Do NOT add information from your own knowledge - stick strictly to the research findings
+5. Organize content in a way that builds understanding progressively
+6. Reference the research insights throughout your content
 
-Structure your content with clear sections, detailed explanations, and practical insights. Make it engaging and comprehensive for someone who wants to truly understand this topic.
+CONTENT REQUIREMENTS:
+- Create comprehensive educational content based solely on research findings
+- Structure with clear sections that match the research themes
+- Include detailed explanations drawn from research insights
+- Make content suitable for the user's level (${userContext?.level || "general"})
+- Ensure all information traces back to the research provided
 
 IMPORTANT FORMATTING REQUIREMENTS:
 - keyTakeaways must be an array of simple strings (not objects)
-- nextSteps must be an array of simple strings (not objects)
+- nextSteps must be an array of simple strings (not objects)  
 - Each section's sources should be an array of simple strings (not objects)
 - All content should be in plain text/markdown format
 
-Example format:
-keyTakeaways: ["Key point 1", "Key point 2", "Key point 3"]
-nextSteps: ["Next step 1", "Next step 2", "Next step 3"]`;
+Remember: You are teaching based on research findings, not your own knowledge. Every section should reflect what was discovered through the research process.`;
 
     let result;
     try {
@@ -500,35 +781,114 @@ nextSteps: ["Next step 1", "Next step 2", "Next step 3"]`;
     synthesis: any,
     nextDepth: number,
   ): Promise<SubtopicInfo[]> {
-    const prompt = `Based on the research about "${topic}", identify exactly 5 important subtopics that someone learning about this topic should explore in depth.
+    const prompt = `You are analyzing research findings about "${topic}" to discover subtopics for further exploration. You have NO prior knowledge about this topic - use ONLY the research insights provided.
 
-KEY INSIGHTS FROM RESEARCH:
+RESEARCH FINDINGS - YOUR ONLY KNOWLEDGE SOURCE:
 ${synthesis.keyInsights?.join("\n- ") || ""}
 
-CONTENT THEMES:
+THEMES DISCOVERED IN RESEARCH:
 ${synthesis.contentThemes?.join("\n- ") || ""}
 
-Think like a curriculum designer - what are the key areas within this topic that deserve dedicated deep exploration? These subtopics will each get their own comprehensive research and content generation.
+SUBTOPIC IDENTIFICATION INSTRUCTIONS:
+Based ONLY on what the research revealed, identify exactly 5 subtopics that:
 
-Focus on subtopics that:
-1. Are substantial enough to warrant deep exploration
-2. Are logically connected to the main topic
-3. Would help someone become an expert in the field
-4. Cover different aspects (theoretical, practical, applications, etc.)
+1. Are MENTIONED or IMPLIED in the research findings above
+2. Represent different aspects discovered through research
+3. Would benefit from their own dedicated research (not covered in depth by current research)
+4. Are substantial enough based on research mentions/themes
+5. Logically connect to the main topic based on research findings
 
-IMPORTANT: You must provide exactly 5 subtopics with priorities 1, 2, 3, 4, and 5 (where 1 is highest priority).`;
+ANALYSIS APPROACH:
+- Look through the research insights for specific areas mentioned
+- Examine the themes for different aspects of the topic
+- Identify gaps where research pointed to areas needing deeper exploration
+- Consider different angles the research revealed (causes, effects, applications, etc.)
+- Select subtopics that would expand knowledge beyond current research
 
-    const result = await (generateObject as any)({
-      model: this.fastModel, // Use faster model for subtopic identification
-      prompt,
-      schema: SubtopicsSchema,
-      temperature: 0.8,
-    });
+PRIORITY ASSIGNMENT (1=highest, 5=lowest):
+- Priority 1: Most frequently mentioned or most fundamental based on research
+- Priority 2-5: Decreasing importance based on research emphasis and relevance
 
-    return result.object.subtopics.map((subtopic: any) => ({
-      ...subtopic,
-      estimatedReadTime: this.estimateSubtopicReadTime(subtopic.complexity),
-    }));
+COMPLEXITY ASSIGNMENT:
+- Use EXACTLY one of these values: "beginner", "intermediate", or "advanced"
+- Do NOT use combinations like "beginner-intermediate" or hyphenated values
+- Choose based on the language and concepts mentioned in the research:
+  * "beginner": Simple concepts, basic terminology, foundational ideas
+  * "intermediate": Moderate complexity, some technical terms, building on basics  
+  * "advanced": Complex concepts, specialized terminology, expert-level topics
+
+OUTPUT FORMAT REQUIREMENTS:
+You MUST provide exactly 5 subtopics in this JSON format:
+
+{
+  "subtopics": [
+    {
+      "title": "Subtopic 1 Name",
+      "description": "Brief description of what this covers",
+      "priority": 1,
+      "complexity": "beginner"
+    },
+    {
+      "title": "Subtopic 2 Name", 
+      "description": "Brief description",
+      "priority": 2,
+      "complexity": "intermediate"
+    },
+    ... (continue for all 5 subtopics)
+  ]
+}
+
+CRITICAL REQUIREMENTS:
+- MUST include exactly 5 subtopics in the subtopics array
+- Each priority must be unique (1, 2, 3, 4, 5)
+- Each complexity must be exactly: "beginner", "intermediate", or "advanced"
+- Base subtopics ONLY on what the research findings and themes reveal
+- Do not add subtopics from your own knowledge - only those that emerged from the research data`;
+
+    try {
+      const result = await (generateObject as any)({
+        model: this.fastModel, // Use faster model for subtopic identification
+        prompt,
+        schema: SubtopicsSchema,
+        temperature: 0.6, // Lower temperature for more consistent structure
+      });
+
+      if (!result.object || !result.object.subtopics || !Array.isArray(result.object.subtopics)) {
+        throw new Error('Invalid subtopics structure generated');
+      }
+
+      return result.object.subtopics.map((subtopic: any) => ({
+        ...subtopic,
+        estimatedReadTime: this.estimateSubtopicReadTime(subtopic.complexity),
+      }));
+      
+    } catch (error) {
+      console.error('Structured subtopic generation failed, creating fallback subtopics:', error);
+      
+      // Fallback: Create basic subtopics based on research themes
+      const themes = synthesis.contentThemes || [];
+      const fallbackSubtopics = themes.slice(0, 5).map((theme: string, index: number) => ({
+        title: theme,
+        description: `Exploration of ${theme} as mentioned in research findings`,
+        priority: index + 1,
+        complexity: index < 2 ? "beginner" : index < 4 ? "intermediate" : "advanced",
+        estimatedReadTime: this.estimateSubtopicReadTime(index < 2 ? "beginner" : index < 4 ? "intermediate" : "advanced")
+      }));
+
+      // If we don't have enough themes, pad with generic subtopics
+      while (fallbackSubtopics.length < 5) {
+        const index = fallbackSubtopics.length;
+        fallbackSubtopics.push({
+          title: `${topic} - Aspect ${index + 1}`,
+          description: `Additional aspect of ${topic} for further exploration`,
+          priority: index + 1,
+          complexity: "intermediate",
+          estimatedReadTime: this.estimateSubtopicReadTime("intermediate")
+        });
+      }
+
+      return fallbackSubtopics.slice(0, 5); // Ensure exactly 5 subtopics
+    }
   }
 
   // Helper methods
