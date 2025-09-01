@@ -18,33 +18,52 @@ const CACHE_KEYS = {
 
 // Cache TTL values (in seconds)
 const CACHE_TTL = {
-  TOPIC: 3600, // 1 hour
-  TOPIC_TREE: 1800, // 30 minutes
-  USER_PROGRESS: 900, // 15 minutes
-  VECTOR_EMBEDDING: 86400, // 24 hours
-  SEARCH_RESULT: 1800, // 30 minutes
-  CHAT_THREAD: 3600, // 1 hour
-  QUIZ: 7200, // 2 hours
-  CONTENT_GENERATION: 3600, // 1 hour
-  RESEARCH_STATUS: 300, // 5 minutes
-  API_RATE_LIMIT: 3600, // 1 hour
+  TOPIC: 604800, // 1 week - topics don't change frequently
+  TOPIC_TREE: 604800, // 1 week - topic hierarchies are stable
+  USER_PROGRESS: 3600, // 1 hour - user-specific, needs to be fresh
+  VECTOR_EMBEDDING: 604800, // 1 week - embeddings are stable
+  SEARCH_RESULT: 604800, // 1 week - search results for sharing across users
+  CHAT_THREAD: 3600, // 1 hour - user-specific conversations
+  QUIZ: 604800, // 1 week - quiz content can be shared
+  CONTENT_GENERATION: 604800, // 1 week - research results for cross-user sharing
+  RESEARCH_STATUS: 3600, // 1 hour - research progress is user-specific
+  API_RATE_LIMIT: 3600, // 1 hour - rate limiting should be short
 } as const;
 
 export class CacheService {
   // Topic caching
   async getTopic(topicId: string): Promise<Topic | null> {
-    const key = `${CACHE_KEYS.TOPIC}:${topicId}`;
+    const key = `${CACHE_KEYS.TOPIC}:id:${topicId}`;
     return await redisCache.get<Topic>(key);
   }
 
   async setTopic(topic: Topic): Promise<void> {
-    const key = `${CACHE_KEYS.TOPIC}:${topic.id}`;
-    await redisCache.set(key, topic, CACHE_TTL.TOPIC);
+    // Cache by both ID and slug for flexible lookups
+    const idKey = `${CACHE_KEYS.TOPIC}:id:${topic.id}`;
+    const slugKey = `${CACHE_KEYS.TOPIC}:slug:${topic.slug}`;
+    
+    await Promise.all([
+      redisCache.set(idKey, topic, CACHE_TTL.TOPIC),
+      redisCache.set(slugKey, topic, CACHE_TTL.TOPIC)
+    ]);
   }
 
-  async invalidateTopic(topicId: string): Promise<void> {
-    const key = `${CACHE_KEYS.TOPIC}:${topicId}`;
-    await redisCache.del(key);
+  async getTopicBySlug(slug: string): Promise<Topic | null> {
+    const key = `${CACHE_KEYS.TOPIC}:slug:${slug}`;
+    return await redisCache.get<Topic>(key);
+  }
+
+  async invalidateTopic(topicId: string, topicSlug?: string): Promise<void> {
+    const idKey = `${CACHE_KEYS.TOPIC}:id:${topicId}`;
+    const deletePromises = [redisCache.del(idKey)];
+    
+    // Also delete slug key if provided
+    if (topicSlug) {
+      const slugKey = `${CACHE_KEYS.TOPIC}:slug:${topicSlug}`;
+      deletePromises.push(redisCache.del(slugKey));
+    }
+    
+    await Promise.all(deletePromises);
     
     // Also invalidate related caches
     await this.invalidateTopicTree(topicId);
@@ -53,12 +72,12 @@ export class CacheService {
 
   // Topic tree caching
   async getTopicTree(rootTopicId: string): Promise<Topic[] | null> {
-    const key = `${CACHE_KEYS.TOPIC_TREE}:${rootTopicId}`;
+    const key = `${CACHE_KEYS.TOPIC_TREE}:id:${rootTopicId}`;
     return await redisCache.get<Topic[]>(key);
   }
 
   async setTopicTree(rootTopicId: string, tree: Topic[]): Promise<void> {
-    const key = `${CACHE_KEYS.TOPIC_TREE}:${rootTopicId}`;
+    const key = `${CACHE_KEYS.TOPIC_TREE}:id:${rootTopicId}`;
     await redisCache.set(key, tree, CACHE_TTL.TOPIC_TREE);
   }
 

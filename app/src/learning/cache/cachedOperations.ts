@@ -23,8 +23,8 @@ export const getTopicCached: GetTopic<{ slug: string }, Topic | null> = async (a
   try {
     const { slug } = args;
 
-    // Try cache first
-    let topic = await cacheService.getTopic(`slug:${slug}`);
+    // Try cache first with slug-based key
+    let topic = await cacheService.getTopicBySlug(slug);
     
     if (!topic) {
       // Cache miss - query database with optimized query
@@ -76,7 +76,7 @@ export const getTopicCached: GetTopic<{ slug: string }, Topic | null> = async (a
       });
 
       if (topic) {
-        // Cache the result
+        // Cache the result with both ID and slug keys
         await cacheService.setTopic(topic);
       }
     }
@@ -99,18 +99,19 @@ export const getTopicTreeCached: GetTopicTree<{ rootSlug: string }, Topic[]> = a
   try {
     const { rootSlug } = args;
 
-    // Try cache first
-    let topicTree = await cacheService.getTopicTree(rootSlug);
+    // First get the root topic to get its ID for proper caching
+    const rootTopic = await context.entities.Topic.findUnique({
+      where: { slug: rootSlug }
+    });
+
+    if (!rootTopic) {
+      throw new HttpError(404, 'Root topic not found');
+    }
+
+    // Try cache first with root topic ID
+    let topicTree = await cacheService.getTopicTree(rootTopic.id);
     
     if (!topicTree) {
-      // Cache miss - build optimized recursive query
-      const rootTopic = await context.entities.Topic.findUnique({
-        where: { slug: rootSlug }
-      });
-
-      if (!rootTopic) {
-        throw new HttpError(404, 'Root topic not found');
-      }
 
       // Use a single query with deep includes for better performance
       const fullTree = await context.entities.Topic.findMany({
@@ -164,8 +165,8 @@ export const getTopicTreeCached: GetTopicTree<{ rootSlug: string }, Topic[]> = a
       topicTree = fullTree;
 
       if (topicTree.length > 0) {
-        // Cache the result
-        await cacheService.setTopicTree(rootSlug, topicTree);
+        // Cache the result using root topic ID
+        await cacheService.setTopicTree(rootTopic.id, topicTree);
       }
     }
 
@@ -226,7 +227,8 @@ export const updateTopicProgressCached: UpdateTopicProgress<{
     await cacheService.setUserProgress(progress);
 
     // Invalidate related caches
-    await cacheService.invalidateTopic(topicId);
+    const topic = progress.topic;
+    await cacheService.invalidateTopic(topicId, topic?.slug);
     await cacheService.invalidateTopicTree(topicId);
 
     return progress;
@@ -283,8 +285,8 @@ export const createTopicCached: CreateTopic<{
     await cacheService.setTopic(topic);
 
     // Invalidate parent topic caches if this is a child topic
-    if (args.parentId) {
-      await cacheService.invalidateTopic(args.parentId);
+    if (args.parentId && topic.parent) {
+      await cacheService.invalidateTopic(args.parentId, topic.parent.slug);
       await cacheService.invalidateTopicTree(args.parentId);
     }
 

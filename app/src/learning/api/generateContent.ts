@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { Topic, VectorDocument } from 'wasp/entities';
 import { aiContentGenerator, type ContentGenerationOptions } from './contentGenerator';
+import { getCachedContent, setCachedContent } from './cachingSystem';
 
 export const generateContentHandler = async (req: Request, res: Response, context: any) => {
   try {
@@ -20,30 +21,40 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(400).json({ error: 'Content generation options are required' });
     }
 
-    // Check if content already exists for this configuration
-    const existingContent = await context.entities.GeneratedContent.findUnique({
+    // Check if content already exists for this user and configuration
+    const existingContent = await context.entities.GeneratedContent.findFirst({
       where: {
-        topicId_contentType_userLevel_learningStyle: {
-          topicId,
-          contentType: options.contentType || 'exploration',
-          userLevel: options.userLevel || null,
-          learningStyle: options.learningStyle || null
+        topicId,
+        contentType: options.contentType || 'exploration',
+        userLevel: options.userLevel || null,
+        learningStyle: options.learningStyle || null,
+        // Only check content that was actually generated for users, not cache entries
+        NOT: {
+          userLevel: "cache",
+          learningStyle: "cache"
         }
       }
     });
 
     if (existingContent) {
-      console.log('Found existing content, returning cached version');
+      console.log('Found existing generated content for this configuration');
       return res.json({
         success: true,
         content: existingContent.content,
         metadata: existingContent.metadata,
         sources: existingContent.sources || [],
         topicId: existingContent.topicId,
-        cached: true
+        cached: false, // This is stored content, not cache
+        fromDatabase: true
       });
     }
 
+    console.log('No existing content found, checking for cached research results...');
+    
+    // Check if we have cached research results for this topic that we can reuse
+    const cacheKey = `research:${topicId}:${options.contentType || 'exploration'}`;
+    const cachedResearch = await getCachedContent(cacheKey);
+    
     // Get the topic
     const topic = await context.entities.Topic.findUnique({
       where: { id: topicId },
@@ -60,18 +71,18 @@ export const generateContentHandler = async (req: Request, res: Response, contex
     }
 
     // Check if we have research results (vector documents) - if not, we need to research first
-    if (!topic.vectorDocuments || topic.vectorDocuments.length === 0) {
-      return res.status(400).json({ 
-        error: 'No research data available for this topic',
-        message: 'Please run research for this topic first before generating content',
-        suggestion: 'Use the "Start Research" action in the Explore tab to gather sources, then try generating content again',
-        needsResearch: true,
-        topicId: topic.id
-      });
-    }
-
-    // Convert vector documents to research results with better source attribution
-    const researchResults = topic.vectorDocuments.map((doc: any, index: number) => {
+    let researchResults: any[] = [];
+    let fromCache = false;
+    
+    // Use cached research if available, otherwise use vector documents
+    if (cachedResearch && cachedResearch.results && cachedResearch.results.length > 0) {
+      console.log('Using cached research results:', cachedResearch.results.length, 'items');
+      researchResults = cachedResearch.results;
+      fromCache = true;
+    } else if (topic.vectorDocuments && topic.vectorDocuments.length > 0) {
+      console.log('Using vector documents as research results:', topic.vectorDocuments.length, 'items');
+      // Convert vector documents to research results with better source attribution
+      researchResults = topic.vectorDocuments.map((doc: any, index: number) => {
       // Try to parse metadata for better source info
       let sourceInfo = {
         title: `Research Document ${doc.id.slice(0, 8)}`,
@@ -97,12 +108,24 @@ export const generateContentHandler = async (req: Request, res: Response, contex
         }
       }
 
-      return {
-        ...sourceInfo,
-        content: doc.content,
-        relevanceScore: 0.8
-      };
-    });
+        return {
+          ...sourceInfo,
+          content: doc.content,
+          relevanceScore: 0.8
+        };
+      });
+    } else {
+      // No cached research and no vector documents
+      return res.status(400).json({ 
+        error: 'No research data available for this topic',
+        message: 'Please run research for this topic first before generating content',
+        suggestion: 'Use the "Start Research" action in the Explore tab to gather sources, then try generating content again',
+        needsResearch: true,
+        topicId: topic.id
+      });
+    }
+
+    console.log('Total research results available:', researchResults.length, fromCache ? '(from cache)' : '(from vector documents)');
 
     // Generate content based on the content type
     let generatedContent;
@@ -173,6 +196,43 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       // Don't fail the request if saving fails, just log the error
     }
 
+    // If we used vector documents (not cache), cache the research results for future users
+    if (!fromCache && researchResults.length > 0) {
+      try {
+        const researchData = {
+          topic: topic.title,
+          depth: 0,
+          content: {
+            title: topic.title,
+            content: generatedContent.content,
+            sections: [],
+            keyTakeaways: [],
+            nextSteps: [],
+            estimatedReadTime: 5
+          },
+          subtopics: [],
+          sources: researchResults,
+          metadata: {
+            totalSources: researchResults.length,
+            researchDuration: 0,
+            enginesUsed: ['vector_database'],
+            researchStrategy: 'Using existing vector documents for content generation',
+            confidenceScore: 0.8,
+            lastUpdated: new Date(),
+            contentType: options.contentType || 'exploration'
+          },
+          cacheKey,
+          timestamp: new Date(),
+          results: researchResults // Keep the research results accessible
+        };
+        await setCachedContent(cacheKey, researchData);
+        console.log('Cached research results for future users with key:', cacheKey);
+      } catch (cacheError) {
+        console.error('Failed to cache research results:', cacheError);
+        // Don't fail the request if caching fails
+      }
+    }
+
     // Return the generated content with source attribution
     res.json({
       success: true,
@@ -181,7 +241,9 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       sources: generatedContent.metadata?.sources || [],
       topicId: topic.id,
       topicTitle: topic.title,
-      cached: false
+      cached: false,
+      usedCachedResearch: fromCache,
+      researchSource: fromCache ? 'cache' : 'vector_documents'
     });
 
   } catch (error) {

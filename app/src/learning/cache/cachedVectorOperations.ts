@@ -58,8 +58,8 @@ export async function searchAllContentCached(
     const cacheKey = `global_search:${query}:${JSON.stringify(options)}`;
     const topicId = 'global'; // Use 'global' as a special topic ID for cross-topic searches
     
-    // Try to get from cache first
-    const cachedResults = await cacheService.getSearchResults(cacheKey, topicId, options);
+    // Try to get from cache first - use query as the key, not cacheKey
+    const cachedResults = await cacheService.getSearchResults(query, topicId, options);
     if (cachedResults) {
       console.log(`Cache hit for global search query: ${query}`);
       return cachedResults;
@@ -70,7 +70,7 @@ export async function searchAllContentCached(
     const results = await vectorOps.searchAllContent(query, options);
 
     // Cache the results
-    await cacheService.setSearchResults(cacheKey, topicId, options, results);
+    await cacheService.setSearchResults(query, topicId, options, results);
 
     return results;
   } catch (error) {
@@ -92,10 +92,10 @@ export async function getContentRecommendationsCached(
   } = {}
 ): Promise<SearchResult[]> {
   try {
-    const cacheKey = `recommendations:${topicTitle}`;
+    const recommendationQuery = `recommendations:${topicTitle}`;
     
     // Try to get from cache first
-    const cachedResults = await cacheService.getSearchResults(cacheKey, topicId, options);
+    const cachedResults = await cacheService.getSearchResults(recommendationQuery, topicId, options);
     if (cachedResults) {
       console.log(`Cache hit for recommendations for topic: ${topicTitle}`);
       return cachedResults;
@@ -106,7 +106,7 @@ export async function getContentRecommendationsCached(
     const results = await vectorOps.getContentRecommendations(topicId, topicTitle, options);
 
     // Cache the results
-    await cacheService.setSearchResults(cacheKey, topicId, options, results);
+    await cacheService.setSearchResults(recommendationQuery, topicId, options, results);
 
     return results;
   } catch (error) {

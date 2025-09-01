@@ -61,6 +61,8 @@ export class AILearningAgent {
     );
 
     const startTime = Date.now();
+
+    // For testing we want only depth 1 so we dont waste tokens
     request.maxDepth = 1;
 
     try {
