@@ -32,9 +32,11 @@ export type TopicTreeItem = {
 
 interface TopicTreeProps {
   topics: TopicTreeItem[];
-  selectedTopicId?: string;
-  onTopicSelect: (topic: TopicTreeItem) => void;
+  selectedTopicPath: string[]; // Changed from selectedTopicId to path-based selection
+  onTopicSelect: (topic: TopicTreeItem, path: string[]) => void; // Now passes both topic and path
   onGenerateSubtopics?: (topicId: string) => void;
+  expandedNodes: Set<string>; // Now required for proper state management
+  onToggleExpand: (topicId: string) => void; // Now required for proper state management
   isGenerating?: boolean;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -43,13 +45,14 @@ interface TopicTreeProps {
 
 interface TopicNodeProps {
   topic: TopicTreeItem;
+  path: string[]; // Full path to this topic
   level: number;
   isSelected: boolean;
   isExpanded: boolean;
-  selectedTopicId?: string;
+  selectedTopicPath: string[]; // Changed from selectedTopicId to path
   expandedNodes: Set<string>;
   onToggleExpand: (topicId: string) => void;
-  onSelect: (topic: TopicTreeItem) => void;
+  onSelect: (topic: TopicTreeItem, path: string[]) => void; // Now passes both topic and path
   onGenerateSubtopics?: (topicId: string) => void;
   isGenerating?: boolean;
   searchQuery?: string;
@@ -57,10 +60,11 @@ interface TopicNodeProps {
 
 function TopicNode({
   topic,
+  path,
   level,
   isSelected,
   isExpanded,
-  selectedTopicId,
+  selectedTopicPath,
   expandedNodes,
   onToggleExpand,
   onSelect,
@@ -115,7 +119,7 @@ function TopicNode({
           ${isSelected ? 'ring-2 ring-primary ring-offset-2' : 'hover:bg-muted/50'}
         `}
         style={{ marginLeft: `${level * 20}px` }}
-        onClick={() => onSelect(topic)}
+        onClick={() => onSelect(topic, path)}
       >
         {/* Expand/Collapse Button */}
         {canExpand && (
@@ -185,22 +189,30 @@ function TopicNode({
       {/* Children */}
       {hasChildren && isExpanded && (
         <div className="space-y-1">
-          {topic.children.map((child) => (
-            <TopicNode
-              key={child.id}
-              topic={child}
-              level={level + 1}
-              isSelected={child.id === selectedTopicId}
-              isExpanded={expandedNodes.has(child.id)}
-              selectedTopicId={selectedTopicId}
-              expandedNodes={expandedNodes}
-              onToggleExpand={onToggleExpand}
-              onSelect={onSelect}
-              onGenerateSubtopics={onGenerateSubtopics}
-              isGenerating={isGenerating}
-              searchQuery={searchQuery}
-            />
-          ))}
+          {topic.children.map((child) => {
+            const childPath = [...path, child.id];
+            const isChildSelected = selectedTopicPath.length > 0 && 
+              selectedTopicPath[selectedTopicPath.length - 1] === child.id &&
+              selectedTopicPath.slice(0, -1).join('/') === path.join('/');
+            
+            return (
+              <TopicNode
+                key={child.id}
+                topic={child}
+                path={childPath}
+                level={level + 1}
+                isSelected={isChildSelected}
+                isExpanded={expandedNodes.has(child.id)}
+                selectedTopicPath={selectedTopicPath}
+                expandedNodes={expandedNodes}
+                onToggleExpand={onToggleExpand}
+                onSelect={onSelect}
+                onGenerateSubtopics={onGenerateSubtopics}
+                isGenerating={isGenerating}
+                searchQuery={searchQuery}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -224,15 +236,16 @@ function TopicNode({
 
 export function TopicTree({
   topics,
-  selectedTopicId,
+  selectedTopicPath,
   onTopicSelect,
   onGenerateSubtopics,
+  expandedNodes,
+  onToggleExpand,
   isGenerating = false,
   searchQuery = '',
   onSearchChange,
   compact = false
 }: TopicTreeProps) {
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
   // Filter topics based on search query with enhanced search capabilities
@@ -270,7 +283,7 @@ export function TopicTree({
           
           // Auto-expand nodes that have matching children or content
           if (filteredChildren.length > 0 || contentMatches) {
-            setExpandedNodes(prev => new Set([...prev, topic.id]));
+            onToggleExpand(topic.id);
           }
         }
         
@@ -281,17 +294,8 @@ export function TopicTree({
     return filterTopics(topics);
   }, [topics, searchQuery]);
 
-  const handleToggleExpand = (topicId: string) => {
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(topicId)) {
-        newSet.delete(topicId);
-      } else {
-        newSet.add(topicId);
-      }
-      return newSet;
-    });
-  };
+  // Use the passed onToggleExpand handler instead of local state
+  const handleToggleExpand = onToggleExpand;
 
   const handleSearchChange = (value: string) => {
     setLocalSearchQuery(value);
@@ -324,22 +328,30 @@ export function TopicTree({
         {/* Topic Tree */}
         <div className="space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
           {filteredTopics.length > 0 ? (
-            filteredTopics.map((topic) => (
-              <TopicNode
-                key={topic.id}
-                topic={topic}
-                level={0}
-                isSelected={topic.id === selectedTopicId}
-                isExpanded={expandedNodes.has(topic.id)}
-                selectedTopicId={selectedTopicId}
-                expandedNodes={expandedNodes}
-                onToggleExpand={handleToggleExpand}
-                onSelect={onTopicSelect}
-                onGenerateSubtopics={onGenerateSubtopics}
-                isGenerating={isGenerating}
-                searchQuery={searchQuery}
-              />
-            ))
+            filteredTopics.map((topic) => {
+              const topicPath = [topic.id];
+              const isTopicSelected = selectedTopicPath.length > 0 && 
+                selectedTopicPath[0] === topic.id &&
+                selectedTopicPath.length === 1;
+              
+              return (
+                <TopicNode
+                  key={topic.id}
+                  topic={topic}
+                  path={topicPath}
+                  level={0}
+                  isSelected={isTopicSelected}
+                  isExpanded={expandedNodes.has(topic.id)}
+                  selectedTopicPath={selectedTopicPath}
+                  expandedNodes={expandedNodes}
+                  onToggleExpand={handleToggleExpand}
+                  onSelect={onTopicSelect}
+                  onGenerateSubtopics={onGenerateSubtopics}
+                  isGenerating={isGenerating}
+                  searchQuery={searchQuery}
+                />
+              );
+            })
           ) : searchQuery ? (
             <div className="text-center py-6 text-muted-foreground">
               <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
@@ -388,22 +400,30 @@ export function TopicTree({
         {/* Topic Tree */}
         <div className="space-y-1 max-h-96 overflow-y-auto">
           {filteredTopics.length > 0 ? (
-            filteredTopics.map((topic) => (
-              <TopicNode
-                key={topic.id}
-                topic={topic}
-                level={0}
-                isSelected={topic.id === selectedTopicId}
-                isExpanded={expandedNodes.has(topic.id)}
-                selectedTopicId={selectedTopicId}
-                expandedNodes={expandedNodes}
-                onToggleExpand={handleToggleExpand}
-                onSelect={onTopicSelect}
-                onGenerateSubtopics={onGenerateSubtopics}
-                isGenerating={isGenerating}
-                searchQuery={searchQuery}
-              />
-            ))
+            filteredTopics.map((topic) => {
+              const topicPath = [topic.id];
+              const isTopicSelected = selectedTopicPath.length > 0 && 
+                selectedTopicPath[0] === topic.id &&
+                selectedTopicPath.length === 1;
+              
+              return (
+                <TopicNode
+                  key={topic.id}
+                  topic={topic}
+                  path={topicPath}
+                  level={0}
+                  isSelected={isTopicSelected}
+                  isExpanded={expandedNodes.has(topic.id)}
+                  selectedTopicPath={selectedTopicPath}
+                  expandedNodes={expandedNodes}
+                  onToggleExpand={handleToggleExpand}
+                  onSelect={onTopicSelect}
+                  onGenerateSubtopics={onGenerateSubtopics}
+                  isGenerating={isGenerating}
+                  searchQuery={searchQuery}
+                />
+              );
+            })
           ) : localSearchQuery ? (
             <div className="text-center py-8 text-muted-foreground">
               <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -424,16 +444,16 @@ export function TopicTree({
               variant="outline"
               size="sm"
               onClick={() => {
-                // Expand all nodes
-                const allIds = new Set<string>();
+                // Expand all nodes by calling onToggleExpand for each collapsed node
                 const collectIds = (topicList: TopicTreeItem[]) => {
                   topicList.forEach(topic => {
-                    allIds.add(topic.id);
+                    if (!expandedNodes.has(topic.id)) {
+                      onToggleExpand(topic.id);
+                    }
                     collectIds(topic.children || []);
                   });
                 };
                 collectIds(topics);
-                setExpandedNodes(allIds);
               }}
             >
               Expand All
@@ -441,7 +461,12 @@ export function TopicTree({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setExpandedNodes(new Set())}
+              onClick={() => {
+                // Collapse all nodes by calling onToggleExpand for each expanded node
+                expandedNodes.forEach(nodeId => {
+                  onToggleExpand(nodeId);
+                });
+              }}
             >
               Collapse All
             </Button>

@@ -1,14 +1,33 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
+import { Badge } from '../../../components/ui/badge';
 import { Separator } from '../../../components/ui/separator';
 import { useTopicContext } from '../../context/TopicContext';
-import { TopicTree } from '../ui/TopicTree';
+import { EnhancedTopicTree } from '../ui/EnhancedTopicTree';
 import { MDXContent } from '../ui/MDXContent';
 import { LoadingSkeleton } from '../ui/LoadingSkeleton';
 import { useTopicTree, useTopicContent } from '../../hooks/useTopicTree';
 import { useContentGeneration, useContentBookmarks } from '../../hooks/useContentGeneration';
 import { useIterativeResearch } from '../../hooks/useIterativeResearch';
+import { useTopicNavigation } from '../../hooks/useTopicNavigation';
+import { SubtopicCards, topicsToSubtopicCards } from '../ui/SubtopicCards';
+import { DeepLinkManager } from '../ui/DeepLinkManager';
+import { ErrorDisplay, InlineError } from '../ui/ErrorDisplay';
+import { TopicErrorBoundary } from '../ui/TopicErrorBoundary';
+import { 
+  TopicTreeSkeleton, 
+  ContentSkeleton, 
+  SubtopicCardsSkeleton,
+  ContentGenerationSkeleton,
+  LoadingState
+} from '../ui/SkeletonLoaders';
+import { ContentPlaceholder } from '../ui/ContentPlaceholder';
+import { ContentHeader } from '../ui/ContentHeader';
+import { BookmarksView } from '../ui/BookmarksView';
+import { RecentTopicsView } from '../ui/RecentTopicsView';
+import { EnhancedEmptyState } from '../ui/EnhancedEmptyState';
+import { BreadcrumbNavigation } from '../ui/BreadcrumbNavigation';
 import type { TopicTreeItem } from '../ui/TopicTree';
 import { 
   BookOpen, 
@@ -62,23 +81,58 @@ export function ExploreTab() {
   const {
     topics,
     isLoading: treeLoading,
-    selectedTopic,
     searchQuery,
     isGenerating,
-    selectTopic,
     setSearchQuery,
     generateSubtopics
   } = useTopicTree({ autoRefresh: true });
 
+  // Enhanced navigation system using the new hook with error handling
+  const {
+    selectedTopic,
+    selectedSubtopic,
+    contentPath,
+    isGeneratingContent: isGeneratingNavContent,
+    navigationHistory,
+    // Error handling
+    hasError,
+    getError,
+    clearError: clearNavigationError,
+    retryLastOperation,
+    // Actions
+    selectTopic,
+    selectSubtopic,
+    navigateToPath,
+    generateContentForTopic,
+    getTopicContent,
+    setTopicContent,
+    isTopicSelected,
+    getNavigationBreadcrumbs,
+    getRequiredExpandedNodes,
+    canNavigateBack,
+    canNavigateForward,
+    navigateBack,
+    navigateForward,
+    // Deep linking functions
+    parseCurrentURL,
+    validateDeepLink,
+    generateShareableURL,
+    handleDeepLink
+  } = useTopicNavigation(topics);
+
+  // Content generation system - integrate with navigation
   const {
     content,
     sources,
-    isGenerating: isGeneratingContent,
+    isGenerating: isGeneratingLegacyContent,
     generateContent
   } = useContentGeneration({
-    topic: selectedTopic,
+    topic: selectedSubtopic || selectedTopic,
     autoGenerate: false // Turn off auto-generation to use new system
   });
+
+  // Combine loading states
+  const isGeneratingContent = isGeneratingNavContent || isGeneratingLegacyContent;
 
   const {
     bookmarks,
@@ -86,7 +140,7 @@ export function ExploreTab() {
     isBookmarked,
     markAsRead,
     isRead
-  } = useContentBookmarks(selectedTopic?.id || null);
+  } = useContentBookmarks((selectedSubtopic || selectedTopic)?.id || null);
 
   // State for layout management
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -97,43 +151,210 @@ export function ExploreTab() {
   const [activeTab, setActiveTab] = useState<'tree' | 'bookmarks' | 'recent'>('tree');
   const [filterText, setFilterText] = useState('');
   const [showCompletedOnly, setShowCompletedOnly] = useState(false);
-  const [recentTopics, setRecentTopics] = useState<TopicTreeItem[]>([]);
   const [bookmarkedTopics, setBookmarkedTopics] = useState<string[]>([]);
 
-  // Auto-select the current topic when topics load
-  useEffect(() => {
-    if (topic && topics.length > 0 && !selectedTopic) {
-      const findTopicInTree = (topicList: TopicTreeItem[], slug: string): TopicTreeItem | null => {
-        for (const t of topicList) {
-          if (t.slug === slug) return t;
-          const found = findTopicInTree(t.children || [], slug);
-          if (found) return found;
-        }
-        return null;
-      };
+  // Get expanded nodes from navigation hook
+  const expandedNodes = useMemo(() => {
+    return new Set(getRequiredExpandedNodes());
+  }, [getRequiredExpandedNodes]);
 
-      const currentTopicInTree = findTopicInTree(topics, topic.slug);
-      if (currentTopicInTree) {
-        selectTopic(currentTopicInTree);
-        // Add to recent topics
-        addToRecentTopics(currentTopicInTree);
+  // Track recent topics from navigation history
+  const recentTopics = useMemo(() => {
+    return navigationHistory
+      .slice(0, 10) // Keep last 10
+      .map(item => item.topic);
+  }, [navigationHistory]);
+
+  // State for error handling and loading
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Enhanced content generation handler with proper error handling and retry logic
+  const handleGenerateContent = async () => {
+    const targetTopic = selectedSubtopic || selectedTopic;
+    if (!targetTopic) {
+      console.warn('No topic selected for content generation');
+      return;
+    }
+
+    console.log('Starting content generation for:', targetTopic.title);
+    setSelectionError(null);
+
+    try {
+      // First, try the new navigation system
+      await generateContentForTopic(targetTopic);
+      
+      // Check if content was generated and cached
+      const cachedContent = getTopicContent(targetTopic.id);
+      if (cachedContent) {
+        console.log('Content successfully generated and cached for:', targetTopic.title);
+        // Update the legacy content generation hook with the new content
+        setTopicContent(targetTopic.id, cachedContent.content, cachedContent.sources);
+        return;
+      }
+      
+      console.log('No cached content found, trying legacy system...');
+      // Fallback to legacy system if needed
+      await generateContent();
+      
+    } catch (error) {
+      console.error('Content generation failed for topic:', targetTopic.title, error);
+      
+      // Set user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate content';
+      setSelectionError(errorMessage);
+      
+      // Try legacy system as final fallback
+      try {
+        console.log('Attempting legacy content generation as fallback...');
+        await generateContent();
+        // Clear error if legacy system succeeds
+        setSelectionError(null);
+      } catch (legacyError) {
+        console.error('Legacy content generation also failed:', legacyError);
+        const finalErrorMessage = legacyError instanceof Error ? legacyError.message : 'All content generation methods failed';
+        setSelectionError(finalErrorMessage);
       }
     }
-  }, [topic, topics, selectedTopic, selectTopic]);
+  };
 
-  // Track recent topics
-  const addToRecentTopics = (topic: TopicTreeItem) => {
-    setRecentTopics(prev => {
-      const filtered = prev.filter(t => t.id !== topic.id);
-      return [topic, ...filtered].slice(0, 10); // Keep last 10
+  // Enhanced unified topic selection handler that works for both sidebar and cards
+  const handleTopicSelect = async (topic: TopicTreeItem, source: 'sidebar' | 'cards' | 'breadcrumb' = 'sidebar') => {
+    try {
+      setSelectionError(null);
+      setIsTransitioning(true);
+
+      // Determine if this is a subtopic selection or main topic selection
+      if (selectedTopic && topic.id !== selectedTopic.id) {
+        // Check if the selected topic is a child of the current topic
+        const isSubtopic = isTopicChildOf(topic, selectedTopic);
+        
+        if (isSubtopic) {
+          selectSubtopic(topic, source);
+        } else {
+          selectTopic(topic, source);
+        }
+      } else {
+        selectTopic(topic, source);
+      }
+
+      // Clear any previous errors
+      setSelectionError(null);
+    } catch (error) {
+      console.error('Topic selection failed:', error);
+      setSelectionError(error instanceof Error ? error.message : 'Failed to select topic');
+    } finally {
+      // Add a small delay to show loading state
+      setTimeout(() => setIsTransitioning(false), 300);
+    }
+  };
+
+  // Enhanced subtopic card click handler
+  const handleSubtopicCardClick = async (subtopic: TopicTreeItem) => {
+    try {
+      setSelectionError(null);
+      setIsTransitioning(true);
+
+      // Always treat card clicks as subtopic selections
+      if (selectedTopic) {
+        selectSubtopic(subtopic, 'cards');
+      } else {
+        selectTopic(subtopic, 'cards');
+      }
+
+      // Auto-generate content if it doesn't exist
+      const cachedContent = getTopicContent(subtopic.id);
+      if (!cachedContent && !content) {
+        await handleGenerateContent();
+      }
+    } catch (error) {
+      console.error('Subtopic card selection failed:', error);
+      setSelectionError(error instanceof Error ? error.message : 'Failed to select subtopic');
+    } finally {
+      setTimeout(() => setIsTransitioning(false), 300);
+    }
+  };
+
+  // Helper function to check if a topic is a child of another topic
+  const isTopicChildOf = (childTopic: TopicTreeItem, parentTopic: TopicTreeItem): boolean => {
+    const findInChildren = (children: TopicTreeItem[]): boolean => {
+      for (const child of children) {
+        if (child.id === childTopic.id) return true;
+        if (child.children && findInChildren(child.children)) return true;
+      }
+      return false;
+    };
+    
+    return parentTopic.children ? findInChildren(parentTopic.children) : false;
+  };
+
+  // Clear selection error when topic changes
+  useEffect(() => {
+    setSelectionError(null);
+  }, [selectedTopic, selectedSubtopic]);
+
+  // Ensure content area updates immediately when topics are selected
+  useEffect(() => {
+    const currentTopic = selectedSubtopic || selectedTopic;
+    if (!currentTopic) return;
+
+    // Check if we have cached content
+    const cachedContent = getTopicContent(currentTopic.id);
+    if (cachedContent) {
+      // Update the content generation hook with cached content
+      setTopicContent(currentTopic.id, cachedContent.content, cachedContent.sources);
+    }
+
+    // Mark the topic as read when content is viewed
+    if (content && !isRead(currentTopic.id)) {
+      markAsRead(currentTopic.id);
+    }
+  }, [selectedTopic, selectedSubtopic, content, getTopicContent, setTopicContent, isRead, markAsRead]);
+
+  // Auto-generate content for subtopics when they don't have content
+  useEffect(() => {
+    const currentTopic = selectedSubtopic || selectedTopic;
+    if (!currentTopic || isGeneratingContent) return;
+
+    // Check if we have cached content first
+    const cachedContent = getTopicContent(currentTopic.id);
+    if (cachedContent) {
+      console.log('Found cached content for topic:', currentTopic.title);
+      // Update the content generation hook with cached content
+      setTopicContent(currentTopic.id, cachedContent.content, cachedContent.sources);
+      return;
+    }
+
+    // Check if we have content from the legacy hook
+    if (content) {
+      console.log('Content already available from legacy hook for topic:', currentTopic.title);
+      return;
+    }
+
+    // Check if this is a subtopic (has parent) and doesn't have content
+    const isSubtopic = selectedSubtopic !== null;
+    const hasNoContent = !content && !cachedContent;
+
+    console.log('Content check for topic:', currentTopic.title, {
+      isSubtopic,
+      hasNoContent,
+      hasContent: !!content,
+      hasCachedContent: !!cachedContent,
+      isGenerating: isGeneratingContent
     });
-  };
 
-  // Enhanced topic selection with recent tracking
-  const handleTopicSelect = (topic: TopicTreeItem) => {
-    selectTopic(topic);
-    addToRecentTopics(topic);
-  };
+    if (hasNoContent) {
+      // Auto-generate content for topics without content after a short delay
+      const timer = setTimeout(() => {
+        console.log('Auto-generating content for topic:', currentTopic.title);
+        handleGenerateContent().catch((error) => {
+          console.error('Auto-generation failed for topic:', currentTopic.title, error);
+        });
+      }, isSubtopic ? 500 : 1000); // Shorter delay for subtopics
+
+      return () => clearTimeout(timer);
+    }
+  }, [selectedSubtopic, selectedTopic, content, isGeneratingContent, getTopicContent, setTopicContent, handleGenerateContent]);
 
   // Bookmark management
   const toggleTopicBookmark = (topicId: string) => {
@@ -143,6 +364,7 @@ export function ExploreTab() {
         : [...prev, topicId]
     );
   };
+
 
   // Filter topics based on current criteria
   const filteredTopics = useMemo(() => {
@@ -363,16 +585,35 @@ export function ExploreTab() {
             <div className="h-full">
               {activeTab === 'tree' && (
                 <div className="h-full p-4">
-                  <TopicTree
-                    topics={topicsToShow}
-                    selectedTopicId={selectedTopic?.id}
-                    onTopicSelect={handleTopicSelect}
-                    onGenerateSubtopics={generateSubtopics}
-                    isGenerating={isGenerating}
-                    searchQuery={filterText}
-                    onSearchChange={() => {}}
-                    compact={true}
-                  />
+                  <TopicErrorBoundary
+                    fallback={(error, retry) => (
+                      <div className="p-4">
+                        <InlineError
+                          message="Failed to load topic tree"
+                          onRetry={retry}
+                        />
+                      </div>
+                    )}
+                  >
+                    {treeLoading ? (
+                      <TopicTreeSkeleton />
+                    ) : topicsToShow.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground text-sm">No topics found</p>
+                      </div>
+                    ) : (
+                      <EnhancedTopicTree
+                        topics={topicsToShow}
+                        selectedTopicPath={contentPath}
+                        onTopicSelect={(topic, path) => handleTopicSelect(topic, 'sidebar')}
+                        onGenerateSubtopics={generateSubtopics}
+                        isGenerating={isGenerating}
+                        searchQuery={filterText}
+                        onSearchChange={() => {}}
+                        compact={true}
+                      />
+                    )}
+                  </TopicErrorBoundary>
                 </div>
               )}
               
@@ -380,19 +621,19 @@ export function ExploreTab() {
                 <BookmarksView
                   bookmarkedTopics={bookmarkedTopics}
                   allTopics={topics}
-                  onTopicSelect={handleTopicSelect}
+                  onTopicSelect={(topic) => handleTopicSelect(topic, 'sidebar')}
                   onToggleBookmark={toggleTopicBookmark}
-                  selectedTopicId={selectedTopic?.id}
+                  selectedTopicId={(selectedSubtopic || selectedTopic)?.id}
                 />
               )}
               
               {activeTab === 'recent' && (
                 <RecentTopicsView
                   recentTopics={recentTopics}
-                  onTopicSelect={handleTopicSelect}
+                  onTopicSelect={(topic) => handleTopicSelect(topic, 'sidebar')}
                   onToggleBookmark={toggleTopicBookmark}
                   bookmarkedTopics={bookmarkedTopics}
-                  selectedTopicId={selectedTopic?.id}
+                  selectedTopicId={(selectedSubtopic || selectedTopic)?.id}
                 />
               )}
             </div>
@@ -416,27 +657,27 @@ export function ExploreTab() {
             <div className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               <h3 className="font-semibold text-sm">
-                {selectedTopic ? selectedTopic.title : 'Select a Topic'}
+                {(selectedSubtopic || selectedTopic) ? (selectedSubtopic || selectedTopic)!.title : 'Select a Topic'}
               </h3>
-              {selectedTopic && (
+              {(selectedSubtopic || selectedTopic) && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => toggleTopicBookmark(selectedTopic.id)}
+                  onClick={() => toggleTopicBookmark((selectedSubtopic || selectedTopic)!.id)}
                   className="h-6 w-6 p-0 ml-2"
                 >
-                  {bookmarkedTopics.includes(selectedTopic.id) ? (
+                  {bookmarkedTopics.includes((selectedSubtopic || selectedTopic)!.id) ? (
                     <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
                   ) : (
                     <BookmarkPlus className="w-3 h-3 text-muted-foreground" />
                   )}
                 </Button>
               )}
-              {selectedTopic && selectedTopic.summary && (
+              {(selectedSubtopic || selectedTopic) && (selectedSubtopic || selectedTopic)!.summary && (
                 <>
                   <Separator orientation="vertical" className="h-4" />
                   <p className="text-xs text-muted-foreground truncate max-w-md">
-                    {selectedTopic.summary}
+                    {(selectedSubtopic || selectedTopic)!.summary}
                   </p>
                 </>
               )}
@@ -455,31 +696,111 @@ export function ExploreTab() {
                   <ChevronLeft className="w-4 h-4" />
                 )}
               </Button>
-              {selectedTopic && (
+              {(selectedSubtopic || selectedTopic) && (
                 <>
-                  {isRead(selectedTopic.id) && (
+                  {isRead((selectedSubtopic || selectedTopic)!.id) && (
                     <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
                       <Eye className="w-3 h-3" />
                       Read
                     </div>
                   )}
-                  {isGeneratingContent && (
+                  {(isGeneratingContent || isTransitioning) && (
                     <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Generating content...
+                      {isTransitioning ? 'Loading...' : 'Generating content...'}
                     </div>
                   )}
-                  {/* Only show manual generate button for subtopics or if auto-generation failed */}
-                  {!content && !isGeneratingContent && selectedTopic.depth > 0 && (
+                  {selectionError && (
+                    <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-1 rounded">
+                      <span className="max-w-xs truncate" title={selectionError}>
+                        {selectionError}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleGenerateContent}
+                        disabled={isGeneratingContent}
+                        className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
+                        title="Retry content generation"
+                      >
+                        <Zap className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectionError(null)}
+                        className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
+                        title="Dismiss error"
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  )}
+                  {/* Show manual generate button if no content exists and no error */}
+                  {!content && !isGeneratingContent && !selectionError && (selectedSubtopic || selectedTopic) && (
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={generateContent}
+                      onClick={handleGenerateContent}
                       disabled={isGeneratingContent}
                       className="text-xs"
                     >
+                      <Zap className="w-3 h-3 mr-1" />
                       Generate Content
                     </Button>
+                  )}
+                  {/* Show regenerate button if content exists */}
+                  {content && !isGeneratingContent && (selectedSubtopic || selectedTopic) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateContent}
+                      disabled={isGeneratingContent}
+                      className="text-xs"
+                      title="Regenerate content"
+                    >
+                      <Zap className="w-3 h-3 mr-1" />
+                      Regenerate
+                    </Button>
+                  )}
+                  {/* Navigation controls */}
+                  {(canNavigateBack || canNavigateForward) && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={navigateBack}
+                        disabled={!canNavigateBack}
+                        className="h-6 w-6 p-0"
+                      >
+                        <ChevronLeft className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={navigateForward}
+                        disabled={!canNavigateForward}
+                        className="h-6 w-6 p-0"
+                      >
+                        <ChevronRight className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Deep Link Manager */}
+                  {(selectedSubtopic || selectedTopic) && (
+                    <DeepLinkManager
+                      currentTopic={selectedSubtopic || selectedTopic || undefined}
+                      generateShareableURL={generateShareableURL}
+                      validateDeepLink={validateDeepLink}
+                      onNavigateToDeepLink={(path) => {
+                        const success = handleDeepLink(path);
+                        if (!success) {
+                          console.warn('Failed to navigate to deep link:', path);
+                        }
+                      }}
+                      className="h-8"
+                    />
                   )}
                 </>
               )}
@@ -593,34 +914,87 @@ export function ExploreTab() {
                 )}
               </div>
             </div>
-          ) : selectedTopic ? (
-            content ? (
-              <div className="p-6">
-                <MDXContent
-                  content={content}
-                  topicTitle={selectedTopic.title}
-                  sources={sources}
-                  bookmarks={bookmarks}
-                  onToggleBookmark={toggleBookmark}
-                  isBookmarked={isBookmarked}
-                  onMarkAsRead={markAsRead}
-                  isRead={isRead}
+          ) : (selectedSubtopic || selectedTopic) ? (
+            <TopicErrorBoundary
+              onError={(error, errorInfo) => {
+                console.error('Content area error:', error, errorInfo);
+                setSelectionError(error.message);
+              }}
+            >
+              {/* Show navigation errors */}
+              {hasError((selectedSubtopic || selectedTopic)!.id) && (
+                <div className="p-4 border-b">
+                  <ErrorDisplay
+                    error={getError((selectedSubtopic || selectedTopic)!.id)!}
+                    onRetry={() => retryLastOperation((selectedSubtopic || selectedTopic)!.id)}
+                    onDismiss={() => clearNavigationError((selectedSubtopic || selectedTopic)!.id)}
+                    isRetrying={isGeneratingContent}
+                  />
+                </div>
+              )}
+              
+              {content ? (
+                <div className="p-6 space-y-6">
+                  {/* Breadcrumb Navigation */}
+                  <BreadcrumbNavigation
+                    navigationPath={getNavigationBreadcrumbs()}
+                    onNavigateToPath={navigateToPath}
+                  />
+
+                  {/* Enhanced Content Header */}
+                  {(selectedSubtopic || selectedTopic) && (
+                    <ContentHeader
+                      topic={selectedSubtopic || selectedTopic!}
+                    isSubtopic={selectedSubtopic !== null}
+                    parentTopic={selectedTopic}
+                    onBookmarkToggle={() => toggleTopicBookmark((selectedSubtopic || selectedTopic)!.id)}
+                    isBookmarked={bookmarkedTopics.includes((selectedSubtopic || selectedTopic)!.id)}
+                    isRead={isRead((selectedSubtopic || selectedTopic)!.id)}
+                    onMarkAsRead={() => markAsRead((selectedSubtopic || selectedTopic)!.id)}
+                  />
+                  )}
+                  
+                  <MDXContent
+                    content={content}
+                    topicTitle={(selectedSubtopic || selectedTopic)!.title}
+                    sources={sources}
+                    bookmarks={bookmarks}
+                    onToggleBookmark={toggleBookmark}
+                    isBookmarked={isBookmarked}
+                    onMarkAsRead={markAsRead}
+                    isRead={isRead}
+                  />
+                  
+                  {/* Show subtopic cards if the current topic has children */}
+                  {(selectedSubtopic || selectedTopic)?.children && (selectedSubtopic || selectedTopic)!.children!.length > 0 && (
+                    <div className="border-t pt-6">
+                      <SubtopicCards
+                        subtopics={topicsToSubtopicCards((selectedSubtopic || selectedTopic)!.children!)}
+                        onSubtopicClick={handleSubtopicCardClick}
+                        selectedSubtopicId={selectedSubtopic?.id}
+                        isGeneratingContent={isGeneratingContent || isTransitioning}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : isGeneratingContent ? (
+                <div className="p-6">
+                  <ContentGenerationSkeleton />
+                </div>
+              ) : (
+                <ContentPlaceholder
+                  topic={(selectedSubtopic || selectedTopic)!}
+                  onGenerateContent={handleGenerateContent}
+                  isGeneratingContent={isGeneratingContent}
+                  error={selectionError}
+                  onClearError={() => setSelectionError(null)}
                 />
-              </div>
-            ) : (
-              <ContentPlaceholder
-                topic={selectedTopic}
-                onGenerateContent={generateContent}
-                isGeneratingContent={isGeneratingContent}
-              />
-            )
+              )}
+            </TopicErrorBoundary>
           ) : (
             <EnhancedEmptyState 
               onStartExploring={() => setActiveTab('tree')}
               hasRecentTopics={recentTopics.length > 0}
-              hasBookmarks={bookmarkedTopics.length > 0}
-              onViewRecent={() => setActiveTab('recent')}
-              onViewBookmarks={() => setActiveTab('bookmarks')}
             />
           )}
         </div>
@@ -629,433 +1003,3 @@ export function ExploreTab() {
   );
 }
 
-// Content Placeholder Component
-interface ContentPlaceholderProps {
-  topic: TopicTreeItem;
-  onGenerateContent: () => void;
-  isGeneratingContent: boolean;
-}
-
-function ContentPlaceholder({ topic, onGenerateContent, isGeneratingContent }: ContentPlaceholderProps) {
-  // For main topics (depth 0), show automatic generation message
-  const isMainTopic = topic.depth === 0;
-  
-  return (
-    <div className="flex items-center justify-center h-full">
-      <Card className="w-full max-w-md mx-auto">
-        <CardContent className="p-8 text-center space-y-6">
-          <div className="w-16 h-16 mx-auto bg-muted rounded-full flex items-center justify-center">
-            {isGeneratingContent ? (
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            ) : (
-              <FileText className="w-8 h-8 text-muted-foreground" />
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            <h3 className="font-semibold text-lg">{topic.title}</h3>
-            {topic.summary && (
-              <p className="text-sm text-muted-foreground">{topic.summary}</p>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            {isGeneratingContent ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  AI is analyzing research data and generating comprehensive content for this topic...
-                </p>
-                <div className="space-y-2">
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div className="bg-primary h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    This may take a moment. Content will appear automatically when ready.
-                  </p>
-                </div>
-              </>
-            ) : isMainTopic ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Content is being prepared automatically from the research data. If this is taking too long, the research might still be in progress.
-                </p>
-                <Button
-                  onClick={onGenerateContent}
-                  disabled={isGeneratingContent}
-                  size="lg"
-                  variant="outline"
-                  className="w-full"
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Retry Content Generation
-                </Button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  No content has been generated for this subtopic yet. Click the button below to create comprehensive learning material.
-                </p>
-                <Button
-                  onClick={onGenerateContent}
-                  disabled={isGeneratingContent}
-                  size="lg"
-                  className="w-full"
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Generate Content
-                </Button>
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// Bookmarks View Component
-interface BookmarksViewProps {
-  bookmarkedTopics: string[];
-  allTopics: TopicTreeItem[];
-  onTopicSelect: (topic: TopicTreeItem) => void;
-  onToggleBookmark: (topicId: string) => void;
-  selectedTopicId?: string;
-}
-
-function BookmarksView({ 
-  bookmarkedTopics, 
-  allTopics, 
-  onTopicSelect, 
-  onToggleBookmark,
-  selectedTopicId 
-}: BookmarksViewProps) {
-  const findTopicById = (topics: TopicTreeItem[], id: string): TopicTreeItem | null => {
-    for (const topic of topics) {
-      if (topic.id === id) return topic;
-      if (topic.children) {
-        const found = findTopicById(topic.children, id);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-
-  const bookmarkedTopicItems = bookmarkedTopics
-    .map(id => findTopicById(allTopics, id))
-    .filter(Boolean) as TopicTreeItem[];
-
-  return (
-    <div className="h-full overflow-auto">
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Star className="w-3 h-3" />
-          <span>{bookmarkedTopics.length} bookmarked topics</span>
-        </div>
-        
-        {bookmarkedTopicItems.length === 0 ? (
-          <div className="text-center py-8 space-y-2">
-            <Bookmark className="w-8 h-8 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No bookmarks yet</p>
-            <p className="text-xs text-muted-foreground">
-              Click the bookmark icon on topics to save them here
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {bookmarkedTopicItems.map((topic) => (
-              <div
-                key={topic.id}
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  selectedTopicId === topic.id 
-                    ? 'bg-primary/10 border border-primary/20' 
-                    : 'hover:bg-muted/50'
-                }`}
-                onClick={() => onTopicSelect(topic)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{topic.title}</p>
-                    {topic.summary && (
-                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {topic.summary}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleBookmark(topic.id);
-                    }}
-                    className="h-6 w-6 p-0 flex-shrink-0"
-                  >
-                    <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Recent Topics View Component
-interface RecentTopicsViewProps {
-  recentTopics: TopicTreeItem[];
-  onTopicSelect: (topic: TopicTreeItem) => void;
-  onToggleBookmark: (topicId: string) => void;
-  bookmarkedTopics: string[];
-  selectedTopicId?: string;
-}
-
-function RecentTopicsView({ 
-  recentTopics, 
-  onTopicSelect, 
-  onToggleBookmark,
-  bookmarkedTopics,
-  selectedTopicId 
-}: RecentTopicsViewProps) {
-  return (
-    <div className="h-full overflow-auto">
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className="w-3 h-3" />
-          <span>Recently viewed topics</span>
-        </div>
-        
-        {recentTopics.length === 0 ? (
-          <div className="text-center py-8 space-y-2">
-            <History className="w-8 h-8 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No recent topics</p>
-            <p className="text-xs text-muted-foreground">
-              Topics you explore will appear here
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {recentTopics.map((topic) => (
-              <div
-                key={topic.id}
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  selectedTopicId === topic.id 
-                    ? 'bg-primary/10 border border-primary/20' 
-                    : 'hover:bg-muted/50'
-                }`}
-                onClick={() => onTopicSelect(topic)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{topic.title}</p>
-                    {topic.summary && (
-                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {topic.summary}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleBookmark(topic.id);
-                    }}
-                    className="h-6 w-6 p-0 flex-shrink-0"
-                  >
-                    {bookmarkedTopics.includes(topic.id) ? (
-                      <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
-                    ) : (
-                      <BookmarkPlus className="w-3 h-3 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Breadcrumb Navigation Component
-interface BreadcrumbNavigationProps {
-  topic: TopicTreeItem;
-  allTopics: TopicTreeItem[];
-  onTopicSelect: (topic: TopicTreeItem) => void;
-  sidebarCollapsed: boolean;
-  setSidebarCollapsed: (collapsed: boolean) => void;
-}
-
-function BreadcrumbNavigation({ topic, allTopics, onTopicSelect, sidebarCollapsed, setSidebarCollapsed }: BreadcrumbNavigationProps) {
-  const buildBreadcrumb = (currentTopic: TopicTreeItem): TopicTreeItem[] => {
-    const path: TopicTreeItem[] = [];
-    
-    const findPath = (topics: TopicTreeItem[], targetId: string, currentPath: TopicTreeItem[]): boolean => {
-      for (const t of topics) {
-        const newPath = [...currentPath, t];
-        
-        if (t.id === targetId) {
-          path.push(...newPath);
-          return true;
-        }
-        
-        if (t.children && findPath(t.children, targetId, newPath)) {
-          return true;
-        }
-      }
-      return false;
-    };
-    
-    findPath(allTopics, currentTopic.id, []);
-    return path;
-  };
-
-  const breadcrumbPath = buildBreadcrumb(topic);
-
-  if (breadcrumbPath.length <= 1) return null;
-
-  return (
-    <div className="px-4 py-2 bg-muted/30 border-b">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 text-xs">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onTopicSelect(breadcrumbPath[0])}
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Home className="w-3 h-3 mr-1" />
-            Root
-          </Button>
-          
-          {breadcrumbPath.slice(0, -1).map((crumb, index) => (
-            <React.Fragment key={crumb.id}>
-              <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onTopicSelect(crumb)}
-                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground truncate max-w-32"
-                title={crumb.title}
-              >
-                {crumb.title}
-              </Button>
-            </React.Fragment>
-          ))}
-          
-          <ChevronDown className="w-3 h-3 text-muted-foreground rotate-[-90deg]" />
-          <span className="text-xs font-medium truncate max-w-40" title={topic.title}>
-            {topic.title}
-          </span>
-        </div>
-        
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="h-6 w-6 p-0 ml-2"
-        >
-          {sidebarCollapsed ? (
-            <ChevronRight className="w-3 h-3" />
-          ) : (
-            <ChevronLeft className="w-3 h-3" />
-          )}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// Enhanced Empty State Component
-interface EnhancedEmptyStateProps {
-  onStartExploring: () => void;
-  hasRecentTopics: boolean;
-  hasBookmarks: boolean;
-  onViewRecent: () => void;
-  onViewBookmarks: () => void;
-}
-
-function EnhancedEmptyState({ 
-  onStartExploring, 
-  hasRecentTopics, 
-  hasBookmarks,
-  onViewRecent,
-  onViewBookmarks 
-}: EnhancedEmptyStateProps) {
-  return (
-    <div className="flex items-center justify-center h-full p-8">
-      <div className="text-center space-y-8 max-w-md">
-        <div className="space-y-4">
-          <div className="w-20 h-20 mx-auto bg-gradient-to-br from-primary/20 to-primary/10 rounded-full flex items-center justify-center">
-            <BookOpen className="w-10 h-10 text-primary" />
-          </div>
-          
-          <div className="space-y-2">
-            <h3 className="text-xl font-semibold">Start Exploring</h3>
-            <p className="text-muted-foreground">
-              Discover topics and dive deep into learning with AI-powered content generation.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-3">
-          <Button 
-            onClick={onStartExploring}
-            className="w-full"
-            size="lg"
-          >
-            <BookOpen className="w-4 h-4 mr-2" />
-            Browse Topic Tree
-          </Button>
-
-          {hasRecentTopics && (
-            <Button 
-              variant="outline"
-              onClick={onViewRecent}
-              className="w-full"
-            >
-              <History className="w-4 h-4 mr-2" />
-              View Recent Topics
-            </Button>
-          )}
-
-          {hasBookmarks && (
-            <Button 
-              variant="outline"
-              onClick={onViewBookmarks}
-              className="w-full"
-            >
-              <Bookmark className="w-4 h-4 mr-2" />
-              View Bookmarked Topics
-            </Button>
-          )}
-        </div>
-
-        <div className="space-y-2 text-sm text-muted-foreground">
-          <div className="flex items-center justify-center gap-2">
-            <div className="flex items-center gap-1">
-              <BookOpen className="w-3 h-3" />
-              <span>Tree View</span>
-            </div>
-            <span>•</span>
-            <div className="flex items-center gap-1">
-              <Bookmark className="w-3 h-3" />
-              <span>Bookmarks</span>
-            </div>
-            <span>•</span>
-            <div className="flex items-center gap-1">
-              <History className="w-3 h-3" />
-              <span>Recent</span>
-            </div>
-          </div>
-          <p className="text-xs">
-            Navigate through topics, save favorites, and track your learning progress
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
