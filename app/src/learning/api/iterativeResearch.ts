@@ -275,19 +275,23 @@ export class IterativeResearchEngine {
       // Store subtopics
       const subtopicIds: string[] = [];
       for (const [subtopicTitle, subtopicResult] of result.subtopicResults.entries()) {
-        const subtopicSlug = this.generateSlug(subtopicTitle);
+        const baseSlug = this.generateSlug(subtopicTitle);
         
+        // First check if a subtopic with this exact relationship already exists
         let subtopic = await prisma.topic.findFirst({
           where: {
-            slug: subtopicSlug,
+            slug: baseSlug,
             parentId: mainTopic!.id
           }
         });
         
         if (!subtopic) {
+          // Generate a unique slug that avoids conflicts
+          const uniqueSlug = await this.generateUniqueSlug(baseSlug, mainTopic!.slug);
+          
           subtopic = await prisma.topic.create({
             data: {
-              slug: subtopicSlug,
+              slug: uniqueSlug,
               title: subtopicTitle,
               summary: subtopicResult.content.keyTakeaways.join(" "),
               depth: subtopicResult.depth,
@@ -379,6 +383,47 @@ export class IterativeResearchEngine {
       .replace(/-+/g, '-')
       .trim()
       .substring(0, 50);
+  }
+
+  /**
+   * Generate a unique slug that avoids database conflicts
+   * If the base slug already exists, append parent slug or counter
+   */
+  private async generateUniqueSlug(baseSlug: string, parentSlug: string): Promise<string> {
+    // First try the base slug
+    const existingTopic = await prisma.topic.findUnique({
+      where: { slug: baseSlug }
+    });
+    
+    if (!existingTopic) {
+      return baseSlug;
+    }
+    
+    // If it exists, try appending parent slug
+    const slugWithParent = `${baseSlug}-${parentSlug}`.substring(0, 50);
+    const existingWithParent = await prisma.topic.findUnique({
+      where: { slug: slugWithParent }
+    });
+    
+    if (!existingWithParent) {
+      return slugWithParent;
+    }
+    
+    // If that also exists, append a counter
+    let counter = 1;
+    let uniqueSlug: string;
+    do {
+      uniqueSlug = `${baseSlug}-${counter}`.substring(0, 50);
+      const existing = await prisma.topic.findUnique({
+        where: { slug: uniqueSlug }
+      });
+      if (!existing) {
+        break;
+      }
+      counter++;
+    } while (counter < 100); // Prevent infinite loop
+    
+    return uniqueSlug;
   }
 
   private chunkArray<T>(array: T[], chunkSize: number): T[][] {

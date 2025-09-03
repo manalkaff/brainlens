@@ -1,6 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText } from "ai";
-import { GeneratedContent, ContentSection, SynthesisResult, ContentStructureSchema } from "./types";
+import { GeneratedContent, ContentSection, SynthesisResult, ContentStructureSchema, CommunityInsight } from "./types";
 
 /**
  * Content Generation Module
@@ -38,11 +38,15 @@ CONTENT REQUIREMENTS:
 2. ACCESSIBLE LANGUAGE - Use simple, everyday language with clear explanations
 3. PRACTICAL FOCUS - Emphasize real-world applications and examples
 4. PROGRESSIVE FLOW - Each section naturally builds understanding
+5. COMMUNITY INSIGHTS - Include real user opinions, techniques, and experiences throughout
+6. DIVERSE PERSPECTIVES - Integrate community knowledge alongside educational content
 
 SECTION STRUCTURE:
 Create 4-6 sections that flow logically:
 - Start with foundational concepts and definitions
-- Progress through key components and how things work
+- Progress through key components and how things work  
+- Include community insights and user experiences throughout each section
+- Add dedicated "Community Perspectives" section with user opinions, techniques, and tips
 - Conclude with practical applications and getting started
 
 WRITING GUIDELINES:
@@ -57,6 +61,9 @@ CONTENT FOCUS:
 - What the topic actually is and why it matters
 - Key components and how they work together
 - Real-world examples and applications
+- User opinions, experiences, and personal techniques from community
+- Practical tips, tricks, and methods shared by practitioners
+- Community discussions, common questions, and crowdsourced solutions
 - Practical steps readers can take
 - Concrete benefits and use cases
 
@@ -162,6 +169,15 @@ Create content that helps readers truly understand ${topic} and how to apply it 
       mdx += `## ${section.title}\n\n`;
       mdx += `${section.content}\n\n`;
       
+      // Add community insights if available
+      if (section.communityContent && section.communityContent.length > 0) {
+        mdx += `### Community Insights\n\n`;
+        section.communityContent.forEach(insight => {
+          mdx += this.formatCommunityInsight(insight);
+        });
+        mdx += `\n`;
+      }
+      
       // Add section separator for non-final sections
       if (index < content.sections.length - 1) {
         mdx += `---\n\n`;
@@ -185,6 +201,39 @@ Create content that helps readers truly understand ${topic} and how to apply it 
     }
 
     return mdx;
+  }
+
+  /**
+   * Format community insight for MDX display
+   */
+  private formatCommunityInsight(insight: CommunityInsight): string {
+    let formatted = '';
+    
+    switch (insight.type) {
+      case 'opinion':
+        formatted = `> **User Opinion**: ${insight.content}`;
+        break;
+      case 'technique':
+        formatted = `> **Technique**: ${insight.content}`;
+        break;
+      case 'tip':
+        formatted = `> **Community Tip**: ${insight.content}`;
+        break;
+      case 'example':
+        formatted = `> **Real Example**: ${insight.content}`;
+        break;
+      case 'discussion':
+        formatted = `> **Discussion**: ${insight.content}`;
+        break;
+      default:
+        formatted = `> ${insight.content}`;
+    }
+    
+    if (insight.author || insight.source) {
+      formatted += ` *(${insight.author || insight.source})*`;
+    }
+    
+    return formatted + '\n\n';
   }
 
   /**
@@ -381,41 +430,56 @@ Create content that helps readers truly understand ${topic} and how to apply it 
     const insights = synthesis?.keyInsights || [];
     const themes = synthesis?.contentThemes || [];
     
-    // Create basic progressive structure
+    // Create basic progressive structure with community content
     const sections: ContentSection[] = [
       {
         title: `Understanding ${topic} - Foundation`,
         content: this.createFoundationContent(topic, insights.slice(0, 2)),
         sources: [],
         complexity: "foundation",
-        learningObjective: `Understand the basic concepts of ${topic}`
+        learningObjective: `Understand the basic concepts of ${topic}`,
+        communityContent: this.createSampleCommunityInsights(topic, 'foundation')
       },
       {
         title: `Key Components of ${topic}`,
         content: this.createBuildingContent(topic, insights.slice(2, 4), themes.slice(0, 2)),
         sources: [],
         complexity: "building", 
-        learningObjective: `Identify the main elements and components of ${topic}`
+        learningObjective: `Identify the main elements and components of ${topic}`,
+        communityContent: this.createSampleCommunityInsights(topic, 'building')
+      },
+      {
+        title: `Community Perspectives on ${topic}`,
+        content: this.createCommunitySection(topic, insights, themes),
+        sources: [],
+        complexity: "building",
+        learningObjective: `Learn from community experiences and diverse perspectives on ${topic}`,
+        communityContent: this.createSampleCommunityInsights(topic, 'community')
       },
       {
         title: `Practical Applications of ${topic}`,
         content: this.createApplicationContent(topic, insights.slice(4), themes.slice(2)),
         sources: [],
         complexity: "application",
-        learningObjective: `Apply ${topic} concepts in practical situations`
+        learningObjective: `Apply ${topic} concepts in practical situations`,
+        communityContent: this.createSampleCommunityInsights(topic, 'application')
       }
     ];
 
-    // Create fallback takeaways and next steps
+    // Create fallback takeaways and next steps with community focus
     const keyTakeaways = [
       `${topic} involves multiple interconnected concepts that build upon each other`,
       `Understanding the foundations is essential before exploring advanced applications`,
+      `Community insights and user experiences provide valuable practical perspectives`,
+      `Real-world examples from practitioners help bridge theory with application`,
       `Practical applications help bridge theoretical knowledge with real-world usage`
     ];
     
     const nextSteps = [
       `Explore specific aspects of ${topic} that interest you most`,
+      `Connect with the ${topic} community to learn from experienced practitioners`,
       `Practice applying ${topic} concepts in simple, real-world scenarios`,
+      `Study real examples and techniques shared by community members`,
       `Seek out additional resources and examples to deepen understanding`
     ];
 
@@ -476,5 +540,75 @@ Create content that helps readers truly understand ${topic} and how to apply it 
     content += `These applications demonstrate how ${topic} can be used effectively in various contexts and situations.`;
     
     return content;
+  }
+
+  private createCommunitySection(topic: string, insights: string[], themes: string[]): string {
+    let content = `The ${topic} community offers valuable insights, techniques, and real-world experiences that complement theoretical knowledge. Here's what practitioners and users have shared:\n\n`;
+    
+    content += `### User Experiences and Opinions\n`;
+    content += `Community members share diverse perspectives on ${topic}, highlighting both successes and challenges encountered in real-world applications.\n\n`;
+    
+    content += `### Personal Techniques and Methods\n`;
+    content += `Experienced practitioners have developed various approaches and workflows for implementing ${topic} effectively in different contexts.\n\n`;
+    
+    content += `### Community Tips and Best Practices\n`;
+    content += `The collective wisdom of the ${topic} community provides practical guidance that goes beyond basic documentation.\n\n`;
+    
+    content += `### Real Examples and Use Cases\n`;
+    content += `Community members regularly share specific examples of how they've applied ${topic} in their projects, providing concrete inspiration for others.\n\n`;
+    
+    if (insights.length > 0) {
+      content += `Key community insights include:\n${insights.map(insight => `- ${insight}`).join('\n')}\n\n`;
+    }
+    
+    content += `These community contributions demonstrate the practical value and real-world applicability of ${topic} across various use cases and contexts.`;
+    
+    return content;
+  }
+
+  private createSampleCommunityInsights(topic: string, section: string): CommunityInsight[] {
+    // This would normally be populated from actual community/video search results
+    // For now, provide sample structure that will be filled by research data
+    const insights: CommunityInsight[] = [];
+    
+    switch (section) {
+      case 'foundation':
+        insights.push({
+          type: 'opinion',
+          content: `Community members often emphasize the importance of understanding ${topic} fundamentals before diving into advanced features.`,
+          context: 'foundational understanding'
+        });
+        break;
+      case 'building':
+        insights.push({
+          type: 'technique',
+          content: `Experienced practitioners recommend breaking down ${topic} into manageable components when learning.`,
+          context: 'learning approach'
+        });
+        break;
+      case 'community':
+        insights.push(
+          {
+            type: 'tip',
+            content: `The ${topic} community actively shares resources and helps newcomers through various forums and discussion platforms.`,
+            context: 'community support'
+          },
+          {
+            type: 'example',
+            content: `Many users document their ${topic} implementations and share them for others to learn from.`,
+            context: 'knowledge sharing'
+          }
+        );
+        break;
+      case 'application':
+        insights.push({
+          type: 'discussion',
+          content: `Community discussions often focus on practical implementation challenges and solutions for ${topic}.`,
+          context: 'practical application'
+        });
+        break;
+    }
+    
+    return insights;
   }
 }

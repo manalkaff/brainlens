@@ -43,16 +43,22 @@ ${userContext ? `User context: Level=${userContext.level}, Interests=[${userCont
 
 MANDATORY REQUIREMENTS:
 1. You MUST include exactly 5 queries using the "general" engine for balanced perspective
-2. You MAY include additional queries using recommended engines (academic, video, community, computational)
-3. Total queries should be 8-12 (5 general + 3-7 recommended engine queries)
+2. You MUST include exactly 5 queries using the "community" engine for user opinions, techniques, and real experiences
+3. You MUST include exactly 5 queries using the "video" engine for visual content and demonstrations
+4. You MAY include additional queries using other recommended engines (academic, computational)
+5. Total queries should be 15-20 (5 general + 5 community + 5 video + 0-5 other engines)
 
 INSTRUCTIONS:
 1. Base your research plan ONLY on the understanding provided above
 2. ALWAYS start with 5 diverse "general" engine queries covering different aspects of the topic
-3. Then add 3-7 additional queries using the recommended engines from the analysis
-4. Focus on ${understanding.researchApproach} approach as indicated by the research
-5. Each query should be specific and progressive - building from basic to more detailed understanding
-6. General queries should cover: overview, practical applications, examples, different perspectives, and foundational concepts
+3. ALWAYS include 5 "community" engine queries focusing on user experiences, personal techniques, tips, and real examples
+4. ALWAYS include 5 "video" engine queries for visual learning and demonstrations
+5. Then add 0-5 additional queries using other recommended engines from the analysis
+6. Focus on ${understanding.researchApproach} approach as indicated by the research
+7. Each query should be specific and progressive - building from basic to more detailed understanding
+8. General queries should cover: overview, practical applications, examples, different perspectives, and foundational concepts
+9. Community queries should focus on: user opinions, personal techniques, community tips, real examples, discussions
+10. Video queries should focus on: tutorials, demonstrations, visual explanations, step-by-step guides, practical examples
 
 Your goal: Create a comprehensive research plan that balances general accessibility (via 5 general queries) with specialized depth (via recommended engine queries), following the research-driven recommendations above.`;
 
@@ -105,9 +111,8 @@ Your goal: Create a comprehensive research plan that balances general accessibil
   }
 
   /**
-   * Ensures the research plan has at least 5 general engine queries
-   * If not, adds them and updates engine distribution
-   * Enhanced validation for requirements 5.3 and 5.4
+   * Ensures the research plan has minimum required queries for all mandatory engines
+   * Enhanced to require 5 general, 5 community, and 5 video queries
    */
   private ensureGeneralQueries(plan: any, topic: string): ResearchPlan {
     // Validate plan structure
@@ -117,36 +122,69 @@ Your goal: Create a comprehensive research plan that balances general accessibil
     }
 
     const generalQueries = plan.researchQueries.filter((q: any) => q.engine === "general");
-    const nonGeneralQueries = plan.researchQueries.filter((q: any) => q.engine !== "general");
+    const communityQueries = plan.researchQueries.filter((q: any) => q.engine === "community");
+    const videoQueries = plan.researchQueries.filter((q: any) => q.engine === "video");
+    const otherQueries = plan.researchQueries.filter((q: any) => !['general', 'community', 'video'].includes(q.engine));
     
-    // Enhanced validation: ensure we have at least 5 general queries
+    let updatedQueries = [...plan.researchQueries];
+    
+    // Ensure we have at least 5 general queries
     if (generalQueries.length < 5) {
       const neededGeneralQueries = 5 - generalQueries.length;
       console.log(`🔧 Adding ${neededGeneralQueries} general engine queries to meet minimum requirement`);
       
       const additionalGeneralQueries = this.generateAdditionalGeneralQueries(topic, neededGeneralQueries);
-      
-      // Combine all queries, ensuring general queries come first for balanced perspective
-      const allQueries = [...generalQueries, ...additionalGeneralQueries, ...nonGeneralQueries];
-      
-      // Update the plan
-      plan.researchQueries = allQueries;
+      updatedQueries = updatedQueries.concat(additionalGeneralQueries);
     }
+    
+    // Ensure we have at least 5 community queries
+    if (communityQueries.length < 5) {
+      const neededCommunityQueries = 5 - communityQueries.length;
+      console.log(`🔧 Adding ${neededCommunityQueries} community engine queries to meet minimum requirement`);
+      
+      const additionalCommunityQueries = this.generateAdditionalCommunityQueries(topic, neededCommunityQueries);
+      updatedQueries = updatedQueries.concat(additionalCommunityQueries);
+    }
+    
+    // Ensure we have at least 5 video queries
+    if (videoQueries.length < 5) {
+      const neededVideoQueries = 5 - videoQueries.length;
+      console.log(`🔧 Adding ${neededVideoQueries} video engine queries to meet minimum requirement`);
+      
+      const additionalVideoQueries = this.generateAdditionalVideoQueries(topic, neededVideoQueries);
+      updatedQueries = updatedQueries.concat(additionalVideoQueries);
+    }
+    
+    // Update the plan with all queries
+    plan.researchQueries = updatedQueries;
 
     // Calculate and update engine distribution
     plan.engineDistribution = this.calculateEngineDistribution(plan.researchQueries);
     
-    // Final validation: ensure engine distribution is accurate
+    // Final validation: ensure all mandatory engine distributions are met
     const actualGeneral = plan.researchQueries.filter((q: any) => q.engine === "general").length;
+    const actualCommunity = plan.researchQueries.filter((q: any) => q.engine === "community").length;
+    const actualVideo = plan.researchQueries.filter((q: any) => q.engine === "video").length;
+    
     if (actualGeneral < 5) {
       console.error(`❌ Failed to ensure minimum general queries: ${actualGeneral} < 5`);
       throw new Error(`Failed to meet minimum general query requirement: ${actualGeneral} < 5`);
+    }
+    
+    if (actualCommunity < 5) {
+      console.error(`❌ Failed to ensure minimum community queries: ${actualCommunity} < 5`);
+      throw new Error(`Failed to meet minimum community query requirement: ${actualCommunity} < 5`);
+    }
+    
+    if (actualVideo < 5) {
+      console.error(`❌ Failed to ensure minimum video queries: ${actualVideo} < 5`);
+      throw new Error(`Failed to meet minimum video query requirement: ${actualVideo} < 5`);
     }
 
     // Validate query diversity for requirement 5.3 (specialized and accessible search terms)
     this.validateQueryDiversity(plan.researchQueries, topic);
     
-    console.log(`✅ Research plan validated: ${actualGeneral} general queries, ${plan.researchQueries.length} total queries`);
+    console.log(`✅ Research plan validated: ${actualGeneral} general, ${actualCommunity} community, ${actualVideo} video queries, ${plan.researchQueries.length} total queries`);
     return plan;
   }
 
@@ -257,6 +295,120 @@ Your goal: Create a comprehensive research plan that balances general accessibil
   }
 
   /**
+   * Generates additional community queries focusing on user opinions, techniques, and experiences
+   */
+  private generateAdditionalCommunityQueries(topic: string, count: number): Array<{query: string, engine: string, reasoning: string}> {
+    const communityQueryTemplates = [
+      {
+        query: `${topic} user experiences opinions personal thoughts forums discussion`,
+        reasoning: "User experiences and opinions from community discussions for real perspectives"
+      },
+      {
+        query: `${topic} personal techniques methods strategies workflow tips tricks`,
+        reasoning: "Personal techniques and methods shared by practitioners in the community"
+      },
+      {
+        query: `${topic} community advice recommendations best practices shared wisdom`,
+        reasoning: "Community-driven advice and recommendations from experienced users"
+      },
+      {
+        query: `${topic} real examples use cases practical implementations user stories`,
+        reasoning: "Real-world examples and use cases shared by community members"
+      },
+      {
+        query: `${topic} discussion questions answers community insights problems solutions`,
+        reasoning: "Community discussions focusing on common questions and crowdsourced solutions"
+      },
+      {
+        query: `${topic} user tips lessons learned mistakes avoid success stories`,
+        reasoning: "User-shared tips, lessons learned, and success stories from community"
+      },
+      {
+        query: `${topic} forum insights reddit community experiences personal approaches`,
+        reasoning: "Forum and community insights showing diverse personal approaches and experiences"
+      },
+      {
+        query: `${topic} practitioners advice expert users community knowledge sharing`,
+        reasoning: "Advice and knowledge sharing from expert practitioners in community forums"
+      },
+      {
+        query: `${topic} user guides community created resources personal methodologies`,
+        reasoning: "Community-created resources and personal methodologies shared by users"
+      },
+      {
+        query: `${topic} real world usage community feedback user reviews experiences`,
+        reasoning: "Real-world usage patterns and community feedback on practical applications"
+      }
+    ];
+
+    const actualCount = Math.min(count, communityQueryTemplates.length);
+    const selectedTemplates = communityQueryTemplates.slice(0, actualCount);
+    
+    return selectedTemplates.map(template => ({
+      query: template.query,
+      engine: "community",
+      reasoning: template.reasoning
+    }));
+  }
+
+  /**
+   * Generates additional video queries focusing on visual learning and demonstrations
+   */
+  private generateAdditionalVideoQueries(topic: string, count: number): Array<{query: string, engine: string, reasoning: string}> {
+    const videoQueryTemplates = [
+      {
+        query: `${topic} tutorial step by step guide walkthrough demonstration`,
+        reasoning: "Tutorial videos providing step-by-step visual guidance and demonstrations"
+      },
+      {
+        query: `${topic} explained visual examples practical demonstration how to`,
+        reasoning: "Visual explanations and practical demonstrations for better understanding"
+      },
+      {
+        query: `${topic} beginner tutorial introduction basics getting started video`,
+        reasoning: "Beginner-friendly video tutorials for foundational understanding"
+      },
+      {
+        query: `${topic} advanced techniques video course in-depth explanation`,
+        reasoning: "Advanced video content for deeper technical understanding and techniques"
+      },
+      {
+        query: `${topic} practical examples real world application video case study`,
+        reasoning: "Real-world application videos and case studies showing practical usage"
+      },
+      {
+        query: `${topic} comparison review analysis video detailed explanation`,
+        reasoning: "Video reviews and comparative analysis for comprehensive understanding"
+      },
+      {
+        query: `${topic} masterclass expert tutorial professional guide video`,
+        reasoning: "Expert-level tutorials and masterclasses from professional practitioners"
+      },
+      {
+        query: `${topic} hands on workshop practical session video tutorial`,
+        reasoning: "Hands-on workshop videos and practical sessions for applied learning"
+      },
+      {
+        query: `${topic} tips tricks shortcuts video guide optimization techniques`,
+        reasoning: "Video guides focusing on tips, tricks, and optimization techniques"
+      },
+      {
+        query: `${topic} common mistakes troubleshooting video help guide`,
+        reasoning: "Video content addressing common mistakes and troubleshooting guidance"
+      }
+    ];
+
+    const actualCount = Math.min(count, videoQueryTemplates.length);
+    const selectedTemplates = videoQueryTemplates.slice(0, actualCount);
+    
+    return selectedTemplates.map(template => ({
+      query: template.query,
+      engine: "video",
+      reasoning: template.reasoning
+    }));
+  }
+
+  /**
    * Calculates engine distribution from research queries
    */
   private calculateEngineDistribution(queries: Array<{engine: string}>): {general: number, academic: number, video: number, community: number, computational: number} {
@@ -339,13 +491,33 @@ Your goal: Create a comprehensive research plan that balances general accessibil
 
     const engineDistribution = this.calculateEngineDistribution(fallbackQueries);
     
-    // Validate that we meet the minimum requirements
-    if (engineDistribution.general < 5) {
-      console.error(`❌ Fallback plan failed to create minimum general queries: ${engineDistribution.general} < 5`);
+    // Add mandatory community and video queries to fallback plan
+    const communityQueries = this.generateAdditionalCommunityQueries(topic, 5);
+    const videoQueries = this.generateAdditionalVideoQueries(topic, 5);
+    
+    fallbackQueries.push(...communityQueries);
+    fallbackQueries.push(...videoQueries);
+    
+    // Recalculate distribution with all mandatory queries
+    const finalEngineDistribution = this.calculateEngineDistribution(fallbackQueries);
+    
+    // Validate that we meet all minimum requirements
+    if (finalEngineDistribution.general < 5) {
+      console.error(`❌ Fallback plan failed to create minimum general queries: ${finalEngineDistribution.general} < 5`);
+      throw new Error("Failed to create valid fallback research plan");
+    }
+    
+    if (finalEngineDistribution.community < 5) {
+      console.error(`❌ Fallback plan failed to create minimum community queries: ${finalEngineDistribution.community} < 5`);
+      throw new Error("Failed to create valid fallback research plan");
+    }
+    
+    if (finalEngineDistribution.video < 5) {
+      console.error(`❌ Fallback plan failed to create minimum video queries: ${finalEngineDistribution.video} < 5`);
       throw new Error("Failed to create valid fallback research plan");
     }
 
-    console.log(`✅ Fallback plan created: ${engineDistribution.general} general, ${fallbackQueries.length} total queries`);
+    console.log(`✅ Fallback plan created: ${finalEngineDistribution.general} general, ${finalEngineDistribution.community} community, ${finalEngineDistribution.video} video, ${fallbackQueries.length} total queries`);
 
     return {
       researchQueries: fallbackQueries,
@@ -359,7 +531,7 @@ Your goal: Create a comprehensive research plan that balances general accessibil
         `Foundation for deeper learning and exploration`,
         `Diverse source types for comprehensive coverage`
       ],
-      engineDistribution
+      engineDistribution: finalEngineDistribution
     };
   }
 }

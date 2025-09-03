@@ -42,16 +42,18 @@ export const ResearchPlanSchema = z.object({
   engineDistribution: z.object({
     general: z.number().min(5).describe("Number of general engine queries - MUST be at least 5"),
     academic: z.number().min(0).describe("Number of academic engine queries"),
-    video: z.number().min(0).describe("Number of video engine queries"),
-    community: z.number().min(0).describe("Number of community engine queries"),
+    video: z.number().min(5).describe("Number of video engine queries - MUST be at least 5"),
+    community: z.number().min(5).describe("Number of community engine queries - MUST be at least 5"),
     computational: z.number().min(0).describe("Number of computational engine queries"),
-  }).describe("Distribution of queries across engines - general must be at least 5"),
+  }).describe("Distribution of queries across engines - general, video, and community must be at least 5 each"),
 }).refine((data) => {
-  // Validate that we have at least 5 general engine queries
+  // Validate that we have at least 5 queries for general, video, and community engines
   const generalQueries = data.researchQueries.filter(q => q.engine === "general");
-  return generalQueries.length >= 5;
+  const videoQueries = data.researchQueries.filter(q => q.engine === "video");
+  const communityQueries = data.researchQueries.filter(q => q.engine === "community");
+  return generalQueries.length >= 5 && videoQueries.length >= 5 && communityQueries.length >= 5;
 }, {
-  message: "Research plan must include at least 5 general engine queries for balanced perspective",
+  message: "Research plan must include at least 5 queries each for general, video, and community engines",
   path: ["researchQueries"]
 }).refine((data) => {
   // Validate that engine distribution matches actual query counts
@@ -249,7 +251,16 @@ export interface ContentSection {
   sources: string[];
   complexity?: "foundation" | "building" | "application";
   learningObjective?: string;
+  communityContent?: CommunityInsight[];
   [key: string]: any;
+}
+
+export interface CommunityInsight {
+  type: "opinion" | "technique" | "tip" | "example" | "discussion";
+  content: string;
+  source?: string;
+  author?: string;
+  context?: string;
 }
 
 export interface SourceAttribution {
@@ -310,6 +321,15 @@ export interface ResearchPlan {
     community: number;
     computational: number;
   };
+}
+
+// Community content types for enhanced user perspectives
+export interface CommunityContent {
+  userOpinions: CommunityInsight[];
+  practicalTechniques: CommunityInsight[];
+  communityTips: CommunityInsight[];
+  realExamples: CommunityInsight[];
+  discussions: CommunityInsight[];
 }
 
 // Synthesis result types

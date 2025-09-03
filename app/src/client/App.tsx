@@ -5,6 +5,7 @@ import './Main.css';
 import NavBar from './components/NavBar/NavBar';
 import { demoNavigationitems, learningNavigationItems, marketingNavigationItems } from './components/NavBar/constants';
 import CookieConsentBanner from './components/cookie-consent/Banner';
+import { usePendingTopicHandler } from '../landing-page/hooks/usePendingTopicHandler';
 
 /**
  * use this component to wrap all child components
@@ -12,6 +13,9 @@ import CookieConsentBanner from './components/cookie-consent/Banner';
  */
 export default function App() {
   const location = useLocation();
+  
+  // Handle pending topic creation after authentication
+  usePendingTopicHandler();
   const isMarketingPage = useMemo(() => {
     return location.pathname === '/' || location.pathname.startsWith('/pricing') || location.pathname === '/home';
   }, [location]);
@@ -54,6 +58,11 @@ export default function App() {
       <div className='min-h-screen bg-background text-foreground'>
         {isAdminDashboard || isLearningPage ? (
           <Outlet />
+        ) : isMarketingPage ? (
+          <>
+            {shouldDisplayAppNavBar && <NavBar navigationItems={navigationItems} />}
+            <Outlet />
+          </>
         ) : (
           <>
             {shouldDisplayAppNavBar && <NavBar navigationItems={navigationItems} />}
