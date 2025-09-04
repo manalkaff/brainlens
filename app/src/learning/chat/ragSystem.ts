@@ -354,12 +354,9 @@ Please provide a comprehensive answer that:
     });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5-nano",
+      model: "gpt-5-mini",
       messages,
-      max_tokens: this.maxResponseTokens,
-      temperature: this.defaultTemperature,
-      presence_penalty: 0.1,
-      frequency_penalty: 0.1,
+      max_completion_tokens: this.maxResponseTokens,
     });
 
     return (
@@ -410,10 +407,9 @@ Format as a simple numbered list:
 3. [Question 3]`;
 
       const suggestionsResponse = await openai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 200,
-        temperature: 0.8,
+        max_completion_tokens: 200,
       });
 
       const suggestionsText =
@@ -554,10 +550,9 @@ Generate 2-3 related search terms or synonyms that would help find relevant educ
 Return only the expanded terms separated by spaces, without explanations:`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 50,
-        temperature: 0.3,
+        max_completion_tokens: 50,
       });
 
       const expandedTerms = response.choices[0]?.message?.content?.trim() || "";
@@ -632,10 +627,9 @@ Choose the most appropriate intent category:
 Respond with just the category name:`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 20,
-        temperature: 0.3,
+        max_completion_tokens: 20,
       });
 
       const intent =
@@ -762,12 +756,9 @@ Respond with just the category name:`;
     });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5-nano",
+      model: "gpt-5-mini",
       messages,
-      max_tokens: this.maxResponseTokens,
-      temperature: intent === "specific" ? 0.3 : this.defaultTemperature, // Lower temperature for factual queries
-      presence_penalty: 0.1,
-      frequency_penalty: 0.1,
+      max_completion_tokens: this.maxResponseTokens,
     });
 
     return (
@@ -919,10 +910,9 @@ ${conversationText}
 Summary:`;
 
       const summaryResponse = await openai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-5-mini",
         messages: [{ role: "user", content: summaryPrompt }],
-        max_tokens: 150,
-        temperature: 0.3,
+        max_completion_tokens: 150,
       });
 
       const summary =

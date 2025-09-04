@@ -83,6 +83,26 @@ export function ChatInterface({
     }
   };
 
+  // Clear typing state if loading changes externally (e.g. from useChat hook)
+  useEffect(() => {
+    if (!loading && isTyping) {
+      setIsTyping(false);
+    }
+  }, [loading, isTyping]);
+
+  // Debug logging for loading states
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('ChatInterface loading states:', {
+        loading,
+        isTyping,
+        hasThread: !!thread,
+        messageCount: thread?.messages?.length || 0,
+        error
+      });
+    }
+  }, [loading, isTyping, thread, error]);
+
   const handleCopyMessage = (content: string) => {
     navigator.clipboard.writeText(content);
     // Could add a toast notification here
@@ -239,12 +259,12 @@ export function ChatInterface({
         <div className="border-t p-4">
           <MessageInput
             onSendMessage={handleSendMessage}
-            disabled={!thread}
+            disabled={false}
             loading={loading || isTyping}
             placeholder={
               thread 
                 ? "Ask a question about this topic..." 
-                : "Start a new conversation to begin chatting"
+                : "Ask a question to start a new conversation..."
             }
             suggestedQuestions={thread && thread.messages.length === 0 ? currentSuggestions : []}
             onSelectSuggestion={handleSendMessage}

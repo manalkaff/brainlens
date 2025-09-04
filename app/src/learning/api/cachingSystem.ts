@@ -27,16 +27,97 @@ export class IntelligentCacheManager {
   private readonly CACHE_TTL_DAYS = 7;
   private readonly MAX_CACHE_ENTRIES = 10000;
   private readonly CLEANUP_BATCH_SIZE = 100;
+
+  /**
+   * Recursively ensure all timestamp properties are Date objects
+   */
+  private ensureTimestampsAreObjects(obj: any): any {
+    if (!obj) return obj;
+    
+    if (typeof obj === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(obj)) {
+      return new Date(obj);
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.ensureTimestampsAreObjects(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const result = { ...obj };
+      for (const key in result) {
+        if (key === 'timestamp' || key.toLowerCase().includes('timestamp')) {
+          if (typeof result[key] === 'string') {
+            result[key] = new Date(result[key]);
+          }
+        } else {
+          result[key] = this.ensureTimestampsAreObjects(result[key]);
+        }
+      }
+      return result;
+    }
+    
+    return obj;
+  }
   
   // In-memory cache for frequently accessed items
   private memoryCache = new Map<string, CacheEntry>();
   private readonly MEMORY_CACHE_SIZE = 100;
+  private memoryCacheWarmedUp = false;
+
+  /**
+   * Warm up memory cache with frequently accessed items
+   */
+  private async warmupMemoryCache(): Promise<void> {
+    if (this.memoryCacheWarmedUp) return;
+    
+    try {
+      console.log('🔥 Warming up memory cache...');
+      
+      // Get most recently accessed cache entries
+      const recentEntries = await prisma.generatedContent.findMany({
+        where: {
+          contentType: 'cache'
+        },
+        orderBy: { lastAccess: 'desc' },
+        take: Math.min(this.MEMORY_CACHE_SIZE / 2, 50) // Warm up with half the memory cache size
+      });
+
+      let warmedCount = 0;
+      for (const entry of recentEntries) {
+        const metadata = entry.metadata as any;
+        if (metadata.cacheKey && metadata.researchResult) {
+          const cacheEntry: CacheEntry = {
+            key: metadata.cacheKey,
+            data: this.ensureTimestampsAreObjects(metadata.researchResult),
+            timestamp: new Date(metadata.cacheTimestamp || entry.createdAt),
+            accessCount: metadata.accessCount || 1,
+            lastAccess: new Date(metadata.lastAccess || entry.createdAt)
+          };
+
+          if (this.isCacheValid(cacheEntry.timestamp, this.CACHE_TTL_DAYS)) {
+            this.memoryCache.set(metadata.cacheKey, cacheEntry);
+            warmedCount++;
+          }
+        }
+      }
+
+      this.memoryCacheWarmedUp = true;
+      console.log(`🔥 Memory cache warmed up with ${warmedCount} entries`);
+      
+    } catch (error) {
+      console.error('Memory cache warmup failed:', error);
+      this.memoryCacheWarmedUp = true; // Don't keep trying if it fails
+    }
+  }
 
   /**
    * Get cached content with intelligent retrieval
    */
   async getCachedContent(key: string): Promise<TopicResearchResult | null> {
     try {
+      // Ensure memory cache is warmed up
+      await this.warmupMemoryCache();
+      
       // Check memory cache first
       const memoryCached = this.memoryCache.get(key);
       if (memoryCached && this.isCacheValid(memoryCached.timestamp, this.CACHE_TTL_DAYS)) {
@@ -208,11 +289,8 @@ export class IntelligentCacheManager {
       if (result && result.metadata) {
         const metadata = result.metadata as any;
         if (metadata.researchResult) {
-          // Ensure timestamps are properly handled
-          const researchResult = metadata.researchResult;
-          if (researchResult.timestamp && typeof researchResult.timestamp === 'string') {
-            researchResult.timestamp = new Date(researchResult.timestamp);
-          }
+          // Ensure all timestamps (including nested ones) are properly handled
+          const researchResult = this.ensureTimestampsAreObjects(metadata.researchResult);
           
           return {
             key,

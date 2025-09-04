@@ -49,6 +49,42 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       });
     }
 
+    // Also check if we have research-type content stored for this user that can be adapted
+    const existingResearchContent = await context.entities.GeneratedContent.findFirst({
+      where: {
+        topicId,
+        contentType: 'research',
+        userLevel: options.userLevel || 'intermediate',
+        learningStyle: options.learningStyle || 'textual',
+        NOT: {
+          userLevel: "cache"
+        }
+      }
+    });
+
+    if (existingResearchContent && existingResearchContent.metadata) {
+      const metadata = existingResearchContent.metadata as any;
+      if (metadata.researchResult && metadata.isUserContent) {
+        console.log('Found existing user research content for this topic');
+        // Convert research result to content format if needed
+        const researchResult = metadata.researchResult;
+        return res.json({
+          success: true,
+          content: researchResult.content?.content || existingResearchContent.content,
+          metadata: {
+            ...researchResult.metadata,
+            contentType: options.contentType,
+            adaptedFromResearch: true
+          },
+          sources: researchResult.sources || [],
+          topicId: existingResearchContent.topicId,
+          cached: false,
+          fromDatabase: true,
+          adaptedFromResearch: true
+        });
+      }
+    }
+
     console.log('No existing content found, checking for cached research results...');
     
     // Check if we have cached research results for this topic that we can reuse

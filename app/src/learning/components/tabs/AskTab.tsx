@@ -57,13 +57,21 @@ export function AskTab() {
   };
 
   const handleSendMessage = async (content: string) => {
-    if (!activeThreadId) {
-      // Create a new thread if none exists
-      await handleNewThread();
-    }
-    
-    if (activeThreadId) {
-      await sendMessage(content);
+    try {
+      let threadId = activeThreadId;
+      
+      if (!threadId) {
+        // Create a new thread if none exists
+        const newThread = await createThread(`Chat about ${topic.title}`);
+        threadId = newThread.id;
+      }
+      
+      if (threadId) {
+        await sendMessage(content);
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Error is already handled by the useChat hook
     }
   };
 

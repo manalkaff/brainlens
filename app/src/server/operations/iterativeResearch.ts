@@ -71,8 +71,17 @@ export const startIterativeResearch = async (
     // Dynamic import to avoid circular dependency issues
     const { researchAndStore } = await import('../../learning/api/iterativeResearch');
     
-    // Perform iterative research
-    const result = await researchAndStore(topic.title, topicSlug, researchOptions);
+    // Perform iterative research with user context
+    const userContext = {
+      userId: context.user?.id,
+      level: researchOptions.userContext?.level || 'intermediate',
+      style: 'textual' // Default learning style
+    };
+    
+    console.log(`🔍 DEBUG: Starting research for user ID: ${userContext.userId}, topic: ${topic.title}`);
+    console.log(`🔍 DEBUG: User context:`, userContext);
+    
+    const result = await researchAndStore(topic.title, topicSlug, researchOptions, userContext);
 
     // Update topic status
     await prisma.topic.update({

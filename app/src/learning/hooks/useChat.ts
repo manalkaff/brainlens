@@ -63,9 +63,17 @@ export function useChat({ topicId, autoCreateThread = false }: UseChatOptions) {
     if (!activeThreadId && threads.length > 0) {
       setActiveThreadId(threads[0].id);
     } else if (!activeThreadId && autoCreateThread && !threadsLoading && threads.length === 0) {
-      handleCreateThread();
+      // Create thread without dependency on handleCreateThread
+      createChatThread({
+        topicId
+      }).then((newThread) => {
+        setActiveThreadId(newThread.id);
+        refetchThreads();
+      }).catch((error) => {
+        console.error('Failed to auto-create thread:', error);
+      });
     }
-  }, [threads, activeThreadId, autoCreateThread, threadsLoading]);
+  }, [threads, activeThreadId, autoCreateThread, threadsLoading, topicId, refetchThreads]);
 
   // Create new chat thread
   const handleCreateThread = useCallback(async (title?: string) => {
@@ -200,6 +208,20 @@ export function useChat({ topicId, autoCreateThread = false }: UseChatOptions) {
     setError(undefined);
   }, []);
 
+  // Debug logging for loading states
+  const finalLoadingState = loading || (activeThreadId ? threadLoading : false);
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log('useChat loading states:', {
+      loading,
+      threadLoading,
+      activeThreadId,
+      finalLoadingState,
+      threadsLoading,
+      threadsCount: threads.length
+    });
+  }
+
   return {
     // Data
     threads: threads as ChatThreadWithMessages[],
@@ -208,7 +230,7 @@ export function useChat({ topicId, autoCreateThread = false }: UseChatOptions) {
     suggestedQuestions,
     
     // Loading states
-    loading: loading || threadLoading,
+    loading: finalLoadingState,
     threadsLoading,
     
     // Error states
