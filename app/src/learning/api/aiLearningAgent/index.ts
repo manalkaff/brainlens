@@ -75,37 +75,53 @@ export class AILearningAgent {
       } else {
         // Generate understanding for root topics
         console.log("🔍 Step 0: Understanding topic from research...");
+        const step0Start = Date.now();
         understanding = await this.understandTopic(request.topic);
+        const step0Duration = (Date.now() - step0Start) / 1000;
+        console.log(`✅ Step 0 completed in ${step0Duration.toFixed(2)} seconds`);
       }
 
       // Step 1: Plan the research strategy (MODIFIED - now uses understanding)
       console.log("📋 Step 1: Planning research strategy...");
+      const step1Start = Date.now();
       const researchPlan = await this.researchPlanning.planResearch(
         request.topic,
         understanding,
         request.userContext,
       );
+      const step1Duration = (Date.now() - step1Start) / 1000;
+      console.log(`✅ Step 1 completed in ${step1Duration.toFixed(2)} seconds`);
 
       // Step 2: Execute research using planned queries and engines
       console.log("🔍 Step 2: Executing research plan...");
+      const step2Start = Date.now();
       const researchResults = await this.researchExecution.executeResearch(researchPlan);
+      const step2Duration = (Date.now() - step2Start) / 1000;
+      console.log(`✅ Step 2 completed in ${step2Duration.toFixed(2)} seconds`);
 
       // Step 3: Analyze and synthesize the research
       console.log("🧠 Step 3: Analyzing research results...");
+      const step3Start = Date.now();
       const synthesis = await this.synthesis.synthesizeResearch(
         request.topic,
         researchResults,
       );
+      const step3Duration = (Date.now() - step3Start) / 1000;
+      console.log(`✅ Step 3 completed in ${step3Duration.toFixed(2)} seconds`);
 
       // Step 4: Generate comprehensive content
       console.log("📝 Step 4: Generating comprehensive content...");
+      const step4Start = Date.now();
       const content = await this.generateContent(
         request.topic,
         synthesis,
       );
+      const step4Duration = (Date.now() - step4Start) / 1000;
+      console.log(`✅ Step 4 completed in ${step4Duration.toFixed(2)} seconds`);
 
       // Step 5: Extract subtopics for further exploration
       console.log("🌳 Step 5: Identifying subtopics...");
+      const step5Start = Date.now();
       let subtopics: SubtopicInfo[] = [];
       if (request.depth < request.maxDepth) {
         subtopics = await this.subtopicIdentification.identifySubtopics(
@@ -114,6 +130,8 @@ export class AILearningAgent {
           request.depth + 1,
         );
       }
+      const step5Duration = (Date.now() - step5Start) / 1000;
+      console.log(`✅ Step 5 completed in ${step5Duration.toFixed(2)} seconds`);
 
       // Step 6: Build source attributions
       const sources = this.utils.buildSourceAttributions(
