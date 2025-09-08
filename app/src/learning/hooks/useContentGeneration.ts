@@ -266,6 +266,13 @@ Happy learning!`;
   const generateContent = useCallback(async () => {
     if (!topic) return;
 
+    console.log('🚀 CONTENT GENERATION API CALL:', {
+      topicId: topic.id,
+      topicTitle: topic.title,
+      topicSlug: topic.slug,
+      timestamp: new Date().toISOString()
+    });
+
     setIsGenerating(true);
     setError(null);
 

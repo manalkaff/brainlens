@@ -251,7 +251,7 @@ export class AIContentGenerator {
       console.warn('Multi-agent content generation failed, falling back to legacy system:', error);
       
       // Fallback to the legacy system if the new one fails
-      return this.generateExplorationContentFallback(topic, subtopics, researchResults);
+      return this.generateExplorationContentFallback(topic, subtopics, researchResults, context);
     }
   }
 
@@ -303,9 +303,10 @@ export class AIContentGenerator {
   private async generateExplorationContentFallback(
     topic: Topic,
     subtopics: string[],
-    researchResults?: ResearchResult[]
+    researchResults?: ResearchResult[],
+    context?: any
   ): Promise<MDXContent> {
-    const prompt = this.buildExplorationContentPrompt(topic, subtopics, researchResults);
+    const prompt = this.buildExplorationContentPrompt(topic, subtopics, researchResults, context);
 
     const result = await generateText({
       model: this.model,
@@ -483,6 +484,7 @@ Ensure the path is tailored to their specific interests, prior knowledge, and le
     topic: Topic,
     subtopics: string[],
     researchResults?: ResearchResult[],
+    context?: any,
   ): string {
     // Build research context if available
     let researchContext = '';
@@ -501,9 +503,31 @@ ${researchResults
 IMPORTANT: When referencing information from the research sources, add a source reference like [Source 1] at the end of the relevant paragraph or sentence. Use multiple sources when possible to provide comprehensive coverage.`;
     }
 
+    // Check if this is a subtopic (from context)
+    const isSubtopic = context?.isSubtopic;
+    const parentTopic = context?.parentTopic;
+    const focusArea = context?.focusArea;
+
+    let topicContext = '';
+    if (isSubtopic && parentTopic) {
+      topicContext = `
+
+CONTEXT: This is a subtopic "${topic.title}" under the main topic "${parentTopic}".
+Focus Area: ${focusArea || topic.title}
+
+IMPORTANT: Generate content that is SPECIFICALLY about "${topic.title}" and NOT general content about "${parentTopic}". 
+The user has already seen the overview of "${parentTopic}" and now wants detailed, specific information about this particular aspect: "${topic.title}".
+
+Make sure the content is:
+- Focused specifically on "${topic.title}"
+- Detailed and in-depth for this specific area
+- Not a general overview of "${parentTopic}"
+- Tailored to someone who already understands the basics of "${parentTopic}"`;
+    }
+
     return `You are creating comprehensive exploration content about "${
       topic.title
-    }" in MDX format.
+    }" in MDX format.${topicContext}
 
 Subtopics to cover:
 ${subtopics.map((subtopic) => `- ${subtopic}`).join("\n")}${researchContext}

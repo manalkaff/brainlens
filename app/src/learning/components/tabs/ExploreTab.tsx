@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
@@ -128,7 +128,7 @@ export function ExploreTab() {
     generateContent
   } = useContentGeneration({
     topic: selectedSubtopic || selectedTopic,
-    autoGenerate: false // Turn off auto-generation to use new system
+    autoGenerate: true // Enable auto-generation when topic changes
   });
 
   // Combine loading states
@@ -170,53 +170,42 @@ export function ExploreTab() {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Enhanced content generation handler with proper error handling and retry logic
-  const handleGenerateContent = async () => {
+  const handleGenerateContent = useCallback(async () => {
     const targetTopic = selectedSubtopic || selectedTopic;
     if (!targetTopic) {
       console.warn('No topic selected for content generation');
+      setSelectionError('No topic selected for content generation');
       return;
     }
 
-    console.log('Starting content generation for:', targetTopic.title);
+    console.log('Starting content generation for:', targetTopic.title, 'ID:', targetTopic.id);
     setSelectionError(null);
 
     try {
-      // First, try the new navigation system
-      await generateContentForTopic(targetTopic);
-      
-      // Check if content was generated and cached
-      const cachedContent = getTopicContent(targetTopic.id);
-      if (cachedContent) {
-        console.log('Content successfully generated and cached for:', targetTopic.title);
-        // Update the legacy content generation hook with the new content
-        setTopicContent(targetTopic.id, cachedContent.content, cachedContent.sources);
-        return;
-      }
-      
-      console.log('No cached content found, trying legacy system...');
-      // Fallback to legacy system if needed
+      // Use the legacy content generation system directly since it handles the UI state properly
       await generateContent();
+      console.log('Content generation completed successfully for:', targetTopic.title);
       
     } catch (error) {
       console.error('Content generation failed for topic:', targetTopic.title, error);
       
-      // Set user-friendly error message
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate content';
-      setSelectionError(errorMessage);
-      
-      // Try legacy system as final fallback
-      try {
-        console.log('Attempting legacy content generation as fallback...');
-        await generateContent();
-        // Clear error if legacy system succeeds
-        setSelectionError(null);
-      } catch (legacyError) {
-        console.error('Legacy content generation also failed:', legacyError);
-        const finalErrorMessage = legacyError instanceof Error ? legacyError.message : 'All content generation methods failed';
-        setSelectionError(finalErrorMessage);
+      // Set user-friendly error message based on error type
+      let errorMessage = 'Failed to generate content';
+      if (error instanceof Error) {
+        if (error.message.includes('research')) {
+          errorMessage = `Research data needed for "${targetTopic.title}". The topic may need to be researched first.`;
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network error occurred. Please check your connection and try again.';
+        } else if (error.message.includes('rate') || error.message.includes('limit')) {
+          errorMessage = 'API rate limit reached. Please wait a moment and try again.';
+        } else {
+          errorMessage = error.message;
+        }
       }
+      
+      setSelectionError(errorMessage);
     }
-  };
+  }, [selectedSubtopic, selectedTopic, generateContent]);
 
   // Enhanced unified topic selection handler that works for both sidebar and cards
   const handleTopicSelect = async (topic: TopicTreeItem, source: 'sidebar' | 'cards' | 'breadcrumb' = 'sidebar') => {
@@ -255,18 +244,19 @@ export function ExploreTab() {
       setSelectionError(null);
       setIsTransitioning(true);
 
+      console.log('Subtopic card clicked:', subtopic.title, 'ID:', subtopic.id);
+
       // Always treat card clicks as subtopic selections
       if (selectedTopic) {
+        console.log('Selecting subtopic via navigation hook');
         selectSubtopic(subtopic, 'cards');
       } else {
+        console.log('Selecting as main topic via navigation hook');
         selectTopic(subtopic, 'cards');
       }
 
-      // Auto-generate content if it doesn't exist
-      const cachedContent = getTopicContent(subtopic.id);
-      if (!cachedContent && !content) {
-        await handleGenerateContent();
-      }
+      // The content generation will be triggered by the useEffect that monitors selectedSubtopic changes
+      
     } catch (error) {
       console.error('Subtopic card selection failed:', error);
       setSelectionError(error instanceof Error ? error.message : 'Failed to select subtopic');
@@ -293,68 +283,42 @@ export function ExploreTab() {
     setSelectionError(null);
   }, [selectedTopic, selectedSubtopic]);
 
-  // Ensure content area updates immediately when topics are selected
+  // Handle topic selection changes and update content if needed
   useEffect(() => {
     const currentTopic = selectedSubtopic || selectedTopic;
     if (!currentTopic) return;
 
-    // Check if we have cached content
-    const cachedContent = getTopicContent(currentTopic.id);
-    if (cachedContent) {
-      // Update the content generation hook with cached content
-      setTopicContent(currentTopic.id, cachedContent.content, cachedContent.sources);
-    }
+    console.log('Topic selection changed to:', currentTopic.title, 'ID:', currentTopic.id);
 
-    // Mark the topic as read when content is viewed
+    // Mark the topic as read when content is viewed (only if we have content)
     if (content && !isRead(currentTopic.id)) {
       markAsRead(currentTopic.id);
     }
-  }, [selectedTopic, selectedSubtopic, content, getTopicContent, setTopicContent, isRead, markAsRead]);
+  }, [selectedTopic, selectedSubtopic, content, isRead, markAsRead]);
 
-  // Auto-generate content for subtopics when they don't have content
+  // Removed manual content generation refs since we're using auto-generation
+
+  // Removed manual content generation since we're using auto-generation
+
+  // Monitor topic changes and log for debugging
   useEffect(() => {
     const currentTopic = selectedSubtopic || selectedTopic;
-    if (!currentTopic || isGeneratingContent) return;
+    if (!currentTopic) return;
 
-    // Check if we have cached content first
-    const cachedContent = getTopicContent(currentTopic.id);
-    if (cachedContent) {
-      console.log('Found cached content for topic:', currentTopic.title);
-      // Update the content generation hook with cached content
-      setTopicContent(currentTopic.id, cachedContent.content, cachedContent.sources);
-      return;
-    }
-
-    // Check if we have content from the legacy hook
-    if (content) {
-      console.log('Content already available from legacy hook for topic:', currentTopic.title);
-      return;
-    }
-
-    // Check if this is a subtopic (has parent) and doesn't have content
-    const isSubtopic = selectedSubtopic !== null;
-    const hasNoContent = !content && !cachedContent;
-
-    console.log('Content check for topic:', currentTopic.title, {
-      isSubtopic,
-      hasNoContent,
+    console.log('🔍 TOPIC CHANGE DEBUG:', {
+      topicTitle: currentTopic.title,
+      topicId: currentTopic.id,
+      isSubtopic: !!selectedSubtopic,
+      selectedTopicId: selectedTopic?.id,
+      selectedTopicTitle: selectedTopic?.title,
+      selectedSubtopicId: selectedSubtopic?.id,
+      selectedSubtopicTitle: selectedSubtopic?.title,
       hasContent: !!content,
-      hasCachedContent: !!cachedContent,
-      isGenerating: isGeneratingContent
+      contentLength: content?.length || 0,
+      isGenerating: isGeneratingContent,
+      contentGenHookTopic: (selectedSubtopic || selectedTopic)?.id
     });
-
-    if (hasNoContent) {
-      // Auto-generate content for topics without content after a short delay
-      const timer = setTimeout(() => {
-        console.log('Auto-generating content for topic:', currentTopic.title);
-        handleGenerateContent().catch((error) => {
-          console.error('Auto-generation failed for topic:', currentTopic.title, error);
-        });
-      }, isSubtopic ? 500 : 1000); // Shorter delay for subtopics
-
-      return () => clearTimeout(timer);
-    }
-  }, [selectedSubtopic, selectedTopic, content, isGeneratingContent, getTopicContent, setTopicContent, handleGenerateContent]);
+  }, [selectedSubtopic, selectedTopic, content, isGeneratingContent]);
 
   // Bookmark management
   const toggleTopicBookmark = (topicId: string) => {

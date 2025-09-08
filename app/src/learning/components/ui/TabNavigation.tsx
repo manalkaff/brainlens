@@ -29,13 +29,13 @@ const tabConfigs: TabConfig[] = [
   {
     id: 'ask',
     label: 'Ask',
-    color: 'bg-secondary',
+    color: 'bg-blue-500',
     description: 'Chat with AI assistant'
   },
   {
     id: 'mindmap',
     label: 'MindMap',
-    color: 'bg-warning',
+    color: 'bg-amber-500',
     description: 'Visual knowledge map'
   },
   {
@@ -80,7 +80,7 @@ export function TabNavigation({ className }: TabNavigationProps) {
                 ? tab.color 
                 : wasVisited 
                   ? `${tab.color} opacity-60` 
-                  : 'bg-muted'
+                  : 'bg-slate-400 dark:bg-slate-500'
             }`} />
             
             {/* Tab label */}
@@ -90,19 +90,6 @@ export function TabNavigation({ className }: TabNavigationProps) {
               {tab.label}
             </span>
             
-            {/* Loading indicator */}
-            {isActive && !isLoaded && (
-              <div className="absolute -top-1 -right-1 w-2 h-2">
-                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              </div>
-            )}
-            
-            {/* Visited indicator */}
-            {wasVisited && !isActive && (
-              <div className="absolute -top-1 -right-1 w-1.5 h-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${tab.color} opacity-40`} />
-              </div>
-            )}
             
             {/* Tooltip on hover */}
             <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">

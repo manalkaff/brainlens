@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import type { TopicTreeItem } from '../components/ui/TopicTree';
 import { useTopicErrorHandler } from './useTopicErrorHandler';
@@ -844,7 +844,10 @@ export function useTopicNavigation(
         // Navigating to main topic
         selectTopic(deepLinkResult.targetTopic, 'url');
       } else {
-        // Navigating to subtopic
+        // Navigating to subtopic - set state directly for deep links
+        console.log('Deep link navigating to subtopic:', deepLinkResult.targetTopic.title, 'from main topic:', deepLinkResult.mainTopic?.title);
+        
+        // Set both main topic and subtopic state directly for deep links
         setState(prev => ({
           ...prev,
           selectedTopic: deepLinkResult.mainTopic,
@@ -852,54 +855,89 @@ export function useTopicNavigation(
           contentPath: subtopicPath
         }));
         
-        // Add to history for URL-initiated navigation
-        addToHistory(deepLinkResult.targetTopic, 'url');
+        // Add to history
+        if (deepLinkResult.targetTopic) {
+          addToHistory(deepLinkResult.targetTopic, 'url');
+        }
       }
       
       return true;
     }
     
     return false;
-  }, [slug, topics, selectTopic, setState, addToHistory]);
+  }, [slug, topics, selectTopic, selectSubtopic, setState, addToHistory]);
   
+  // Track if we've initialized to prevent loops
+  const initializedRef = useRef(false);
+  const currentURLRef = useRef('');
+
   // Initialize from URL on mount and when URL changes
   useEffect(() => {
     if (!topics.length || !slug) return;
     
-    // Handle deep linking using the new deep link handler
+    // Create a unique key for this URL state
+    const urlKey = `${slug}-${urlState.subtopicPath?.join(',') || 'main'}`;
+    
+    // Skip if this is the same URL we already processed
+    if (currentURLRef.current === urlKey) {
+      return;
+    }
+    
+    console.log('Navigation initialization for URL:', urlKey);
+    currentURLRef.current = urlKey;
+    
+    // Handle deep linking for subtopics
     if (urlState.subtopicPath && urlState.subtopicPath.length > 0) {
-      const success = handleDeepLink(urlState.subtopicPath);
-      if (success) {
-        console.log('Successfully handled deep link to:', urlState.subtopicPath.join(' > '));
+      console.log('Handling deep link to subtopic path:', urlState.subtopicPath);
+      
+      const deepLinkResult = parseDeepLink(topics, slug, urlState.subtopicPath);
+      
+      if (deepLinkResult.isValid && deepLinkResult.targetTopic && deepLinkResult.mainTopic) {
+        // Set state directly for deep links to avoid unnecessary navigation calls
+        setState(prev => ({
+          ...prev,
+          selectedTopic: deepLinkResult.mainTopic,
+          selectedSubtopic: deepLinkResult.targetTopic,
+          contentPath: urlState.subtopicPath || []
+        }));
+        
+        if (!initializedRef.current) {
+          addToHistory(deepLinkResult.targetTopic, 'url');
+        }
+        
+        console.log('Deep link handled successfully:', deepLinkResult.targetTopic.title);
+        initializedRef.current = true;
         return;
       } else {
-        console.warn('Failed to handle deep link, falling back to main topic');
+        console.warn('Invalid deep link, falling back to main topic:', deepLinkResult.error);
       }
     }
     
-    // Find the main topic by slug for fallback or initial load
+    // Find and initialize with main topic
     const mainTopic = findTopicBySlug(topics, slug);
     if (!mainTopic) {
       console.warn(`Topic not found for slug: ${slug}`);
       return;
     }
     
-    // Initialize with main topic if no valid subtopic or first load
-    const shouldInitialize = !state.selectedTopic || 
-                           state.selectedTopic.slug !== slug ||
-                           (urlState.subtopicPath === undefined && state.selectedSubtopic);
-    
-    if (shouldInitialize) {
+    // Only initialize if we haven't initialized yet or if the topic slug changed
+    if (!initializedRef.current || state.selectedTopic?.slug !== slug) {
       console.log('Initializing with main topic:', mainTopic.title);
+      
       setState(prev => ({
         ...prev,
         selectedTopic: mainTopic,
         selectedSubtopic: null,
         contentPath: [mainTopic.id]
       }));
-      addToHistory(mainTopic, 'url');
+      
+      if (!initializedRef.current) {
+        addToHistory(mainTopic, 'url');
+      }
+      
+      initializedRef.current = true;
     }
-  }, [topics, slug, urlState.subtopicPath, state.selectedTopic, state.selectedSubtopic, handleDeepLink, findTopicBySlug, addToHistory]);
+  }, [topics, slug, urlState.subtopicPath]);
   
   // Deep linking and URL management functions
   const parseCurrentURL = useCallback((): URLState => {

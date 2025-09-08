@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../../components/ui/button';
 import { Progress } from '../../../components/ui/progress';
 import { Badge } from '../../../components/ui/badge';
-import { Checkbox } from '../../../components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '../../../components/ui/radio-group';
 import { Label } from '../../../components/ui/label';
 import { Loader2, Trophy, Target, BookOpen, Brain } from 'lucide-react';
@@ -13,7 +12,6 @@ import { QuizInterface } from '../quiz/QuizInterface';
 import { QuizResults } from '../quiz/QuizResults';
 import { QuizHistory } from '../quiz/QuizHistory';
 import type { Quiz, QuizQuestion } from 'wasp/entities';
-import { QuestionType } from '@prisma/client';
 
 type QuizView = 'overview' | 'taking' | 'results' | 'history';
 
@@ -24,10 +22,6 @@ export function QuizTab() {
   const [quizTimeElapsed, setQuizTimeElapsed] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedDifficulty, setSelectedDifficulty] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
-  const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<QuestionType[]>([
-    QuestionType.MULTIPLE_CHOICE,
-    QuestionType.TRUE_FALSE
-  ]);
 
   // Fetch user's quizzes for this topic
   const { 
@@ -94,14 +88,6 @@ export function QuizTab() {
     refetchQuizzes();
   };
 
-  // Handle question type selection
-  const handleQuestionTypeChange = (questionType: QuestionType, checked: boolean) => {
-    if (checked) {
-      setSelectedQuestionTypes(prev => [...prev, questionType]);
-    } else {
-      setSelectedQuestionTypes(prev => prev.filter(type => type !== questionType));
-    }
-  };
 
   // Render based on current view
   if (currentView === 'taking' && currentQuiz) {
@@ -159,111 +145,60 @@ export function QuizTab() {
 
   // Overview view (default)
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      {/* Title */}
+      <div className="text-center mb-8">
+        <h1 className="text-2xl font-semibold text-foreground mb-2">
+          Quiz
+        </h1>
+        <p className="text-muted-foreground">
+          Test your knowledge of {topic.title}
+        </p>
+      </div>
+
       {/* Quiz Generation */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center font-platform">
-            <Brain className="w-5 h-5 mr-2 text-primary" />
-            Generate Quiz
-          </CardTitle>
+          <CardTitle>Generate New Quiz</CardTitle>
           <CardDescription>
-            Create adaptive quizzes based on your learning progress for {topic.title}
+            Create a quiz for {topic.title}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="space-y-4">
             {/* Difficulty Selection */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label className="text-sm font-medium">Difficulty Level</Label>
               <RadioGroup
                 value={selectedDifficulty}
                 onValueChange={(value) => setSelectedDifficulty(value as 'beginner' | 'intermediate' | 'advanced')}
               >
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
                     <RadioGroupItem value="beginner" id="beginner" />
-                    <Label htmlFor="beginner" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-sm">Beginner</div>
-                      <div className="text-xs text-muted-foreground">5-6 questions</div>
+                    <Label htmlFor="beginner" className="cursor-pointer">
+                      <span className="font-medium">Beginner</span> - 5-6 basic questions
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                  <div className="flex items-center space-x-2">
                     <RadioGroupItem value="intermediate" id="intermediate" />
-                    <Label htmlFor="intermediate" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-sm">Intermediate</div>
-                      <div className="text-xs text-muted-foreground">8-9 questions</div>
+                    <Label htmlFor="intermediate" className="cursor-pointer">
+                      <span className="font-medium">Intermediate</span> - 8-9 applied questions
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                  <div className="flex items-center space-x-2">
                     <RadioGroupItem value="advanced" id="advanced" />
-                    <Label htmlFor="advanced" className="flex-1 cursor-pointer">
-                      <div className="font-medium text-sm">Advanced</div>
-                      <div className="text-xs text-muted-foreground">10+ questions</div>
+                    <Label htmlFor="advanced" className="cursor-pointer">
+                      <span className="font-medium">Advanced</span> - 10+ expert questions
                     </Label>
                   </div>
                 </div>
               </RadioGroup>
             </div>
             
-            {/* Question Types */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Question Types</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="multiple-choice"
-                    checked={selectedQuestionTypes.includes(QuestionType.MULTIPLE_CHOICE)}
-                    onCheckedChange={(checked) => 
-                      handleQuestionTypeChange(QuestionType.MULTIPLE_CHOICE, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor="multiple-choice" className="text-sm cursor-pointer">
-                    Multiple Choice
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="true-false"
-                    checked={selectedQuestionTypes.includes(QuestionType.TRUE_FALSE)}
-                    onCheckedChange={(checked) => 
-                      handleQuestionTypeChange(QuestionType.TRUE_FALSE, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor="true-false" className="text-sm cursor-pointer">
-                    True/False
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="fill-blank"
-                    checked={selectedQuestionTypes.includes(QuestionType.FILL_BLANK)}
-                    onCheckedChange={(checked) => 
-                      handleQuestionTypeChange(QuestionType.FILL_BLANK, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor="fill-blank" className="text-sm cursor-pointer">
-                    Fill in the Blank
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="code-challenge"
-                    checked={selectedQuestionTypes.includes(QuestionType.CODE_CHALLENGE)}
-                    onCheckedChange={(checked) => 
-                      handleQuestionTypeChange(QuestionType.CODE_CHALLENGE, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor="code-challenge" className="text-sm cursor-pointer">
-                    Code Challenges
-                  </Label>
-                </div>
-              </div>
-            </div>
-            
             <Button 
               onClick={handleGenerateQuiz}
-              disabled={isGenerating || selectedQuestionTypes.length === 0}
+              disabled={isGenerating}
               className="w-full"
             >
               {isGenerating ? (
@@ -283,10 +218,7 @@ export function QuizTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Target className="w-5 h-5 mr-2 text-success" />
-              Quiz Statistics
-            </div>
+            <span>Quiz Statistics</span>
             {quizzes.length > 0 && (
               <Button variant="outline" size="sm" onClick={() => setCurrentView('history')}>
                 View All
@@ -294,38 +226,38 @@ export function QuizTab() {
             )}
           </CardTitle>
           <CardDescription>
-            Track your quiz performance and improvement over time
+            Track your quiz performance
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="space-y-4">
             {/* Overall Stats */}
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-2xl font-bold text-primary">{quizzes.length}</div>
-                <div className="text-xs text-muted-foreground">Quizzes Taken</div>
+                <div className="text-2xl font-bold">{quizzes.length}</div>
+                <div className="text-sm text-muted-foreground">Quizzes Taken</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-success font-platform">
+                <div className="text-2xl font-bold">
                   {Math.round(averageScore)}%
                 </div>
-                <div className="text-xs text-muted-foreground">Average Score</div>
+                <div className="text-sm text-muted-foreground">Average Score</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-warning font-platform">
+                <div className="text-2xl font-bold">
                   {completedQuizzes.filter(q => (q.score || 0) >= 90).length}
                 </div>
-                <div className="text-xs text-muted-foreground">Perfect Scores</div>
+                <div className="text-sm text-muted-foreground">High Scores</div>
               </div>
             </div>
             
             {/* Recent Quizzes */}
             {quizzes.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <h4 className="text-sm font-medium">Recent Quizzes</h4>
                 <div className="space-y-2">
                   {quizzes.slice(0, 3).map((quiz) => (
-                    <div key={quiz.id} className="flex items-center justify-between p-2 border rounded">
+                    <div key={quiz.id} className="flex items-center justify-between p-3 border rounded">
                       <div className="flex-1">
                         <div className="text-sm font-medium">{quiz.title}</div>
                         <div className="text-xs text-muted-foreground">
@@ -337,7 +269,7 @@ export function QuizTab() {
                           (quiz.score || 0) >= 90 ? 'default' :
                           (quiz.score || 0) >= 70 ? 'secondary' :
                           'destructive'
-                        } className="text-xs font-platform">
+                        } className="text-xs">
                           {Math.round(quiz.score || 0)}%
                         </Badge>
                       )}
@@ -346,10 +278,10 @@ export function QuizTab() {
                 </div>
               </div>
             ) : (
-              <div className="text-center text-muted-foreground text-sm py-8">
+              <div className="text-center py-8">
                 <BookOpen className="w-12 h-12 mx-auto mb-2 text-muted-foreground/50" />
-                <p>No quizzes taken yet.</p>
-                <p>Generate your first quiz above!</p>
+                <p className="text-sm text-muted-foreground">No quizzes taken yet.</p>
+                <p className="text-xs text-muted-foreground">Generate your first quiz above!</p>
               </div>
             )}
           </div>
@@ -359,61 +291,50 @@ export function QuizTab() {
       {/* Achievements */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center font-platform">
-            <Trophy className="w-5 h-5 mr-2 text-warning" />
-            Achievements & Badges
-          </CardTitle>
+          <CardTitle>Achievements</CardTitle>
           <CardDescription>
-            Unlock badges and achievements as you learn
+            Unlock badges as you learn
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Achievement Badges */}
             <div className={`text-center p-3 border rounded-lg ${
-              quizzes.length > 0 ? 'bg-success/10 border-success/20' : 'opacity-50'
+              quizzes.length > 0 ? 'bg-muted/50' : 'opacity-50'
             }`}>
-              <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
-                🏆
-              </div>
+              <div className="text-2xl mb-2">🏆</div>
               <div className="text-xs font-medium">First Quiz</div>
               <div className="text-xs text-muted-foreground">Complete your first quiz</div>
               {quizzes.length > 0 && (
-                <Badge className="mt-1 text-xs font-platform" variant="default">Earned!</Badge>
+                <Badge className="mt-1 text-xs" variant="default">Earned!</Badge>
               )}
             </div>
             
             <div className={`text-center p-3 border rounded-lg ${
-              completedQuizzes.some(q => (q.score || 0) === 100) ? 'bg-warning/10 border-warning/20' : 'opacity-50'
+              completedQuizzes.some(q => (q.score || 0) === 100) ? 'bg-muted/50' : 'opacity-50'
             }`}>
-              <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
-                🎯
-              </div>
+              <div className="text-2xl mb-2">🎯</div>
               <div className="text-xs font-medium">Perfect Score</div>
               <div className="text-xs text-muted-foreground">Score 100% on a quiz</div>
               {completedQuizzes.some(q => (q.score || 0) === 100) && (
-                <Badge className="mt-1 text-xs font-platform" variant="secondary">Earned!</Badge>
+                <Badge className="mt-1 text-xs" variant="secondary">Earned!</Badge>
               )}
             </div>
             
             <div className="text-center p-3 border rounded-lg opacity-50">
-              <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
-                🔥
-              </div>
+              <div className="text-2xl mb-2">🔥</div>
               <div className="text-xs font-medium">Quiz Streak</div>
               <div className="text-xs text-muted-foreground">Take quizzes 5 days in a row</div>
             </div>
             
             <div className={`text-center p-3 border rounded-lg ${
-              completedQuizzes.length >= 5 ? 'bg-secondary/10 border-secondary/20' : 'opacity-50'
+              completedQuizzes.length >= 5 ? 'bg-muted/50' : 'opacity-50'
             }`}>
-              <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
-                📚
-              </div>
+              <div className="text-2xl mb-2">📚</div>
               <div className="text-xs font-medium">Knowledge Master</div>
               <div className="text-xs text-muted-foreground">Complete 5 quizzes</div>
               {completedQuizzes.length >= 5 && (
-                <Badge className="mt-1 text-xs font-platform" variant="outline">Earned!</Badge>
+                <Badge className="mt-1 text-xs" variant="outline">Earned!</Badge>
               )}
             </div>
           </div>

@@ -95,6 +95,7 @@ export const generateContentHandler = async (req: Request, res: Response, contex
     const topic = await context.entities.Topic.findUnique({
       where: { id: topicId },
       include: {
+        parent: true, // Include parent topic info if this is a subtopic
         vectorDocuments: {
           take: 10,
           orderBy: { createdAt: 'desc' }
@@ -106,58 +107,166 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(404).json({ error: 'Topic not found' });
     }
 
+    // Check if this is a subtopic (has a parent)
+    const isSubtopic = !!topic.parentId;
+    console.log('Topic type:', isSubtopic ? 'Subtopic' : 'Main Topic', 
+                isSubtopic ? `(parent: ${topic.parent?.title})` : '');
+
     // Check if we have research results (vector documents) - if not, we need to research first
     let researchResults: any[] = [];
     let fromCache = false;
     
-    // Use cached research if available, otherwise use vector documents
-    if (cachedResearch && cachedResearch.results && cachedResearch.results.length > 0) {
-      console.log('Using cached research results:', cachedResearch.results.length, 'items');
-      researchResults = cachedResearch.results;
-      fromCache = true;
-    } else if (topic.vectorDocuments && topic.vectorDocuments.length > 0) {
-      console.log('Using vector documents as research results:', topic.vectorDocuments.length, 'items');
-      // Convert vector documents to research results with better source attribution
-      researchResults = topic.vectorDocuments.map((doc: any, index: number) => {
-      // Try to parse metadata for better source info
-      let sourceInfo = {
-        title: `Research Document ${doc.id.slice(0, 8)}`,
-        source: 'Research Database',
-        url: undefined,
-        contentType: 'article' as const
-      };
+    // For subtopics, try to get specific research data or fall back to parent's data
+    if (isSubtopic) {
+      console.log('Processing subtopic:', topic.title, 'Parent:', topic.parent?.title);
+      
+      // First, try to find subtopic-specific cached research
+      const subtopicCacheKey = `research:${topicId}:subtopic:${options.contentType || 'exploration'}`;
+      const subtopicCachedResearch = await getCachedContent(subtopicCacheKey);
+      
+      if (subtopicCachedResearch && subtopicCachedResearch.results && subtopicCachedResearch.results.length > 0) {
+        console.log('Using subtopic-specific cached research:', subtopicCachedResearch.results.length, 'items');
+        researchResults = subtopicCachedResearch.results;
+        fromCache = true;
+      } else if (topic.vectorDocuments && topic.vectorDocuments.length > 0) {
+        console.log('Using subtopic vector documents:', topic.vectorDocuments.length, 'items');
+        researchResults = topic.vectorDocuments.map((doc: any, index: number) => {
+          // Enhanced source info for subtopics
+          let sourceInfo = {
+            title: `${topic.title} - Research Document ${doc.id.slice(0, 8)}`,
+            source: 'Subtopic Research Database',
+            url: undefined,
+            contentType: 'article' as const
+          };
 
-      // If the document has metadata, use it for better attribution
-      if (doc.metadata && typeof doc.metadata === 'object') {
-        const metadata = doc.metadata;
-        if (metadata.sourceAgent) {
-          sourceInfo.source = `${metadata.sourceAgent.charAt(0).toUpperCase() + metadata.sourceAgent.slice(1)} Research Agent`;
-        }
-        if (metadata.sourceUrl) {
-          sourceInfo.url = metadata.sourceUrl;
-        }
-        if (metadata.sourceTitle) {
-          sourceInfo.title = metadata.sourceTitle;
-        }
-        if (metadata.sourceType) {
-          sourceInfo.contentType = metadata.sourceType;
+          if (doc.metadata && typeof doc.metadata === 'object') {
+            const metadata = doc.metadata;
+            if (metadata.sourceAgent) {
+              sourceInfo.source = `${metadata.sourceAgent.charAt(0).toUpperCase() + metadata.sourceAgent.slice(1)} Research Agent (Subtopic)`;
+            }
+            if (metadata.sourceUrl) {
+              sourceInfo.url = metadata.sourceUrl;
+            }
+            if (metadata.sourceTitle) {
+              sourceInfo.title = `${topic.title}: ${metadata.sourceTitle}`;
+            }
+            if (metadata.sourceType) {
+              sourceInfo.contentType = metadata.sourceType;
+            }
+          }
+
+          return {
+            ...sourceInfo,
+            content: doc.content,
+            relevanceScore: 0.9 // Higher relevance for subtopic-specific data
+          };
+        });
+      } else if (topic.parent) {
+        console.log('No subtopic research found, falling back to parent topic data');
+        // Fall back to parent topic's research if subtopic has no specific data
+        const parentTopic = await context.entities.Topic.findUnique({
+          where: { id: topic.parentId! },
+          include: {
+            vectorDocuments: {
+              take: 5, // Limit parent data to avoid overwhelming subtopic content
+              orderBy: { createdAt: 'desc' }
+            }
+          }
+        });
+
+        if (parentTopic && parentTopic.vectorDocuments && parentTopic.vectorDocuments.length > 0) {
+          console.log('Using parent topic vector documents (filtered):', parentTopic.vectorDocuments.length, 'items');
+          researchResults = parentTopic.vectorDocuments.map((doc: any, index: number) => {
+            let sourceInfo = {
+              title: `${topic.title} (from ${parentTopic.title})`,
+              source: 'Parent Topic Research',
+              url: undefined,
+              contentType: 'article' as const
+            };
+
+            if (doc.metadata && typeof doc.metadata === 'object') {
+              const metadata = doc.metadata;
+              if (metadata.sourceAgent) {
+                sourceInfo.source = `${metadata.sourceAgent.charAt(0).toUpperCase() + metadata.sourceAgent.slice(1)} Research Agent (Parent)`;
+              }
+              if (metadata.sourceUrl) {
+                sourceInfo.url = metadata.sourceUrl;
+              }
+              if (metadata.sourceTitle) {
+                sourceInfo.title = `${topic.title}: ${metadata.sourceTitle}`;
+              }
+            }
+
+            return {
+              ...sourceInfo,
+              content: doc.content,
+              relevanceScore: 0.7 // Lower relevance since it's from parent
+            };
+          });
         }
       }
-
-        return {
-          ...sourceInfo,
-          content: doc.content,
-          relevanceScore: 0.8
-        };
-      });
     } else {
-      // No cached research and no vector documents
+      // Main topic logic (existing behavior)
+      // Use cached research if available, otherwise use vector documents
+      if (cachedResearch && cachedResearch.results && cachedResearch.results.length > 0) {
+        console.log('Using cached research results:', cachedResearch.results.length, 'items');
+        researchResults = cachedResearch.results;
+        fromCache = true;
+      } else if (topic.vectorDocuments && topic.vectorDocuments.length > 0) {
+        console.log('Using vector documents as research results:', topic.vectorDocuments.length, 'items');
+        // Convert vector documents to research results with better source attribution
+        researchResults = topic.vectorDocuments.map((doc: any, index: number) => {
+          // Try to parse metadata for better source info
+          let sourceInfo = {
+            title: `Research Document ${doc.id.slice(0, 8)}`,
+            source: 'Research Database',
+            url: undefined,
+            contentType: 'article' as const
+          };
+
+          // If the document has metadata, use it for better attribution
+          if (doc.metadata && typeof doc.metadata === 'object') {
+            const metadata = doc.metadata;
+            if (metadata.sourceAgent) {
+              sourceInfo.source = `${metadata.sourceAgent.charAt(0).toUpperCase() + metadata.sourceAgent.slice(1)} Research Agent`;
+            }
+            if (metadata.sourceUrl) {
+              sourceInfo.url = metadata.sourceUrl;
+            }
+            if (metadata.sourceTitle) {
+              sourceInfo.title = metadata.sourceTitle;
+            }
+            if (metadata.sourceType) {
+              sourceInfo.contentType = metadata.sourceType;
+            }
+          }
+
+          return {
+            ...sourceInfo,
+            content: doc.content,
+            relevanceScore: 0.8
+          };
+        });
+      }
+    }
+
+    // Check if we have any research data
+    if (researchResults.length === 0) {
+      const errorMessage = isSubtopic 
+        ? `No research data available for this subtopic "${topic.title}"` 
+        : 'No research data available for this topic';
+      const suggestion = isSubtopic 
+        ? `This subtopic "${topic.title}" needs specific research. Try researching the main topic "${topic.parent?.title}" first, or research this subtopic specifically.`
+        : 'Use the "Start Research" action in the Explore tab to gather sources, then try generating content again';
+
       return res.status(400).json({ 
-        error: 'No research data available for this topic',
+        error: errorMessage,
         message: 'Please run research for this topic first before generating content',
-        suggestion: 'Use the "Start Research" action in the Explore tab to gather sources, then try generating content again',
+        suggestion,
         needsResearch: true,
-        topicId: topic.id
+        topicId: topic.id,
+        isSubtopic,
+        parentTopic: topic.parent?.title
       });
     }
 
@@ -166,14 +275,43 @@ export const generateContentHandler = async (req: Request, res: Response, contex
     // Generate content based on the content type
     let generatedContent;
     
-    console.log('Generating content for topic:', topic.title, 'with type:', options.contentType);
+    console.log('Generating content for topic:', topic.title, 'with type:', options.contentType, 
+                isSubtopic ? '(Subtopic)' : '(Main Topic)');
     
     if (options.contentType === 'exploration') {
       // For exploration content, generate MDX content
-      const subtopics = await generateSubtopics(topic, context);
-      console.log('Generated subtopics:', subtopics);
+      let subtopics: string[] = [];
       
-      const mdxContent = await aiContentGenerator.generateExplorationContent(topic, subtopics, researchResults);
+      if (isSubtopic) {
+        // For subtopics, generate focused sub-sections rather than child topics
+        console.log('Generating focused content sections for subtopic:', topic.title);
+        subtopics = [
+          'Overview and Context',
+          'Key Components and Features', 
+          'Practical Applications',
+          'Implementation Guidelines',
+          'Benefits and Considerations'
+        ];
+      } else {
+        // For main topics, get actual child topics or generate default subtopics
+        subtopics = await generateSubtopics(topic, context);
+        console.log('Generated subtopics for main topic:', subtopics);
+      }
+      
+      // Pass subtopic context to the AI content generator
+      const contentOptions = {
+        ...options,
+        isSubtopic,
+        parentTopic: topic.parent?.title,
+        focusArea: isSubtopic ? topic.title : undefined
+      };
+      
+      const mdxContent = await aiContentGenerator.generateExplorationContent(
+        topic, 
+        subtopics, 
+        researchResults,
+        contentOptions
+      );
       console.log('Generated MDX content length:', mdxContent.content.length);
       console.log('Research results available:', researchResults.length);
       console.log('Content preview:', mdxContent.content.substring(0, 500) + '...');

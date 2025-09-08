@@ -11,7 +11,6 @@ import { fixTopicSources } from 'wasp/client/operations';
 import { 
   Search, 
   Filter, 
-  ExternalLink, 
   Download, 
   Calendar,
   Star,
@@ -20,11 +19,7 @@ import {
   Video,
   Users,
   Calculator,
-  BookOpen,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  Copy
+  BookOpen
 } from 'lucide-react';
 
 // Type alias for backward compatibility
@@ -75,7 +70,6 @@ export function SourcesTab() {
   const [selectedSourceType, setSelectedSourceType] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'relevance' | 'date' | 'agent'>('relevance');
   const [viewMode, setViewMode] = useState<'list' | 'cards' | 'hierarchy'>('cards');
-  const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
 
   // Use the sources hook
   const {
@@ -122,18 +116,6 @@ export function SourcesTab() {
     return filtered;
   }, [sourcesData, sortBy]);
 
-  const toggleSourceExpansion = (sourceId: string) => {
-    setExpandedSources(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(sourceId)) {
-        newSet.delete(sourceId);
-      } else {
-        newSet.add(sourceId);
-      }
-      return newSet;
-    });
-  };
-
   const handleExportSources = async (format: 'json' | 'csv' = 'json') => {
     try {
       await exportSources(format);
@@ -175,24 +157,30 @@ export function SourcesTab() {
   }
 
   return (
-    <div className="h-full flex flex-col space-y-6">
+    <div className="h-full flex flex-col space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold">Research Sources</h2>
-          <p className="text-muted-foreground">
-            All sources used to generate content for "{topic.title}" and subtopics
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-2">
+          <h2 className="text-3xl font-bold bg-gradient-to-br from-foreground to-foreground/80 bg-clip-text text-transparent">
+            Research Sources
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            All sources used to generate content for <span className="font-medium text-foreground">"{topic.title}"</span> and subtopics
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="px-3 py-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge 
+            variant="outline" 
+            className="px-4 py-2 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20 text-foreground font-medium"
+          >
+            <Search className="w-3.5 h-3.5 mr-1.5" />
             {totalCount} sources found
           </Badge>
           <Button
             variant="outline"
             size="sm"
             onClick={() => handleExportSources('json')}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 hover:bg-primary hover:text-primary-foreground transition-all duration-200"
           >
             <Download className="w-4 h-4" />
             Export
@@ -215,8 +203,9 @@ export function SourcesTab() {
                   }
                 }
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 hover:shadow-lg transition-all duration-200"
             >
+              <Search className="w-4 h-4" />
               Fix Sources
             </Button>
           )}
@@ -224,31 +213,34 @@ export function SourcesTab() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Filters & Search</CardTitle>
+      <Card className="bg-gradient-to-r from-muted/20 via-background to-muted/20 border-border/50">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Filter className="w-5 h-5 text-primary" />
+            Filters & Search
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {/* Search */}
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+          <div className="relative max-w-md">
+            <Search className="w-4 h-4 absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground/70" />
             <Input
               placeholder="Search sources by title or content..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-11 h-12 border-border/50 bg-background/50 focus:bg-background focus:border-primary/30 transition-all duration-200"
             />
           </div>
 
           {/* Filter Controls */}
-          <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex flex-wrap gap-6 items-center">
             {/* Agent Filter */}
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Agent:</label>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-foreground min-w-[50px]">Agent:</label>
               <select
                 value={selectedAgent}
                 onChange={(e) => setSelectedAgent(e.target.value)}
-                className="px-3 py-1 border rounded-md text-sm"
+                className="px-4 py-2 border border-border/50 rounded-lg text-sm bg-background/50 hover:bg-background focus:bg-background focus:border-primary/30 transition-all duration-200 min-w-[120px]"
               >
                 <option value="all">All Agents</option>
                 {Object.keys(agentConfigs).map(agent => (
@@ -258,12 +250,12 @@ export function SourcesTab() {
             </div>
 
             {/* Source Type Filter */}
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Type:</label>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-foreground min-w-[35px]">Type:</label>
               <select
                 value={selectedSourceType}
                 onChange={(e) => setSelectedSourceType(e.target.value)}
-                className="px-3 py-1 border rounded-md text-sm"
+                className="px-4 py-2 border border-border/50 rounded-lg text-sm bg-background/50 hover:bg-background focus:bg-background focus:border-primary/30 transition-all duration-200 min-w-[120px]"
               >
                 <option value="all">All Types</option>
                 {Object.entries(sourceTypeConfigs).map(([type, config]) => (
@@ -273,12 +265,12 @@ export function SourcesTab() {
             </div>
 
             {/* Sort By */}
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Sort:</label>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-foreground min-w-[30px]">Sort:</label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="px-3 py-1 border rounded-md text-sm"
+                className="px-4 py-2 border border-border/50 rounded-lg text-sm bg-background/50 hover:bg-background focus:bg-background focus:border-primary/30 transition-all duration-200 min-w-[120px]"
               >
                 <option value="relevance">Relevance</option>
                 <option value="date">Date</option>
@@ -286,17 +278,17 @@ export function SourcesTab() {
               </select>
             </div>
 
-            <Separator orientation="vertical" className="h-6" />
+            <Separator orientation="vertical" className="h-8 bg-border/30" />
 
-            {/* View Mode */}
-            <div className="flex items-center gap-1 border rounded-md p-1">
+            {/* View Mode - Hidden since we're using grid layout */}
+            <div className="hidden items-center gap-2 bg-muted/30 rounded-lg p-1 border border-border/30">
               {['cards', 'list', 'hierarchy'].map(mode => (
                 <Button
                   key={mode}
                   variant={viewMode === mode ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode(mode as any)}
-                  className="px-3 py-1 text-xs h-7"
+                  className="px-4 py-2 text-xs h-8 font-medium transition-all duration-200"
                 >
                   {mode.charAt(0).toUpperCase() + mode.slice(1)}
                 </Button>
@@ -306,26 +298,27 @@ export function SourcesTab() {
         </CardContent>
       </Card>
 
-      {/* Sources List */}
+      {/* Sources Grid */}
       <div className="flex-1 overflow-auto">
         {filteredAndSortedSources.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Search className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No sources found</h3>
-              <p className="text-muted-foreground">
-                Try adjusting your search criteria or filters.
-              </p>
+          <Card className="bg-gradient-to-br from-muted/30 via-background to-muted/20">
+            <CardContent className="p-12 text-center">
+              <div className="max-w-md mx-auto">
+                <Search className="w-16 h-16 mx-auto text-muted-foreground/50 mb-6" />
+                <h3 className="text-xl font-semibold mb-3 text-foreground">No sources found</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Try adjusting your search criteria or filters to discover more learning resources.
+                </p>
+              </div>
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {filteredAndSortedSources.map((source) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
+            {filteredAndSortedSources.map((source, index) => (
               <SourceCard
                 key={source.id}
                 source={source}
-                isExpanded={expandedSources.has(source.id)}
-                onToggleExpand={() => toggleSourceExpansion(source.id)}
+                index={index}
               />
             ))}
           </div>
@@ -338,158 +331,83 @@ export function SourcesTab() {
 // Individual Source Card Component
 interface SourceCardProps {
   source: Source;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
+  index?: number;
 }
 
-function SourceCard({ source, isExpanded, onToggleExpand }: SourceCardProps) {
+function SourceCard({ source, index = 0 }: SourceCardProps) {
   const agentConfig = agentConfigs[source.agent];
   const sourceTypeConfig = sourceTypeConfigs[source.sourceType];
-  
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
 
   return (
-    <Card className="transition-all duration-200 hover:shadow-md">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <Badge className={`${agentConfig.color} text-white text-xs px-2 py-1`}>
-                {agentConfig.icon}
-                <span className="ml-1">{source.agent}</span>
-              </Badge>
-              <Badge variant="outline" className="text-xs px-2 py-1">
-                {sourceTypeConfig.icon}
-                <span className="ml-1">{sourceTypeConfig.label}</span>
-              </Badge>
-              <div className="flex items-center gap-1">
-                <Star className="w-3 h-3 text-yellow-500" />
-                <span className="text-xs text-muted-foreground">
-                  {(source.relevanceScore * 100).toFixed(0)}%
-                </span>
-              </div>
-            </div>
-            
-            <h3 className="font-semibold text-base mb-2 leading-tight">
-              {source.title}
-            </h3>
-            
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                {new Date(source.createdAt).toLocaleDateString()}
-              </div>
-              {source.metadata?.domain && (
-                <div className="flex items-center gap-1">
-                  <Globe className="w-3 h-3" />
-                  {source.metadata.domain}
-                </div>
-              )}
+    <Card 
+      className="h-fit group bg-gradient-to-br from-card via-card to-card/80 transition-all duration-500 ease-out hover:shadow-2xl hover:-translate-y-2 hover:border-primary/30 focus-within:shadow-2xl focus-within:border-primary/30 border border-border/50 hover:border-border shadow-lg"
+      style={{
+        animationDelay: `${index * 50}ms`,
+      }}
+    >
+      <CardHeader className="pb-4">
+        <div className="space-y-3">
+          {/* Agent and Type Badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge 
+              className={`${agentConfig.color} text-white text-xs px-2.5 py-1 font-medium shadow-sm`}
+            >
+              {agentConfig.icon}
+              <span className="ml-1.5">{source.agent}</span>
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="text-xs px-2.5 py-1 font-medium bg-background/50 border-primary/20"
+            >
+              {sourceTypeConfig.icon}
+              <span className="ml-1.5">{sourceTypeConfig.label}</span>
+            </Badge>
+            <div className="flex items-center gap-1 ml-auto">
+              <Star className="w-3.5 h-3.5 text-yellow-500" />
+              <span className="text-xs font-medium text-muted-foreground">
+                {(source.relevanceScore * 100).toFixed(0)}%
+              </span>
             </div>
           </div>
-
-          <div className="flex items-center gap-1 ml-4">
-            {source.url && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => window.open(source.url, '_blank')}
-                className="h-8 w-8 p-0"
-                title="Open source"
-              >
-                <ExternalLink className="w-3 h-3" />
-              </Button>
+          
+          {/* Title */}
+          {source.url ? (
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-base leading-snug text-foreground line-clamp-2 hover:text-primary transition-colors duration-200 cursor-pointer"
+              title={`Open: ${source.title}`}
+            >
+              {source.title}
+            </a>
+          ) : (
+            <h3 className="font-semibold text-base leading-snug text-foreground line-clamp-2">
+              {source.title}
+            </h3>
+          )}
+          
+          {/* Metadata */}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              <span>{new Date(source.createdAt).toLocaleDateString()}</span>
+            </div>
+            {source.metadata?.domain && (
+              <div className="flex items-center gap-1">
+                <Globe className="w-3 h-3" />
+                <span className="truncate max-w-[120px]">{source.metadata.domain}</span>
+              </div>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => copyToClipboard(source.url || source.title)}
-              className="h-8 w-8 p-0"
-              title="Copy link"
-            >
-              <Copy className="w-3 h-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleExpand}
-              className="h-8 w-8 p-0"
-              title={isExpanded ? "Collapse" : "Expand details"}
-            >
-              {isExpanded ? (
-                <ChevronUp className="w-3 h-3" />
-              ) : (
-                <ChevronDown className="w-3 h-3" />
-              )}
-            </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="pt-0">
-        <p className="text-sm text-muted-foreground leading-relaxed mb-3">
+      <CardContent className="pt-0 pb-4">
+        {/* Snippet */}
+        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">
           {source.snippet}
         </p>
-
-        {/* Expanded Details */}
-        {isExpanded && (
-          <div className="border-t pt-4 space-y-3">
-            {source.metadata && (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
-                {source.metadata.confidence !== undefined && (
-                  <div>
-                    <label className="font-medium text-muted-foreground">Confidence:</label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full" 
-                          style={{ width: `${source.metadata.confidence * 100}%` }}
-                        />
-                      </div>
-                      <span>{(source.metadata.confidence * 100).toFixed(0)}%</span>
-                    </div>
-                  </div>
-                )}
-                {source.metadata.completeness !== undefined && (
-                  <div>
-                    <label className="font-medium text-muted-foreground">Completeness:</label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-green-600 h-2 rounded-full" 
-                          style={{ width: `${source.metadata.completeness * 100}%` }}
-                        />
-                      </div>
-                      <span>{(source.metadata.completeness * 100).toFixed(0)}%</span>
-                    </div>
-                  </div>
-                )}
-                {source.metadata.author && (
-                  <div>
-                    <label className="font-medium text-muted-foreground">Author:</label>
-                    <p className="mt-1">{source.metadata.author}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {source.url && (
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(source.url, '_blank')}
-                  className="flex items-center gap-2"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  View Original Source
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
