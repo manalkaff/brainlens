@@ -362,26 +362,6 @@ query getTopicProgressSummary {
   entities: [Topic, UserTopicProgress]
 }
 
-// Research Operations
-action startTopicResearch {
-  fn: import { startTopicResearch } from "@src/learning/research/operations",
-  entities: [Topic, VectorDocument, UserTopicProgress]
-}
-
-action cancelTopicResearch {
-  fn: import { cancelTopicResearch } from "@src/learning/research/operations",
-  entities: [Topic]
-}
-
-query getResearchStatus {
-  fn: import { getResearchStatus } from "@src/learning/research/operations",
-  entities: [Topic]
-}
-
-query getResearchResults {
-  fn: import { getResearchResults } from "@src/learning/research/operations",
-  entities: [Topic, VectorDocument]
-}
 
 // Sources Operations
 query getTopicSources {
@@ -476,33 +456,6 @@ query checkResearchFreshness {
   entities: [Topic, GeneratedContent]
 }
 
-// Research Pipeline API
-api researchTopic {
-  fn: import { researchTopicHandler } from "@src/learning/research/api",
-  entities: [Topic, VectorDocument, UserTopicProgress],
-  httpRoute: (POST, "/api/research")
-}
-
-// Enhanced Research API with Streaming
-api enhancedResearch {
-  fn: import { enhancedResearchHandler } from "@src/learning/research/streamingApi",
-  entities: [Topic, VectorDocument, UserTopicProgress],
-  httpRoute: (POST, "/api/research/enhanced")
-}
-
-// Research Streaming API (Server-Sent Events)
-api researchStream {
-  fn: import { researchStreamingHandler } from "@src/learning/research/streamingApi",
-  entities: [Topic, UserTopicProgress],
-  httpRoute: (GET, "/api/research/stream")
-}
-
-// Streaming Status API
-api streamingStatus {
-  fn: import { getStreamingStatusHandler } from "@src/learning/research/streamingApi",
-  entities: [Topic],
-  httpRoute: (GET, "/api/research/streaming-status")
-}
 
 // Learning API Namespace for CORS
 apiNamespace learningApis {

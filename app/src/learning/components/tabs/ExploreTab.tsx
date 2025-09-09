@@ -127,8 +127,18 @@ export function ExploreTab() {
     isGenerating: isGeneratingLegacyContent,
     generateContent
   } = useContentGeneration({
-    topic: selectedSubtopic || selectedTopic,
-    autoGenerate: true // Enable auto-generation when topic changes
+    topic: selectedSubtopic || selectedTopic || (topic ? {
+      id: topic.id,
+      title: topic.title,
+      slug: topic.slug,
+      summary: topic.summary,
+      depth: 0,
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      children: []
+    } : null),
+    autoGenerate: false // Disable auto-generation to prevent loops - we'll trigger manually
   });
 
   // Combine loading states
@@ -285,40 +295,34 @@ export function ExploreTab() {
 
   // Handle topic selection changes and update content if needed
   useEffect(() => {
-    const currentTopic = selectedSubtopic || selectedTopic;
+    const currentTopic = selectedSubtopic || selectedTopic || (topic ? {
+      id: topic.id,
+      title: topic.title,
+      slug: topic.slug,
+      summary: topic.summary,
+      depth: 0,
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      children: []
+    } : null);
+    
     if (!currentTopic) return;
 
-    console.log('Topic selection changed to:', currentTopic.title, 'ID:', currentTopic.id);
+    // Only log once per topic change, not on every content update
+    console.log('🔍 Topic selected:', currentTopic.title, 'ID:', currentTopic.id);
+
+    // Generate content if we don't have any and aren't already generating
+    if (!content && !isGeneratingContent) {
+      console.log('🚀 Triggering manual content generation for:', currentTopic.title);
+      generateContent();
+    }
 
     // Mark the topic as read when content is viewed (only if we have content)
     if (content && !isRead(currentTopic.id)) {
       markAsRead(currentTopic.id);
     }
-  }, [selectedTopic, selectedSubtopic, content, isRead, markAsRead]);
-
-  // Removed manual content generation refs since we're using auto-generation
-
-  // Removed manual content generation since we're using auto-generation
-
-  // Monitor topic changes and log for debugging
-  useEffect(() => {
-    const currentTopic = selectedSubtopic || selectedTopic;
-    if (!currentTopic) return;
-
-    console.log('🔍 TOPIC CHANGE DEBUG:', {
-      topicTitle: currentTopic.title,
-      topicId: currentTopic.id,
-      isSubtopic: !!selectedSubtopic,
-      selectedTopicId: selectedTopic?.id,
-      selectedTopicTitle: selectedTopic?.title,
-      selectedSubtopicId: selectedSubtopic?.id,
-      selectedSubtopicTitle: selectedSubtopic?.title,
-      hasContent: !!content,
-      contentLength: content?.length || 0,
-      isGenerating: isGeneratingContent,
-      contentGenHookTopic: (selectedSubtopic || selectedTopic)?.id
-    });
-  }, [selectedSubtopic, selectedTopic, content, isGeneratingContent]);
+  }, [selectedTopic?.id, selectedSubtopic?.id, topic?.id, content, isGeneratingContent, generateContent, isRead, markAsRead]); // Use IDs instead of objects to prevent unnecessary re-renders
 
   // Bookmark management
   const toggleTopicBookmark = (topicId: string) => {
@@ -823,6 +827,7 @@ export function ExploreTab() {
 
                 {/* Main content */}
                 <MDXContent
+                  key={`research-${researchResult.mainTopic.topic}`}
                   content={researchResult.mainTopic.content.content}
                   topicTitle={researchResult.mainTopic.topic}
                   sources={researchResult.mainTopic.sources.map(s => ({
@@ -898,7 +903,7 @@ export function ExploreTab() {
               )}
               
               {content ? (
-                <div className="p-6 space-y-6">
+                <div key={`content-${(selectedSubtopic || selectedTopic)!.id}`} className="p-6 space-y-6">
                   {/* Breadcrumb Navigation */}
                   <BreadcrumbNavigation
                     navigationPath={getNavigationBreadcrumbs()}
@@ -919,6 +924,7 @@ export function ExploreTab() {
                   )}
                   
                   <MDXContent
+                    key={(selectedSubtopic || selectedTopic)!.id}
                     content={content}
                     topicTitle={(selectedSubtopic || selectedTopic)!.title}
                     sources={sources}
@@ -933,6 +939,7 @@ export function ExploreTab() {
                   {(selectedSubtopic || selectedTopic)?.children && (selectedSubtopic || selectedTopic)!.children!.length > 0 && (
                     <div className="border-t pt-6">
                       <SubtopicCards
+                        key={`subtopics-${(selectedSubtopic || selectedTopic)!.id}`}
                         subtopics={topicsToSubtopicCards((selectedSubtopic || selectedTopic)!.children!)}
                         onSubtopicClick={handleSubtopicCardClick}
                         selectedSubtopicId={selectedSubtopic?.id}

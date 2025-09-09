@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from 'wasp/client/auth';
-import { createTopic, startTopicResearch } from 'wasp/client/operations';
+import { createTopic, startIterativeResearch } from 'wasp/client/operations';
 import { OnboardingFlow, useOnboarding } from '../learning/components/help/OnboardingFlow';
 import { storePendingTopic } from './utils/pendingTopicHandler';
 import { logPerformanceMetrics, requestIdleCallback, cancelIdleCallback } from './utils/performance';
@@ -93,25 +93,27 @@ export default function LandingPage() {
       
       console.log('Topic created:', topic);
       
-      // Step 2: Start research automatically (optional - don't fail if this fails)
-      try {
-        await startTopicResearch({ 
-          topicId: topic.id,
-          userContext: {
-            userLevel: 'intermediate', // Default level, can be customized later
-            learningStyle: 'mixed'
-          }
-        });
-        console.log('Research started for topic:', topic.id);
-      } catch (researchError) {
-        console.warn('Failed to start research automatically:', researchError);
-        // Don't block navigation if research fails - user can trigger it manually later
-      }
+      // Navigate to topic page immediately after creation
+      console.log('Topic created successfully, redirecting to:', `/learn/${topic.slug}`);
+      window.location.href = `/learn/${topic.slug}`;
       
-      // Navigate to topic page
-      setTimeout(() => {
-        window.location.href = `/learn/${topic.slug}`;
-      }, 1000); // Brief delay to show success message
+      // Step 2: Start research automatically in background (don't block navigation)
+      startIterativeResearch({
+        topicSlug: topic.slug,
+        options: {
+          maxDepth: 3,
+          forceRefresh: false,
+          userContext: {
+            level: 'intermediate',
+            interests: [],
+            previousKnowledge: []
+          }
+        }
+      }).then(() => {
+        console.log('Research started for topic:', topic.id);
+      }).catch((researchError) => {
+        console.warn('Failed to start research automatically:', researchError);
+      });
       
     } catch (error) {
       console.error('Failed to create topic:', error);

@@ -474,21 +474,17 @@ export const fixTopicSources = async ({ topicId }: { topicId: string }, context:
     const hasVectorDocs = topic.vectorDocuments && topic.vectorDocuments.length > 0;
 
     if (hasContent && !hasVectorDocs) {
-      console.log(`Topic "${topic.title}" has content but no vector documents. Starting research...`);
+      console.log(`Topic "${topic.title}" has content but no vector documents. Marking for research...`);
       
-      // Start research for this topic
+      // Mark topic for research by updating its status
       try {
-        const { startTopicResearch } = await import('../research/operations');
-        await startTopicResearch(
-          {
-            topicId: topic.id,
-            userContext: {
-              userLevel: 'intermediate',
-              learningStyle: 'mixed'
-            }
-          },
-          context
-        );
+        await context.entities.Topic.update({
+          where: { id: topic.id },
+          data: { 
+            status: 'PENDING_RESEARCH',
+            cacheStatus: 'STALE'
+          }
+        });
 
         // Delete existing content so it can be regenerated with proper sources
         await context.entities.GeneratedContent.deleteMany({
@@ -497,12 +493,12 @@ export const fixTopicSources = async ({ topicId }: { topicId: string }, context:
 
         return {
           success: true,
-          message: 'Research started and existing content cleared. Content will be regenerated with proper sources.',
-          action: 'RESEARCH_STARTED'
+          message: `Marked topic "${topic.title}" for research. Content will be regenerated with proper sources.`,
+          action: 'MARKED_FOR_RESEARCH'
         };
-      } catch (error) {
-        console.error('Failed to start research:', error);
-        throw new HttpError(500, 'Failed to start research for topic');
+      } catch (updateError) {
+        console.error('Failed to mark topic for research:', updateError);
+        throw new HttpError(500, 'Failed to mark topic for research');
       }
     } else if (!hasContent) {
       return {

@@ -1,4 +1,4 @@
-import { createTopic, startTopicResearch } from 'wasp/client/operations';
+import { createTopic, startIterativeResearch } from 'wasp/client/operations';
 
 export const PENDING_TOPIC_KEY = 'pendingTopic';
 
@@ -44,11 +44,16 @@ export async function createPendingTopic(): Promise<{ id: string; slug: string }
 
     // Start research automatically (optional - don't fail if this fails)
     try {
-      await startTopicResearch({ 
-        topicId: topic.id,
-        userContext: {
-          userLevel: 'intermediate',
-          learningStyle: 'mixed'
+      await startIterativeResearch({
+        topicSlug: topic.slug,
+        options: {
+          maxDepth: 3,
+          forceRefresh: false,
+          userContext: {
+            level: 'intermediate',
+            interests: [],
+            previousKnowledge: []
+          }
         }
       });
       console.log('Research started for pending topic:', topic.id);

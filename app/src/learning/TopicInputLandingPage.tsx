@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { Link as WaspRouterLink, routes } from 'wasp/client/router';
-import { createTopic, startTopicResearch } from 'wasp/client/operations';
+import { createTopic, startIterativeResearch } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent } from '../components/ui/card';
@@ -40,11 +40,16 @@ export default function TopicInputLandingPage() {
       // Step 2: Start research automatically
       setResearchStatus('Starting AI research...');
       try {
-        await startTopicResearch({ 
-          topicId: topic.id,
-          userContext: {
-            userLevel: 'intermediate', // Default level, can be customized later
-            learningStyle: 'mixed'
+        await startIterativeResearch({
+          topicSlug: topic.slug,
+          options: {
+            maxDepth: 3,
+            forceRefresh: false,
+            userContext: {
+              level: 'intermediate',
+              interests: [],
+              previousKnowledge: []
+            }
           }
         });
         console.log('Research started for topic:', topic.id);
@@ -56,9 +61,8 @@ export default function TopicInputLandingPage() {
       }
       
       // Navigate to topic page
-      setTimeout(() => {
-        window.location.href = `/learn/${topic.slug}`;
-      }, 500); // Brief delay to show success message
+      console.log('Topic created successfully, redirecting to:', `/learn/${topic.slug}`);
+      window.location.href = `/learn/${topic.slug}`;
       
     } catch (error) {
       console.error('Failed to create topic:', error);

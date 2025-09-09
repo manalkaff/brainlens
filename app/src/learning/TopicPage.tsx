@@ -109,8 +109,8 @@ export default function TopicPage() {
       onReset={() => (window.location.href = "/learn")}
       showDetails={process.env.NODE_ENV === "development"}
     >
-      <TopicProvider>
-        <TopicPageContent />
+      <TopicProvider key={slug}>
+        <TopicPageContent key={slug} />
       </TopicProvider>
     </StreamingErrorBoundary>
   );

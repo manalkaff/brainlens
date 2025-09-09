@@ -111,12 +111,12 @@ const parseURLState = (pathname: string, search: string): URLState => {
 const validateURLState = (state: URLState, topics: TopicTreeItem[]): URLState => {
   const validatedState = { ...state };
   
-  // Validate topic slug exists
-  if (validatedState.topicSlug) {
+  // Validate topic slug exists (only warn if we have topics to validate against)
+  if (validatedState.topicSlug && topics.length > 0) {
     const topicExists = findTopicBySlugInTree(topics, validatedState.topicSlug);
     if (!topicExists) {
-      console.warn(`Invalid topic slug in URL: ${validatedState.topicSlug}`);
-      validatedState.topicSlug = '';
+      // Don't clear the slug, just warn - topic might be valid but not in this tree
+      console.debug(`Topic slug not found in current tree: ${validatedState.topicSlug}`);
     }
   }
   

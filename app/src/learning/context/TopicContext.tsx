@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { getTopic, getTopicProgressSummary, getResearchStatus, useQuery } from 'wasp/client/operations';
+import { getTopic, getTopicProgressSummary, getResearchStats, useQuery } from 'wasp/client/operations';
 import { useTabNavigation, type TabId } from '../hooks/useTabNavigation';
 import { useSharedState, useSharedObject } from '../hooks/useSharedState';
 import type { Topic, UserTopicProgress } from 'wasp/entities';
@@ -29,16 +29,13 @@ export interface TopicProgressSummary {
   };
 }
 
-export interface ResearchStatus {
-  topicId: string;
-  status: 'inactive' | 'queued' | 'active' | 'completed' | 'error';
-  progress?: number;
-  activeAgents?: string[];
-  completedAgents?: number;
-  totalAgents?: number;
-  estimatedCompletion?: Date;
-  errors?: string[];
-  lastUpdate?: Date;
+export interface ResearchStats {
+  totalTopics: number;
+  researchedTopics: number;
+  pendingTopics: number;
+  averageDepth: number;
+  lastResearchDate?: Date;
+  isActive?: boolean;
 }
 
 interface TopicContextState {
@@ -50,7 +47,7 @@ interface TopicContextState {
   error: string | null;
   
   // Research status
-  researchStatus: ResearchStatus | null;
+  researchStatus: ResearchStats | null;
   isResearchLoading: boolean;
   isResearching: boolean;
   
@@ -134,7 +131,13 @@ export function TopicProvider({ children }: TopicProviderProps) {
     error: topicError,
     refetch: refetchTopic
   } = useQuery(getTopic, { slug: slug || '' }, {
-    enabled: !!slug
+    enabled: !!slug,
+    // Force refetch when slug changes to ensure fresh data
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    // Use the slug as part of the query key to prevent caching conflicts
+    cacheTime: 0, // Don't cache at all to force fresh data
+    staleTime: 0   // Consider data immediately stale
   });
 
   // Fetch progress summary
@@ -147,22 +150,24 @@ export function TopicProvider({ children }: TopicProviderProps) {
     enabled: !!topic?.id
   });
 
-  // Fetch research status
+  // Fetch research stats
   const { 
-    data: researchStatus, 
+    data: researchStats, 
     isLoading: researchLoading,
     error: researchError,
-    refetch: refetchResearchStatus
-  } = useQuery(getResearchStatus, { topicId: topic?.id || '' }, {
+    refetch: refetchResearchStats
+  } = useQuery(getResearchStats, { topicId: topic?.id || '' }, {
     enabled: !!topic?.id,
-    refetchInterval: (data: any) => {
-      // Poll more frequently when research is active
-      if (data?.status === 'active' || data?.status === 'queued') {
-        return 2000; // Poll every 2 seconds during active research
-      }
-      return 10000; // Poll every 10 seconds otherwise
-    }
+    refetchInterval: 5000 // Check every 5 seconds
   });
+
+  // Reset state when slug changes to ensure clean transitions
+  useEffect(() => {
+    dispatch({ type: 'REFRESH' });
+    dispatch({ type: 'SET_LOADING', payload: true });
+    // Clear selected topic ID to force fresh context
+    setSelectedTopicId(null);
+  }, [slug, setSelectedTopicId]);
 
   // Update loading state
   useEffect(() => {
@@ -179,7 +184,7 @@ export function TopicProvider({ children }: TopicProviderProps) {
     dispatch({ type: 'REFRESH' });
     refetchTopic();
     refetchProgress();
-    refetchResearchStatus();
+    refetchResearchStats();
   };
 
   // Sync current topic and tab when they change
@@ -195,14 +200,17 @@ export function TopicProvider({ children }: TopicProviderProps) {
 
   // Set selected topic ID when topic loads and auto-redirect to explore tab
   useEffect(() => {
-    if (topic?.id && !selectedTopicId) {
-      setSelectedTopicId(topic.id);
-      
-      // Auto-redirect to Explore tab for new topics
-      // This ensures users immediately see the AI learning engine at work
-      if (tabNavigation.activeTab !== 'explore') {
-        console.log(`🎯 Auto-redirecting to Explore tab for new topic: ${topic.title}`);
-        tabNavigation.setActiveTab('explore');
+    if (topic?.id) {
+      // Always update selected topic ID when topic changes (not just when null)
+      if (selectedTopicId !== topic.id) {
+        setSelectedTopicId(topic.id);
+        
+        // Auto-redirect to Explore tab for new topics
+        // This ensures users immediately see the AI learning engine at work
+        if (tabNavigation.activeTab !== 'explore') {
+          console.log(`🎯 Auto-redirecting to Explore tab for new topic: ${topic.title}`);
+          tabNavigation.setActiveTab('explore');
+        }
       }
     }
   }, [topic?.id, selectedTopicId, setSelectedTopicId, tabNavigation]);
@@ -220,8 +228,8 @@ export function TopicProvider({ children }: TopicProviderProps) {
     }
   }, [slug, topic?.slug, tabNavigation]);
 
-  // Compute derived research state
-  const isResearching = researchStatus?.status === 'active' || researchStatus?.status === 'queued';
+  // Compute derived research state from stats
+  const isResearching = (researchStats as any)?.isActive || false;
   
   // Memoize context value to prevent unnecessary re-renders
   const contextValue: TopicContextState = useMemo(() => ({
@@ -233,7 +241,7 @@ export function TopicProvider({ children }: TopicProviderProps) {
     error: state.error || null,
     
     // Research status
-    researchStatus: researchStatus || null,
+    researchStatus: researchStats || null,
     isResearchLoading: researchLoading || false,
     isResearching,
     
@@ -259,7 +267,7 @@ export function TopicProvider({ children }: TopicProviderProps) {
     progressSummary,
     state.isLoading,
     state.error,
-    researchStatus,
+    researchStats,
     researchLoading,
     isResearching,
     selectedTopicId,

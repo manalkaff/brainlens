@@ -9,6 +9,7 @@ import {
 import { 
   createValidationError
 } from '../errors/errorTypes';
+import { generateUUID } from '../../shared/utils';
 
 // Create a singleton instance of the vector store
 const vectorStore = new QdrantVectorStore();
@@ -95,7 +96,7 @@ export async function storeTopicContent(
   await circuitBreakers.vectorStore.execute(async () => {
     return withVectorStoreErrorHandling(async () => {
       const document: VectorDocument = {
-        id: `${validatedTopicId}-${contentType}-${Date.now()}`,
+        id: generateUUID(),
         content: validatedContent,
         metadata: {
           topicId: validatedTopicId,
@@ -128,7 +129,7 @@ export async function storeTopicContentBatch(
 ): Promise<void> {
   try {
     const documents: VectorDocument[] = contentItems.map((item, index) => ({
-      id: `${topicId}-${item.contentType}-${Date.now()}-${index}`,
+      id: generateUUID(),
       content: item.content,
       metadata: {
         topicId,

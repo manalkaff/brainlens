@@ -344,12 +344,12 @@ ${err instanceof Error ? err.message : 'Unknown error'}
     }
   }, [topic, parseContentSections]);
 
-  // Auto-generate content when topic changes
+  // Auto-generate content when topic ID changes (avoid regenerating on topic object changes)
   useEffect(() => {
-    if (topic && autoGenerate) {
+    if (topic?.id && autoGenerate) {
       generateContent();
     }
-  }, [topic, autoGenerate, generateContent]);
+  }, [topic?.id, autoGenerate]); // Remove generateContent from deps to prevent infinite loops
 
   // Reset content when topic changes
   useEffect(() => {

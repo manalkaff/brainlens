@@ -1,4 +1,5 @@
 import { HttpError } from 'wasp/server';
+// Trigger restart to see errors
 import type { 
   CreateTopic, 
   GetTopic, 
