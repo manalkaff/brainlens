@@ -29,6 +29,54 @@ export interface TopicProgressSummary {
   };
 }
 
+export interface RealTimeProgressStep {
+  number: number;
+  name: string;
+  description: string;
+  startTime: string;
+  endTime?: string;
+  duration?: number;
+  progress: number;
+  estimatedDuration?: number;
+  result?: any;
+}
+
+export interface RealTimeProgressData {
+  isActive: boolean;
+  phase: 'main_topic' | 'subtopics' | 'completed';
+  currentStep?: RealTimeProgressStep;
+  completedSteps: RealTimeProgressStep[];
+  overallProgress: number;
+  mainTopicCompleted: boolean;
+  subtopicsProgress?: Array<{
+    title: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'error';
+    progress: number;
+  }>;
+  estimatedTimeRemaining?: number;
+  totalStepsCount?: number;
+}
+
+export interface EnhancedResearchStats {
+  // Legacy fields for backward compatibility
+  totalTopics: number;
+  researchedTopics: number;
+  pendingTopics: number;
+  averageDepth: number;
+  lastResearchDate?: Date;
+  isActive?: boolean;
+  
+  // Enhanced progress data from Redis
+  realTimeProgress?: RealTimeProgressData;
+  
+  // Additional database fields
+  topicId: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'ERROR';
+  lastResearched?: string;
+  cacheStatus?: string;
+}
+
+// Keep the original interface for backward compatibility
 export interface ResearchStats {
   totalTopics: number;
   researchedTopics: number;
@@ -48,6 +96,7 @@ interface TopicContextState {
   
   // Research status
   researchStatus: ResearchStats | null;
+  enhancedResearchStats: EnhancedResearchStats | null;
   isResearchLoading: boolean;
   isResearching: boolean;
   
@@ -229,7 +278,8 @@ export function TopicProvider({ children }: TopicProviderProps) {
   }, [slug, topic?.slug, tabNavigation]);
 
   // Compute derived research state from stats
-  const isResearching = (researchStats as any)?.isActive || false;
+  const enhancedStats = researchStats as unknown as EnhancedResearchStats | null;
+  const isResearching = enhancedStats?.isActive || enhancedStats?.realTimeProgress?.isActive || false;
   
   // Memoize context value to prevent unnecessary re-renders
   const contextValue: TopicContextState = useMemo(() => ({
@@ -241,7 +291,8 @@ export function TopicProvider({ children }: TopicProviderProps) {
     error: state.error || null,
     
     // Research status
-    researchStatus: researchStats || null,
+    researchStatus: researchStats as unknown as ResearchStats | null,
+    enhancedResearchStats: enhancedStats,
     isResearchLoading: researchLoading || false,
     isResearching,
     
@@ -268,6 +319,7 @@ export function TopicProvider({ children }: TopicProviderProps) {
     state.isLoading,
     state.error,
     researchStats,
+    enhancedStats,
     researchLoading,
     isResearching,
     selectedTopicId,

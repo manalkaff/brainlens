@@ -22,6 +22,7 @@ import {
   ContentGenerationSkeleton,
   LoadingState
 } from '../ui/SkeletonLoaders';
+import RealTimeProgressDisplay from '../ui/RealTimeProgressDisplay';
 import { ContentPlaceholder } from '../ui/ContentPlaceholder';
 import { ContentHeader } from '../ui/ContentHeader';
 import { BookmarksView } from '../ui/BookmarksView';
@@ -54,11 +55,11 @@ import {
 } from 'lucide-react';
 
 export function ExploreTab() {
-  const { topic, isLoading: topicLoading } = useTopicContext();
+  const { topic, isLoading: topicLoading, enhancedResearchStats, isResearching } = useTopicContext();
   
-  // New iterative research system
+  // New iterative research system (legacy hook for backward compatibility)
   const {
-    isResearching,
+    isResearching: isLegacyResearching,
     researchProgress,
     error: researchError,
     researchResult,
@@ -138,12 +139,12 @@ export function ExploreTab() {
     if (!researchResult?.subtopicResults) return null;
     
     // Handle Map interface (internal research engine)
-    if (typeof researchResult.subtopicResults.get === 'function') {
+    if (researchResult.subtopicResults instanceof Map) {
       return researchResult.subtopicResults.get(subtopicTitle);
     }
     
     // Handle Object interface (serialized data from API)
-    return researchResult.subtopicResults[subtopicTitle];
+    return (researchResult.subtopicResults as Record<string, any>)[subtopicTitle];
   };
 
   // Use iterative research system as primary content source
@@ -157,8 +158,13 @@ export function ExploreTab() {
     isFromResearch: true
   } : { content: '', sources: [], isFromResearch: false };
 
-  // Combine loading states - prioritize research system
-  const isGeneratingContent = isResearching || isGeneratingNavContent;
+  // Determine if main topic is still being researched (not subtopics)
+  const isMainTopicResearching = isResearching && 
+    enhancedResearchStats?.realTimeProgress && 
+    !enhancedResearchStats.realTimeProgress.mainTopicCompleted;
+
+  // Combine loading states - only show as generating if main topic is still being researched
+  const isGeneratingContent = isMainTopicResearching || isGeneratingNavContent;
 
   // Debug logging (can be removed after testing)
   // console.log('🔥 EXPLORE TAB DEBUG:', {
@@ -434,8 +440,21 @@ export function ExploreTab() {
     );
   }
 
-  // Show research progress if actively researching
-  if (isResearching) {
+  // Show research progress only if main topic is still being researched
+  if (isMainTopicResearching && enhancedResearchStats?.realTimeProgress) {
+    return (
+      <RealTimeProgressDisplay
+        progressData={enhancedResearchStats.realTimeProgress}
+        topicTitle={topic.title}
+        onRetry={clearError}
+        onClear={clearError}
+        error={researchError}
+      />
+    );
+  }
+  
+  // Fallback to legacy progress display if no enhanced progress data but main topic still researching
+  if (isResearching && !enhancedResearchStats?.realTimeProgress?.mainTopicCompleted) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-200px)] bg-background">
         <Card className="w-full max-w-lg mx-auto">

@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { Topic, VectorDocument } from 'wasp/entities';
 import { iterativeResearchEngine } from './iterativeResearch';
+import { progressTracker } from './progressTracker';
 
 export const generateContentHandler = async (req: Request, res: Response, context: any) => {
   try {
@@ -30,7 +31,63 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(404).json({ error: 'Topic not found' });
     }
 
-    console.log('🚀 Delegating to iterative research system for:', topic.title);
+    console.log('🔍 Checking for existing content in database before starting research');
+
+    // Check for existing content in database first
+    const existingContent = await context.entities.GeneratedContent.findFirst({
+      where: {
+        topicId,
+        userLevel: options.userLevel || 'beginner',
+        learningStyle: options.learningStyle || 'textual',
+        NOT: {
+          userLevel: "cache"
+        }
+      },
+      include: {
+        topic: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Configuration for content freshness (7 days TTL)
+    const CONTENT_TTL_DAYS = 7;
+    const now = new Date();
+    const isContentFresh = (createdAt: Date) => {
+      const ageInDays = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+      return ageInDays < CONTENT_TTL_DAYS;
+    };
+
+    // Return existing content if found and fresh
+    if (existingContent && isContentFresh(existingContent.createdAt)) {
+      console.log('✅ Found fresh existing content, returning from database');
+      
+      // Mark progress as completed for cached content
+      await progressTracker.setCompleted(topic.id, 'Found existing content in database');
+      
+      return res.json({
+        success: true,
+        content: existingContent.content,
+        metadata: {
+          ...existingContent.metadata,
+          contentType: options.contentType || 'exploration',
+          fromDatabase: true,
+          cached: true,
+          contentAge: Math.floor((now.getTime() - existingContent.createdAt.getTime()) / (1000 * 60 * 60 * 24)),
+          totalTopicsProcessed: existingContent.metadata?.totalTopicsProcessed || 0,
+          cacheHits: existingContent.metadata?.cacheHits || 0,
+          processingTime: existingContent.metadata?.processingTime || 0
+        },
+        sources: existingContent.sources || [],
+        topicId: existingContent.topicId,
+        fromDatabase: true,
+        cached: true
+      });
+    }
+
+    console.log(existingContent ? 
+      '⏰ Found existing content but it\'s stale, proceeding with research' : 
+      '🚀 No existing content found, delegating to iterative research system for: ' + topic.title
+    );
 
     // Use iterative research system to generate/get content
     const userContext = {
@@ -50,6 +107,13 @@ export const generateContentHandler = async (req: Request, res: Response, contex
     };
 
     try {
+      // Initialize progress tracking before starting research
+      await progressTracker.initializeResearch(topic.id, {
+        topicTitle: topic.title,
+        status: 'starting',
+        message: `Starting research for: ${topic.title}`
+      });
+
       // Use the iterative research engine
       const researchResult = await iterativeResearchEngine.researchAndGenerate(
         topic.title,
@@ -60,7 +124,7 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       // Store the results to database if not already stored
       await iterativeResearchEngine.storeToDatabase(researchResult, topic.slug);
 
-      // Return content in the expected format
+      // Return content in the expected format with immediate main topic results
       return res.json({
         success: true,
         content: researchResult.mainTopic.content.content,
@@ -69,7 +133,9 @@ export const generateContentHandler = async (req: Request, res: Response, contex
           contentType: options.contentType || 'exploration',
           totalTopicsProcessed: researchResult.totalTopicsProcessed,
           cacheHits: researchResult.cacheHits,
-          processingTime: researchResult.totalProcessingTime
+          processingTime: researchResult.totalProcessingTime,
+          mainTopicOnly: researchResult.mainTopicOnly || false,
+          subtopicsInProgress: researchResult.subtopicsInProgress || false
         },
         sources: researchResult.mainTopic.sources.map(source => ({
           id: source.id,
@@ -82,11 +148,16 @@ export const generateContentHandler = async (req: Request, res: Response, contex
         })),
         topicId: topic.id,
         fromIterativeResearch: true,
+        mainTopicComplete: true,
+        subtopicsProcessing: researchResult.subtopicsInProgress || false,
         cached: false
       });
 
     } catch (researchError) {
       console.error('Iterative research failed:', researchError);
+      
+      // Track error in progress
+      await progressTracker.setError(topic.id, researchError instanceof Error ? researchError.message : 'Unknown error');
       
       // Fallback: check if we have any existing content
       const fallbackContent = await context.entities.GeneratedContent.findFirst({

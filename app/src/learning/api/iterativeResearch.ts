@@ -3,6 +3,7 @@ import { aiLearningAgent, type TopicResearchRequest, type TopicResearchResult, t
 import { prisma } from "wasp/server";
 import { getCachedContent, setCachedContent, isCacheValid } from "./cachingSystem";
 import { storeTopicContent, initializeTopicVectorStorage } from "../research/vectorOperations";
+import { progressTracker } from "./progressTracker";
 
 // Utility function to ensure timestamp is a Date object
 function ensureTimestamp(timestamp: any): Date {
@@ -33,6 +34,10 @@ export interface IterativeResearchResult {
   totalProcessingTime: number;
   cacheHits: number;
   cacheKey: string;
+  
+  // New fields for phased completion
+  mainTopicOnly?: boolean;
+  subtopicsInProgress?: boolean;
 }
 
 // Serializable versions for Wasp operations
@@ -43,6 +48,10 @@ export interface SerializableIterativeResearchResult {
   totalProcessingTime: number;
   cacheHits: number;
   cacheKey: string;
+  
+  // New fields for phased completion
+  mainTopicOnly?: boolean;
+  subtopicsInProgress?: boolean;
   [key: string]: any;
 }
 
@@ -70,7 +79,7 @@ export class IterativeResearchEngine {
   private readonly MAX_PARALLEL_SUBTOPICS = 5;
   
   /**
-   * Main entry point for iterative research
+   * Main entry point for iterative research with immediate main topic results
    * This is the research_and_generate function requested by the user
    */
   async researchAndGenerate(
@@ -86,8 +95,17 @@ export class IterativeResearchEngine {
     console.log(`🎯 Starting iterative research for: "${topic}"`);
     console.log(`📊 Max depth: ${maxDepth}, Force refresh: ${options.forceRefresh || false}`);
     
+    const topicId = topic; // Use topic as progress tracking ID
+    
     try {
-      // Step 1: Research main topic
+      // Initialize overall research tracking
+      await progressTracker.initializeResearch(topicId, {
+        topicTitle: topic,
+        status: 'researching_main',
+        message: 'Starting comprehensive research process'
+      });
+
+      // Step 1: Research main topic with progress tracking
       console.log("🔬 Step 1: Researching main topic...");
       const mainResult = await this.researchSingleTopic({
         topic,
@@ -103,48 +121,60 @@ export class IterativeResearchEngine {
       if (mainResult.fromCache) cacheHits++;
       totalTopicsProcessed++;
       
-      // Step 2: Research subtopics in parallel (if within depth limit)
-      console.log("🌳 Step 2: Processing subtopics...");
-      const subtopicResults = new Map<string, TopicResearchResult>();
+      // Main topic completed - update status and prepare for immediate return
+      await progressTracker.completeMainTopic(topicId, {
+        content: mainResult.result.content.content,
+        subtopicsCount: mainResult.result.subtopics.length,
+        sourcesCount: mainResult.result.sources.length,
+        researchDuration: Date.now() - startTime
+      });
       
+      // Update progress phase to subtopics  
+      await progressTracker.updatePhase(topicId, 'subtopics', 'Main topic research completed, starting subtopics');
+      
+      // Return main topic result immediately (THIS IS THE KEY CHANGE)
+      const result: IterativeResearchResult = {
+        mainTopic: mainResult.result,
+        subtopicResults: new Map(), // Empty for now, will be populated in background
+        totalTopicsProcessed: 1,
+        totalProcessingTime: Date.now() - startTime,
+        cacheHits: mainResult.fromCache ? 1 : 0,
+        cacheKey: mainResult.result.cacheKey,
+        
+        // New fields for phased completion
+        mainTopicOnly: true, // Flag indicating subtopics are pending
+        subtopicsInProgress: mainResult.result.subtopics.length > 0
+      };
+
+      // Step 2: Process subtopics in background (if within depth limit)
       if (mainResult.result.depth < maxDepth && mainResult.result.subtopics.length > 0) {
-        subtopicResults.clear();
-        await this.processSubtopicsRecursively(
+        // Start subtopics processing but don't wait for completion
+        this.processSubtopicsInBackground(
           mainResult.result.subtopics,
-          mainResult.result.depth + 1,
+          topicId,
           maxDepth,
-          subtopicResults,
           options,
-          (fromCache: boolean) => {
-            if (fromCache) cacheHits++;
-            totalTopicsProcessed++;
-          },
           userContext?.userId ? {
             userId: userContext.userId,
             level: userContext.level,
             style: userContext.style
           } : undefined
-        );
+        ).catch(error => {
+          console.error(`Background subtopics processing failed for "${topic}":`, error);
+        });
+      } else {
+        // No subtopics to process, mark as completely done
+        await progressTracker.completeResearch(topicId);
       }
       
-      const totalProcessingTime = Date.now() - startTime;
-      
-      const result: IterativeResearchResult = {
-        mainTopic: mainResult.result,
-        subtopicResults,
-        totalTopicsProcessed,
-        totalProcessingTime,
-        cacheHits,
-        cacheKey: mainResult.result.cacheKey
-      };
-      
-      console.log(`✅ Iterative research completed!`);
-      console.log(`📊 Topics processed: ${totalTopicsProcessed}, Cache hits: ${cacheHits}, Time: ${totalProcessingTime}ms`);
+      console.log(`✅ Main topic research completed immediately!`);
+      console.log(`📊 Main topic processed, subtopics processing in background, Time: ${result.totalProcessingTime}ms`);
       
       return result;
       
     } catch (error) {
       console.error(`❌ Iterative research failed for "${topic}":`, error);
+      await progressTracker.setError(topicId, error instanceof Error ? error.message : 'Unknown error');
       throw new Error(`Iterative research failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -206,6 +236,75 @@ export class IterativeResearchEngine {
     await setCachedContent(cacheKey, result);
     
     return { result, fromCache: false };
+  }
+
+  /**
+   * New method for background subtopic processing with progress updates
+   */
+  private async processSubtopicsInBackground(
+    subtopics: SubtopicInfo[],
+    mainTopicId: string,
+    maxDepth: number,
+    options: IterativeResearchOptions,
+    userContext?: { userId?: string; level?: string; style?: string }
+  ): Promise<void> {
+    try {
+      console.log(`🚀 Starting background processing of ${subtopics.length} subtopics for: ${mainTopicId}`);
+      
+      // Process subtopics sequentially to avoid overwhelming the system  
+      for (const subtopic of subtopics) {
+        try {
+          await progressTracker.updateSubtopicProgress(mainTopicId, subtopic.title, {
+            status: 'in_progress',
+            progress: 0
+          });
+          
+          console.log(`🔬 Background processing subtopic: ${subtopic.title}`);
+          
+          // Research subtopic
+          const result = await this.researchSingleTopic({
+            topic: subtopic.title,
+            depth: 1,
+            maxDepth: maxDepth,
+            userContext: options.userContext
+          }, options.forceRefresh || false, userContext?.userId ? {
+            userId: userContext.userId,
+            level: userContext.level,
+            style: userContext.style
+          } : undefined);
+          
+          await progressTracker.updateSubtopicProgress(mainTopicId, subtopic.title, {
+            status: 'completed',
+            progress: 100,
+            result: {
+              content: result.result.content.content,
+              sourcesCount: result.result.sources.length
+            }
+          });
+          
+          console.log(`✅ Completed background subtopic: ${subtopic.title}`);
+          
+        } catch (error) {
+          console.error(`❌ Failed to process subtopic "${subtopic.title}":`, error);
+          await progressTracker.updateSubtopicProgress(mainTopicId, subtopic.title, {
+            status: 'failed',
+            progress: 0,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+      
+      // All subtopics completed
+      await progressTracker.completeResearch(mainTopicId);
+      console.log(`🏁 All background subtopics completed for: ${mainTopicId}`);
+      
+    } catch (error) {
+      console.error(`❌ Background subtopics processing failed for "${mainTopicId}":`, error);
+      await progressTracker.updateSubtopicProgress(mainTopicId, 'error', {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
   }
 
   /**
