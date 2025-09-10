@@ -626,14 +626,17 @@ export function useTopicNavigation(
     errorHandler.clearError(topic.id);
     
     const contentGenerationOperation = async () => {
-      // Check if content already exists in cache
-      const existingContent = contentCache.get(topic.id);
+      // Use the currently selected subtopic ID if available, otherwise use the topic ID
+      const targetTopicId = (state.selectedSubtopic || topic).id;
+      
+      // Check if content already exists in cache for the target topic
+      const existingContent = contentCache.get(targetTopicId);
       if (existingContent) {
-        console.log('Content already exists in cache for topic:', topic.title);
+        console.log('Content already exists in cache for topic:', topic.title, 'Target ID:', targetTopicId);
         return;
       }
 
-      console.log('Generating content for topic:', topic.title, 'ID:', topic.id);
+      console.log('Generating content for topic:', topic.title, 'Target ID:', targetTopicId);
       
       // Call the content generation API using Wasp's authenticated API wrapper
       const response = await fetch('/api/learning/generate-content', {
@@ -642,7 +645,7 @@ export function useTopicNavigation(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          topicId: topic.id,
+          topicId: targetTopicId, // Use the target topic ID (could be subtopic)
           options: {
             userLevel: 'intermediate', // TODO: Get from user preferences
             learningStyle: 'textual', // TODO: Get from user preferences
@@ -679,8 +682,8 @@ export function useTopicNavigation(
       console.log('Content length:', result.content.length);
       console.log('Sources:', result.sources?.length || 0);
       
-      // Cache the generated content
-      contentCache.set(topic.id, result.content, result.sources || []);
+      // Cache the generated content using the target topic ID
+      contentCache.set(targetTopicId, result.content, result.sources || []);
     };
     
     try {

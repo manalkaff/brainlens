@@ -125,9 +125,10 @@ export function ExploreTab() {
     content,
     sources,
     isGenerating: isGeneratingLegacyContent,
+    isResetting,
     generateContent
   } = useContentGeneration({
-    topic: selectedSubtopic || selectedTopic || (topic ? {
+    topic: selectedTopic || (topic ? {
       id: topic.id,
       title: topic.title,
       slug: topic.slug,
@@ -138,11 +139,12 @@ export function ExploreTab() {
       updatedAt: new Date(),
       children: []
     } : null),
+    activeTopicId: (selectedSubtopic || selectedTopic)?.id, // Pass the currently active topic ID
     autoGenerate: false // Disable auto-generation to prevent loops - we'll trigger manually
   });
 
   // Combine loading states
-  const isGeneratingContent = isGeneratingNavContent || isGeneratingLegacyContent;
+  const isGeneratingContent = isGeneratingNavContent || isGeneratingLegacyContent || isResetting;
 
   const {
     bookmarks,
@@ -178,6 +180,12 @@ export function ExploreTab() {
   // State for error handling and loading
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  
+  // Ref to track last generated topic to prevent infinite loops
+  const lastGeneratedTopicRef = useRef<string | null>(null);
+  
+  // Ref to track debouncing timeout
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Enhanced content generation handler with proper error handling and retry logic
   const handleGenerateContent = useCallback(async () => {
@@ -223,24 +231,41 @@ export function ExploreTab() {
       setSelectionError(null);
       setIsTransitioning(true);
 
+      console.log('🏹 Topic selection from', source, ':', {
+        topic: topic.title,
+        topicId: topic.id,
+        currentSelectedTopic: selectedTopic?.title,
+        currentSelectedSubtopic: selectedSubtopic?.title,
+        hasExistingContent: !!content
+      });
+
       // Determine if this is a subtopic selection or main topic selection
       if (selectedTopic && topic.id !== selectedTopic.id) {
         // Check if the selected topic is a child of the current topic
         const isSubtopic = isTopicChildOf(topic, selectedTopic);
         
+        console.log('🔍 Topic relationship analysis:', {
+          isSubtopic,
+          parentTopic: selectedTopic.title,
+          selectedTopic: topic.title
+        });
+        
         if (isSubtopic) {
+          console.log('🌿 Selecting as subtopic');
           selectSubtopic(topic, source);
         } else {
+          console.log('🌳 Selecting as new main topic');
           selectTopic(topic, source);
         }
       } else {
+        console.log('🌳 Selecting as main topic (no parent or same topic)');
         selectTopic(topic, source);
       }
 
       // Clear any previous errors
       setSelectionError(null);
     } catch (error) {
-      console.error('Topic selection failed:', error);
+      console.error('❌ Topic selection failed:', error);
       setSelectionError(error instanceof Error ? error.message : 'Failed to select topic');
     } finally {
       // Add a small delay to show loading state
@@ -254,21 +279,27 @@ export function ExploreTab() {
       setSelectionError(null);
       setIsTransitioning(true);
 
-      console.log('Subtopic card clicked:', subtopic.title, 'ID:', subtopic.id);
+      console.log('🎯 Subtopic card clicked:', {
+        subtopic: subtopic.title,
+        subtopicId: subtopic.id,
+        currentSelectedTopic: selectedTopic?.title,
+        currentSelectedSubtopic: selectedSubtopic?.title,
+        hasExistingContent: !!content
+      });
 
       // Always treat card clicks as subtopic selections
       if (selectedTopic) {
-        console.log('Selecting subtopic via navigation hook');
+        console.log('🔄 Selecting subtopic via navigation hook');
         selectSubtopic(subtopic, 'cards');
       } else {
-        console.log('Selecting as main topic via navigation hook');
+        console.log('🔄 Selecting as main topic via navigation hook');
         selectTopic(subtopic, 'cards');
       }
 
       // The content generation will be triggered by the useEffect that monitors selectedSubtopic changes
       
     } catch (error) {
-      console.error('Subtopic card selection failed:', error);
+      console.error('❌ Subtopic card selection failed:', error);
       setSelectionError(error instanceof Error ? error.message : 'Failed to select subtopic');
     } finally {
       setTimeout(() => setIsTransitioning(false), 300);
@@ -288,9 +319,33 @@ export function ExploreTab() {
     return parentTopic.children ? findInChildren(parentTopic.children) : false;
   };
 
-  // Clear selection error when topic changes
+  // Debounced content generation function
+  const debouncedGenerateContent = useCallback((currentTopic: any) => {
+    // Clear any existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    // Set new timeout to debounce rapid calls
+    debounceTimeoutRef.current = setTimeout(() => {
+      if (lastGeneratedTopicRef.current !== currentTopic.id && !isGeneratingContent) {
+        console.log('🚀 Debounced content generation for:', currentTopic.title, 'ID:', currentTopic.id);
+        lastGeneratedTopicRef.current = currentTopic.id;
+        generateContent();
+      }
+    }, 100); // 100ms debounce
+  }, [isGeneratingContent, generateContent]);
+
+  // Clear selection error when topic changes and reset generation tracking
   useEffect(() => {
     setSelectionError(null);
+    // Reset the generation tracking when topic changes to allow fresh generation
+    lastGeneratedTopicRef.current = null;
+    
+    // Clear any pending debounced calls
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
   }, [selectedTopic, selectedSubtopic]);
 
   // Handle topic selection changes and update content if needed
@@ -309,20 +364,33 @@ export function ExploreTab() {
     
     if (!currentTopic) return;
 
-    // Only log once per topic change, not on every content update
-    console.log('🔍 Topic selected:', currentTopic.title, 'ID:', currentTopic.id);
+    // Enhanced logging for topic selection
+    console.log('🔍 Topic selection change detected:', {
+      currentTopic: currentTopic.title,
+      currentTopicId: currentTopic.id,
+      selectedTopic: selectedTopic?.title,
+      selectedSubtopic: selectedSubtopic?.title,
+      hasContent: !!content,
+      isGenerating: isGeneratingContent
+    });
 
-    // Generate content if we don't have any and aren't already generating
-    if (!content && !isGeneratingContent) {
-      console.log('🚀 Triggering manual content generation for:', currentTopic.title);
-      generateContent();
-    }
+    // Use debounced content generation to prevent rapid multiple calls
+    debouncedGenerateContent(currentTopic);
 
     // Mark the topic as read when content is viewed (only if we have content)
     if (content && !isRead(currentTopic.id)) {
       markAsRead(currentTopic.id);
     }
-  }, [selectedTopic?.id, selectedSubtopic?.id, topic?.id, content, isGeneratingContent, generateContent, isRead, markAsRead]); // Use IDs instead of objects to prevent unnecessary re-renders
+  }, [selectedTopic?.id, selectedSubtopic?.id, topic?.id, debouncedGenerateContent]); // Use debouncedGenerateContent instead
+  
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Bookmark management
   const toggleTopicBookmark = (topicId: string) => {
@@ -672,10 +740,12 @@ export function ExploreTab() {
                       Read
                     </div>
                   )}
-                  {(isGeneratingContent || isTransitioning) && (
+                  {(isGeneratingContent || isTransitioning || isResetting) && (
                     <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      {isTransitioning ? 'Loading...' : 'Generating content...'}
+                      {isResetting ? 'Switching content...' : 
+                       isTransitioning ? 'Loading topic...' : 
+                       isGeneratingContent ? 'Generating content...' : 'Loading...'}
                     </div>
                   )}
                   {selectionError && (
@@ -902,7 +972,7 @@ export function ExploreTab() {
                 </div>
               )}
               
-              {content ? (
+              {content && !isResetting ? (
                 <div key={`content-${(selectedSubtopic || selectedTopic)!.id}`} className="p-6 space-y-6">
                   {/* Breadcrumb Navigation */}
                   <BreadcrumbNavigation
@@ -948,7 +1018,7 @@ export function ExploreTab() {
                     </div>
                   )}
                 </div>
-              ) : isGeneratingContent ? (
+              ) : (isGeneratingContent || isResetting) ? (
                 <div className="p-6">
                   <ContentGenerationSkeleton />
                 </div>

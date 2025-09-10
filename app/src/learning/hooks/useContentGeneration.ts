@@ -15,6 +15,7 @@ interface ContentSection {
 interface UseContentGenerationOptions {
   topic: TopicTreeItem | null;
   autoGenerate?: boolean;
+  activeTopicId?: string; // New parameter to track the currently active topic (could be main topic or subtopic)
 }
 
 interface SourceAttribution {
@@ -31,6 +32,7 @@ interface UseContentGenerationReturn {
   sections: ContentSection[];
   sources: SourceAttribution[];
   isGenerating: boolean;
+  isResetting: boolean;
   error: Error | null;
   generateContent: () => Promise<void>;
   refreshContent: () => void;
@@ -38,13 +40,15 @@ interface UseContentGenerationReturn {
 
 export function useContentGeneration({
   topic,
-  autoGenerate = false
+  autoGenerate = false,
+  activeTopicId
 }: UseContentGenerationOptions): UseContentGenerationReturn {
   const [content, setContent] = useState<string>('');
   const [sections, setSections] = useState<ContentSection[]>([]);
   const [sources, setSources] = useState<SourceAttribution[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Generate sample content based on topic
   const generateSampleContent = useCallback((topicTitle: string, topicSummary?: string | null): string => {
@@ -266,10 +270,16 @@ Happy learning!`;
   const generateContent = useCallback(async () => {
     if (!topic) return;
 
+    // Use activeTopicId if provided (for subtopics), otherwise use topic.id
+    const targetTopicId = activeTopicId || topic.id;
+    
     console.log('🚀 CONTENT GENERATION API CALL:', {
       topicId: topic.id,
+      activeTopicId: activeTopicId,
+      targetTopicId: targetTopicId,
       topicTitle: topic.title,
       topicSlug: topic.slug,
+      isSubtopic: !!activeTopicId && activeTopicId !== topic.id,
       timestamp: new Date().toISOString()
     });
 
@@ -279,7 +289,7 @@ Happy learning!`;
     try {
       // Call the content generation API using Wasp's authenticated API wrapper
       const response = await api.post('/api/learning/generate-content', {
-        topicId: topic.id,
+        topicId: targetTopicId, // Use the target topic ID (could be subtopic)
         options: {
           userLevel: 'intermediate', // TODO: Get from user preferences
           learningStyle: 'textual', // TODO: Get from user preferences
@@ -342,24 +352,47 @@ ${err instanceof Error ? err.message : 'Unknown error'}
     } finally {
       setIsGenerating(false);
     }
-  }, [topic, parseContentSections]);
+  }, [topic, activeTopicId, parseContentSections]);
 
-  // Auto-generate content when topic ID changes (avoid regenerating on topic object changes)
-  useEffect(() => {
-    if (topic?.id && autoGenerate) {
-      generateContent();
-    }
-  }, [topic?.id, autoGenerate]); // Remove generateContent from deps to prevent infinite loops
+  // Auto-generate content when active topic ID changes (main topic or subtopic)
+  // NOTE: Disabled auto-generation to prevent loops - content generation is now handled manually by ExploreTab
+  // useEffect(() => {
+  //   const currentTopicId = activeTopicId || topic?.id;
+  //   if (currentTopicId && autoGenerate && !content && !isGenerating) {
+  //     console.log('🎯 Auto-generating content for topic ID:', currentTopicId, 'Topic title:', topic?.title);
+  //     generateContent();
+  //   }
+  // }, [activeTopicId, topic?.id, autoGenerate, content, isGenerating]);
 
-  // Reset content when topic changes
+  // Reset content when active topic changes (either main topic or subtopic)
   useEffect(() => {
-    if (topic) {
+    const currentTopicId = activeTopicId || topic?.id;
+    const previousTopicId = content ? 'has-content' : 'no-content'; // Track if we had content before
+    
+    console.log('🔄 Content reset check:', {
+      currentTopicId,
+      previousContent: previousTopicId,
+      activeTopicId,
+      mainTopicId: topic?.id,
+      willReset: !!currentTopicId
+    });
+    
+    if (currentTopicId) {
+      // Set resetting state first to prevent old content from showing
+      setIsResetting(true);
+      
+      // Clear content immediately and synchronously
       setContent('');
       setSections([]);
       setSources([]);
       setError(null);
+      
+      // Clear resetting state after a brief delay to ensure UI updates
+      setTimeout(() => {
+        setIsResetting(false);
+      }, 50);
     }
-  }, [topic?.id]);
+  }, [activeTopicId, topic?.id]); // Keep only ID deps to avoid infinite loops
 
   const refreshContent = useCallback(() => {
     generateContent();
@@ -370,6 +403,7 @@ ${err instanceof Error ? err.message : 'Unknown error'}
     sections,
     sources,
     isGenerating,
+    isResetting,
     error,
     generateContent,
     refreshContent

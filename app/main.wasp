@@ -555,7 +555,7 @@ action exportChatThread {
 // Quiz Operations
 action generateQuiz {
   fn: import { generateQuiz } from "@src/learning/quiz/operations",
-  entities: [User, Topic, Quiz, QuizQuestion, UserTopicProgress, VectorDocument, Message]
+  entities: [User, Topic, Quiz, QuizQuestion, UserTopicProgress, VectorDocument, GeneratedContent, Message]
 }
 
 action submitQuizAnswer {
@@ -565,6 +565,10 @@ action submitQuizAnswer {
 
 query getUserQuizzes {
   fn: import { getUserQuizzes } from "@src/learning/quiz/operations",
+  entities: [Quiz, QuizQuestion, Topic]
+}
+query getQuiz {
+  fn: import { getQuiz } from "@src/learning/quiz/operations",
   entities: [Quiz, QuizQuestion, Topic]
 }
 

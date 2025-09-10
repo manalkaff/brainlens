@@ -2,9 +2,10 @@ import { HttpError } from 'wasp/server';
 import type { 
   GenerateQuiz, 
   SubmitQuizAnswer,
-  GetUserQuizzes
+  GetUserQuizzes,
+  GetQuiz
 } from 'wasp/server/operations';
-import type { Quiz, QuizQuestion, Topic, UserTopicProgress, VectorDocument } from 'wasp/entities';
+import type { Quiz, QuizQuestion, Topic, UserTopicProgress, VectorDocument, GeneratedContent } from 'wasp/entities';
 import { QuestionType } from '@prisma/client';
 import { 
   generateQuizWithAI, 
@@ -114,7 +115,20 @@ export const generateQuiz: GenerateQuiz<GenerateQuizInput, Quiz> = async (args, 
       orderBy: { createdAt: 'desc' }
     });
 
-    if (vectorDocuments.length === 0) {
+    // If no vector documents, check for generated content as fallback
+    let hasContent = vectorDocuments.length > 0;
+    let generatedContent: any[] = [];
+    
+    if (!hasContent) {
+      generatedContent = await context.entities.GeneratedContent.findMany({
+        where: { topicId },
+        take: 5, // Limit to most recent content
+        orderBy: { createdAt: 'desc' }
+      });
+      hasContent = generatedContent.length > 0;
+    }
+
+    if (!hasContent) {
       throw createLearningError(
         ErrorType.QUIZ_GENERATION_ERROR,
         ERROR_CODES.QUIZ_GENERATION_FAILED,
@@ -150,7 +164,7 @@ export const generateQuiz: GenerateQuiz<GenerateQuizInput, Quiz> = async (args, 
     };
 
     const quizContent = await withAIServiceErrorHandling(
-      () => generateQuizWithAI(topic, userProgress, vectorDocuments, quizGenerationOptions),
+      () => generateQuizWithAI(topic, userProgress, vectorDocuments, generatedContent, quizGenerationOptions),
       'QUIZ_GENERATION_AI',
       { topicId, difficulty: quizDifficulty, questionCount }
     );
@@ -491,4 +505,72 @@ export const getUserQuizzes: GetUserQuizzes<GetUserQuizzesInput, GetUserQuizzesO
       hasMore
     };
   }, 'GET_USER_QUIZZES', { userId: user.id });
+};
+
+type GetQuizInput = {
+  quizId: string;
+};
+
+type GetQuizOutput = Quiz & {
+  questions: QuizQuestion[];
+  topic: {
+    id: string;
+    title: string;
+    slug: string;
+  };
+};
+
+export const getQuiz: GetQuiz<GetQuizInput, GetQuizOutput> = async (args, context) => {
+  if (!context.user) {
+    throw createAuthenticationError('Authentication required to retrieve quiz');
+  }
+
+  // Assert user is defined after authentication check
+  const user = context.user;
+
+  const quizId = validateInput(
+    args.quizId,
+    (input) => {
+      if (!input || typeof input !== 'string') {
+        throw new Error('Quiz ID is required');
+      }
+      return input;
+    },
+    'quizId',
+    { userId: user.id }
+  );
+
+  return withDatabaseErrorHandling(async () => {
+    const quiz = await context.entities.Quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        questions: true,
+        topic: {
+          select: {
+            id: true,
+            title: true,
+            slug: true
+          }
+        }
+      }
+    });
+
+    if (!quiz) {
+      throw createValidationError('quizId', 'Quiz not found');
+    }
+
+    if (quiz.userId !== user.id) {
+      throw createLearningError(
+        ErrorType.AUTHORIZATION_ERROR,
+        ERROR_CODES.AUTH_INSUFFICIENT_PERMISSIONS,
+        'Access denied to quiz',
+        {
+          userMessage: 'You do not have permission to access this quiz.',
+          context: { quizId, userId: user.id, quizOwnerId: quiz.userId }
+        }
+      );
+    }
+
+    return quiz as GetQuizOutput;
+  }, 'GET_QUIZ', { userId: user.id, quizId });
 };

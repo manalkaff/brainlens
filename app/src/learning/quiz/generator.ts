@@ -1,5 +1,7 @@
 import { QuestionType } from '@prisma/client';
-import type { Topic, UserTopicProgress, VectorDocument } from 'wasp/entities';
+import type { Topic, UserTopicProgress, VectorDocument, GeneratedContent } from 'wasp/entities';
+import { openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
 
 export interface QuizQuestion {
   question: string;
@@ -26,27 +28,64 @@ export async function generateQuizWithAI(
   topic: Topic,
   userProgress: UserTopicProgress | null,
   vectorDocuments: VectorDocument[],
+  generatedContent: GeneratedContent[],
   options: QuizGenerationOptions
 ): Promise<GeneratedQuiz> {
   const { difficulty, questionCount, questionTypes } = options;
 
-  // Extract content from vector documents for context
-  const topicContent = vectorDocuments
-    .map(doc => doc.content)
-    .join('\n\n')
-    .slice(0, 8000); // Limit content to avoid token limits
+  // Extract content from both vector documents and generated content for context
+  let topicContent = '';
+  
+  if (vectorDocuments.length > 0) {
+    topicContent = vectorDocuments
+      .map(doc => doc.content)
+      .join('\n\n');
+  } else if (generatedContent.length > 0) {
+    topicContent = generatedContent
+      .map(content => content.content)
+      .join('\n\n');
+  } else {
+    // Fallback content if no documents available
+    topicContent = `This quiz is about ${topic.title}. ${topic.summary || ''} ${topic.description || ''}`.trim();
+  }
+  
+  topicContent = topicContent.slice(0, 8000); // Limit content to avoid token limits
 
   // Create AI prompt for quiz generation
   const prompt = createQuizGenerationPrompt(topic, topicContent, difficulty, questionCount, questionTypes);
 
   try {
-    // This would integrate with OpenAI API
-    // For now, we'll use a sophisticated mock implementation
-    const aiResponse = await mockAIQuizGeneration(prompt, topic, difficulty, questionCount, questionTypes);
+    // Use real OpenAI API to generate quiz questions
+    const result = await generateText({
+      model: openai("gpt-4-turbo-preview"),
+      prompt: prompt,
+      temperature: 0.7,
+    });
+
+    // Parse the AI response as JSON with error handling
+    let parsedResponse;
+    try {
+      // Try to extract JSON from response in case there's extra text
+      const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+      const jsonString = jsonMatch ? jsonMatch[0] : result.text;
+      parsedResponse = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error('Failed to parse AI response as JSON:', parseError);
+      throw new Error('Invalid AI response format');
+    }
     
+    // Validate and format the questions
+    const questions: QuizQuestion[] = parsedResponse.map((q: any, index: number) => ({
+      question: q.question || `Question ${index + 1} about ${topic.title}`,
+      type: q.type || questionTypes[index % questionTypes.length], // Use AI's type or fallback
+      options: Array.isArray(q.options) ? q.options : [],
+      correctAnswer: q.correctAnswer || "",
+      explanation: q.explanation || `This relates to key concepts in ${topic.title}.`
+    }));
+
     return {
       title: `${topic.title} - ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} Assessment`,
-      questions: aiResponse.questions
+      questions: questions.slice(0, questionCount) // Ensure we don't exceed the requested count
     };
   } catch (error) {
     console.error('AI quiz generation failed, falling back to template-based generation:', error);
@@ -82,8 +121,7 @@ function createQuizGenerationPrompt(
     }
   }).join(', ');
 
-  return `
-Create a ${difficulty}-level quiz about "${topic.title}" with ${questionCount} questions.
+  return `Create a ${difficulty}-level quiz about "${topic.title}" with ${questionCount} unique and diverse questions.
 
 Topic Summary: ${topic.summary || 'No summary provided'}
 Topic Description: ${topic.description || 'No description provided'}
@@ -94,22 +132,33 @@ ${content}
 Requirements:
 - Difficulty Level: ${difficulty} (focus on ${difficultyDescriptions[difficulty]})
 - Question Types: ${questionTypeInstructions}
-- Each question must include a clear explanation of why the answer is correct
-- Questions should be diverse and cover different aspects of the topic
-- Avoid repetitive or overly similar questions
-- Ensure questions are factually accurate and based on the provided content
+- Each question must be UNIQUE and cover DIFFERENT aspects of the topic
+- Base questions on the provided content context
+- Include detailed explanations for why answers are correct
+- Ensure factual accuracy
+- Make questions specific to "${topic.title}", not generic
 
-Format each question as JSON with the following structure:
-{
-  "question": "The question text",
-  "type": "MULTIPLE_CHOICE|TRUE_FALSE|FILL_BLANK|CODE_CHALLENGE",
-  "options": ["option1", "option2", "option3", "option4"], // empty array for fill-in-blank
-  "correctAnswer": "the correct answer",
-  "explanation": "detailed explanation of why this answer is correct"
-}
+Question Generation Rules:
+1. NO duplicate or similar questions
+2. Each question should test a different concept/aspect
+3. Use specific examples from the content when possible
+4. Vary question difficulty within the ${difficulty} level
+5. For multiple choice: make distractors plausible but clearly incorrect
+6. For true/false: test specific factual statements
+7. For fill-in-blank: focus on key terms/concepts
 
-Return a JSON array of ${questionCount} questions.
-`;
+Response Format: Return ONLY a JSON array of exactly ${questionCount} questions in this format:
+[
+  {
+    "question": "Specific question text based on content",
+    "type": "MULTIPLE_CHOICE",
+    "options": ["option1", "option2", "option3", "option4"],
+    "correctAnswer": "option1",
+    "explanation": "Detailed explanation referencing the content"
+  }
+]
+
+Important: Return only the JSON array, no other text. Each question must be unique and content-specific.`;
 }
 
 // Mock AI implementation for development/testing
@@ -332,34 +381,34 @@ export function getQuestionTypeDistribution(difficulty: 'beginner' | 'intermedia
     case 'beginner':
       return [
         QuestionType.MULTIPLE_CHOICE,
+        QuestionType.TRUE_FALSE,
+        QuestionType.FILL_BLANK,
         QuestionType.MULTIPLE_CHOICE,
-        QuestionType.TRUE_FALSE,
-        QuestionType.TRUE_FALSE,
-        QuestionType.FILL_BLANK
+        QuestionType.TRUE_FALSE
       ];
     case 'intermediate':
       return [
         QuestionType.MULTIPLE_CHOICE,
-        QuestionType.MULTIPLE_CHOICE,
         QuestionType.TRUE_FALSE,
-        QuestionType.FILL_BLANK,
         QuestionType.FILL_BLANK,
         QuestionType.CODE_CHALLENGE,
         QuestionType.MULTIPLE_CHOICE,
-        QuestionType.TRUE_FALSE
+        QuestionType.FILL_BLANK,
+        QuestionType.TRUE_FALSE,
+        QuestionType.CODE_CHALLENGE
       ];
     case 'advanced':
       return [
         QuestionType.MULTIPLE_CHOICE,
         QuestionType.FILL_BLANK,
         QuestionType.CODE_CHALLENGE,
-        QuestionType.CODE_CHALLENGE,
-        QuestionType.MULTIPLE_CHOICE,
         QuestionType.TRUE_FALSE,
-        QuestionType.FILL_BLANK,
-        QuestionType.CODE_CHALLENGE,
         QuestionType.MULTIPLE_CHOICE,
-        QuestionType.FILL_BLANK
+        QuestionType.CODE_CHALLENGE,
+        QuestionType.FILL_BLANK,
+        QuestionType.TRUE_FALSE,
+        QuestionType.CODE_CHALLENGE,
+        QuestionType.MULTIPLE_CHOICE
       ];
     default:
       return [QuestionType.MULTIPLE_CHOICE, QuestionType.TRUE_FALSE];

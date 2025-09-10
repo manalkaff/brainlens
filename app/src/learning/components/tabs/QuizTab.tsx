@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '../../../components/ui/radio-group';
 import { Label } from '../../../components/ui/label';
 import { Loader2, Trophy, Target, BookOpen, Brain } from 'lucide-react';
 import { useTopicContext } from '../../context/TopicContext';
-import { generateQuiz, getUserQuizzes, useQuery } from 'wasp/client/operations';
+import { generateQuiz, getUserQuizzes, getQuiz, useQuery } from 'wasp/client/operations';
 import { QuizInterface } from '../quiz/QuizInterface';
 import { QuizResults } from '../quiz/QuizResults';
 import { QuizHistory } from '../quiz/QuizHistory';
@@ -83,9 +83,21 @@ export function QuizTab() {
   };
 
   // Handle quiz completion
-  const handleQuizComplete = (finalScore: number) => {
-    setCurrentView('results');
-    refetchQuizzes();
+  const handleQuizComplete = async (finalScore: number) => {
+    if (!currentQuiz) return;
+    
+    try {
+      // Fetch the updated quiz data with answers
+      const updatedQuiz = await getQuiz({ quizId: currentQuiz.id });
+      setCurrentQuiz(updatedQuiz as Quiz & { questions: QuizQuestion[] });
+      setCurrentView('results');
+      refetchQuizzes();
+    } catch (error) {
+      console.error('Failed to fetch updated quiz:', error);
+      // Fallback: still show results with original data
+      setCurrentView('results');
+      refetchQuizzes();
+    }
   };
 
 
