@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { Link as WaspRouterLink, routes } from 'wasp/client/router';
-import { createTopic, startIterativeResearch } from 'wasp/client/operations';
+import { createTopic } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent } from '../components/ui/card';
@@ -37,28 +37,9 @@ export default function TopicInputLandingPage() {
       
       console.log('Topic created:', topic);
       
-      // Step 2: Start research automatically
-      setResearchStatus('Starting AI research...');
-      try {
-        await startIterativeResearch({
-          topicSlug: topic.slug,
-          options: {
-            maxDepth: 3,
-            forceRefresh: false,
-            userContext: {
-              level: 'intermediate',
-              interests: [],
-              previousKnowledge: []
-            }
-          }
-        });
-        console.log('Research started for topic:', topic.id);
-        setResearchStatus('Research started successfully!');
-      } catch (researchError) {
-        console.warn('Failed to start research automatically:', researchError);
-        // Don't block navigation if research fails - user can trigger it manually later
-        setResearchStatus('Topic created successfully!');
-      }
+      // Note: Research will be automatically started by ExploreTab
+      setResearchStatus('Redirecting to learning page...');
+      console.log('Topic created, ExploreTab will handle research automatically');
       
       // Navigate to topic page
       console.log('Topic created successfully, redirecting to:', `/learn/${topic.slug}`);

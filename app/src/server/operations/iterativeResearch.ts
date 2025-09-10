@@ -40,6 +40,9 @@ export interface GenerateSubtopicsArgs {
  * Start iterative research for a topic
  * This is the main entry point for the new AI learning engine
  */
+// Map to track active research operations per topic
+const activeResearchOperations = new Map<string, Promise<SerializableIterativeResearchResult>>();
+
 export const startIterativeResearch = async (
   { topicSlug, options = {} }: StartIterativeResearchArgs,
   context: any
@@ -47,6 +50,37 @@ export const startIterativeResearch = async (
   try {
     console.log(`🎯 Starting iterative research for topic: ${topicSlug}`);
 
+    // Deduplication: check if research is already in progress for this topic
+    const existingOperation = activeResearchOperations.get(topicSlug);
+    if (existingOperation) {
+      console.log(`⏭️ Research already in progress for ${topicSlug}, reusing existing operation`);
+      return await existingOperation;
+    }
+
+    // Create and store the research operation promise
+    const researchOperation = performResearch(topicSlug, options, context);
+    activeResearchOperations.set(topicSlug, researchOperation);
+
+    // Clean up the operation when it completes (success or failure)
+    researchOperation.finally(() => {
+      activeResearchOperations.delete(topicSlug);
+    });
+
+    return await researchOperation;
+  } catch (error) {
+    // Make sure to clean up on error
+    activeResearchOperations.delete(topicSlug);
+    throw error;
+  }
+};
+
+// Extracted research logic
+async function performResearch(
+  topicSlug: string, 
+  options: IterativeResearchOptions, 
+  context: any
+): Promise<SerializableIterativeResearchResult> {
+  try {
     // Find the topic in database
     const topic = await prisma.topic.findUnique({
       where: { slug: topicSlug }

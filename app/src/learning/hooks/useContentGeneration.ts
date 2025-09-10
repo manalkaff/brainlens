@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery } from 'wasp/client/operations';
 import { api } from 'wasp/client/api';
 import type { TopicTreeItem } from '../components/ui/TopicTree';
@@ -49,6 +49,9 @@ export function useContentGeneration({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+
+  // Track the previous topic ID to prevent unnecessary content resets
+  const previousTopicIdRef = useRef<string | null>(null);
 
   // Generate sample content based on topic
   const generateSampleContent = useCallback((topicTitle: string, topicSummary?: string | null): string => {
@@ -274,9 +277,10 @@ Happy learning!`;
     const targetTopicId = activeTopicId || topic.id;
     
     console.log('🚀 CONTENT GENERATION API CALL:', {
-      topicId: topic.id,
+      mainTopicId: topic.id,
       activeTopicId: activeTopicId,
       targetTopicId: targetTopicId,
+      SENDING_TO_API: targetTopicId,
       topicTitle: topic.title,
       topicSlug: topic.slug,
       isSubtopic: !!activeTopicId && activeTopicId !== topic.id,
@@ -354,30 +358,60 @@ ${err instanceof Error ? err.message : 'Unknown error'}
     }
   }, [topic, activeTopicId, parseContentSections]);
 
-  // Auto-generate content when active topic ID changes (main topic or subtopic)
-  // NOTE: Disabled auto-generation to prevent loops - content generation is now handled manually by ExploreTab
-  // useEffect(() => {
-  //   const currentTopicId = activeTopicId || topic?.id;
-  //   if (currentTopicId && autoGenerate && !content && !isGenerating) {
-  //     console.log('🎯 Auto-generating content for topic ID:', currentTopicId, 'Topic title:', topic?.title);
-  //     generateContent();
-  //   }
-  // }, [activeTopicId, topic?.id, autoGenerate, content, isGenerating]);
-
-  // Reset content when active topic changes (either main topic or subtopic)
+  // Smart auto-generate content when active topic ID changes
   useEffect(() => {
     const currentTopicId = activeTopicId || topic?.id;
-    const previousTopicId = content ? 'has-content' : 'no-content'; // Track if we had content before
+    
+    // Debug logging (can be removed after testing)
+    // console.log('🎯 CONTENT GENERATION HOOK DEBUG:', {
+    //   currentTopicId,
+    //   activeTopicId,
+    //   topicId: topic?.id,
+    //   topicTitle: topic?.title,
+    //   autoGenerate,
+    //   isGenerating,
+    //   hasContent: !!content,
+    //   contentLength: content?.length,
+    //   willAutoGenerate: currentTopicId && autoGenerate && !isGenerating && !content
+    // });
+    
+    // Only auto-generate if:
+    // 1. We have an ID to work with
+    // 2. Auto-generation is enabled
+    // 3. We're not already generating
+    // 4. We don't already have content for this topic ID
+    if (currentTopicId && autoGenerate && !isGenerating) {
+      console.log('🎯 Checking auto-generation for topic ID:', currentTopicId, 'Topic title:', topic?.title);
+      
+      // Check if we already have content in our local state
+      // If not, trigger generation
+      if (!content) {
+        console.log('🚀 Auto-generating content for new topic ID:', currentTopicId);
+        generateContent();
+      } else {
+        console.log('✅ Content already exists, skipping auto-generation for topic ID:', currentTopicId);
+      }
+    }
+  }, [activeTopicId, autoGenerate, isGenerating, content, generateContent, topic?.id, topic?.title]);
+
+  // Smart content reset when active topic changes - FIXED to actually clear content
+  useEffect(() => {
+    const currentTopicId = activeTopicId || topic?.id;
+    const currentPrevious = previousTopicIdRef.current;
     
     console.log('🔄 Content reset check:', {
       currentTopicId,
-      previousContent: previousTopicId,
+      previousTopicId: currentPrevious,
       activeTopicId,
       mainTopicId: topic?.id,
-      willReset: !!currentTopicId
+      hasContent: !!content,
+      willReset: currentTopicId !== currentPrevious && !!currentTopicId
     });
     
-    if (currentTopicId) {
+    // Reset content when switching to ANY different topic (including first load)
+    if (currentTopicId && currentTopicId !== currentPrevious) {
+      console.log('🔄 CLEARING CONTENT for topic change:', currentPrevious, '->', currentTopicId);
+      
       // Set resetting state first to prevent old content from showing
       setIsResetting(true);
       
@@ -387,12 +421,15 @@ ${err instanceof Error ? err.message : 'Unknown error'}
       setSources([]);
       setError(null);
       
+      // Update the ref immediately to prevent loops
+      previousTopicIdRef.current = currentTopicId;
+      
       // Clear resetting state after a brief delay to ensure UI updates
       setTimeout(() => {
         setIsResetting(false);
       }, 50);
     }
-  }, [activeTopicId, topic?.id]); // Keep only ID deps to avoid infinite loops
+  }, [activeTopicId, topic?.id]);
 
   const refreshContent = useCallback(() => {
     generateContent();

@@ -61,17 +61,16 @@ export function useIterativeResearch(options: UseIterativeResearchOptions = {}):
   const [researchResult, setResearchResult] = useState<IterativeResearchResult | null>(null);
   const [hierarchy, setHierarchy] = useState<TopicHierarchy | null>(null);
 
-  // Auto-start research when topic slug is provided
-  useEffect(() => {
-    if (autoStart && topicSlug && !researchResult && !isResearching) {
-      startResearch();
-    }
-  }, [topicSlug, autoStart, researchResult, isResearching]);
-
   // Start iterative research
   const startResearch = useCallback(async (opts: { forceRefresh?: boolean } = {}) => {
     if (!topicSlug) {
       setError('No topic slug provided');
+      return;
+    }
+
+    // Deduplication: prevent multiple simultaneous research for the same topic
+    if (isResearching) {
+      console.log(`⏭️ Research already in progress for: ${topicSlug}, skipping duplicate`);
       return;
     }
 
@@ -150,6 +149,14 @@ export function useIterativeResearch(options: UseIterativeResearchOptions = {}):
       setIsResearching(false);
     }
   }, [topicSlug, maxDepth, userContext, researchResult]);
+
+  // Auto-start research when topic slug is provided
+  useEffect(() => {
+    if (autoStart && topicSlug && !researchResult && !isResearching) {
+      console.log(`🎯 Auto-starting research for topic: ${topicSlug}`);
+      startResearch();
+    }
+  }, [topicSlug, autoStart, researchResult, isResearching, startResearch]);
 
   // Expand topic to specific depth
   const expandDepth = useCallback(async (topicId: string, targetDepth: number) => {

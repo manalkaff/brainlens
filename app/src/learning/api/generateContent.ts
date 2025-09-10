@@ -1,11 +1,15 @@
 import type { Request, Response } from 'express';
 import type { Topic, VectorDocument } from 'wasp/entities';
-import { aiContentGenerator, type ContentGenerationOptions } from './contentGenerator';
-import { getCachedContent, setCachedContent } from './cachingSystem';
+import { iterativeResearchEngine } from './iterativeResearch';
 
 export const generateContentHandler = async (req: Request, res: Response, context: any) => {
   try {
-    console.log('Content generation API called with:', { topicId: req.body.topicId, options: req.body.options });
+    console.log('🔍 SERVER RECEIVED API CALL (delegating to iterative research):', { 
+      topicId: req.body.topicId, 
+      options: req.body.options,
+      fullBody: req.body,
+      timestamp: new Date().toISOString()
+    });
     
     if (!context.user) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -17,97 +21,7 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(400).json({ error: 'Topic ID is required' });
     }
 
-    if (!options) {
-      return res.status(400).json({ error: 'Content generation options are required' });
-    }
-
-    // Check if content already exists for this user and configuration
-    const existingContent = await context.entities.GeneratedContent.findFirst({
-      where: {
-        topicId,
-        contentType: options.contentType || 'exploration',
-        userLevel: options.userLevel || null,
-        learningStyle: options.learningStyle || null,
-        // Only check content that was actually generated for users, not cache entries
-        NOT: {
-          userLevel: "cache",
-          learningStyle: "cache"
-        }
-      }
-    });
-
-    if (existingContent) {
-      console.log('Found existing generated content for this configuration');
-      return res.json({
-        success: true,
-        content: existingContent.content,
-        metadata: existingContent.metadata,
-        sources: existingContent.sources || [],
-        topicId: existingContent.topicId,
-        cached: false, // This is stored content, not cache
-        fromDatabase: true
-      });
-    }
-
-    // Also check if we have research-type content stored for this user that can be adapted
-    const existingResearchContent = await context.entities.GeneratedContent.findFirst({
-      where: {
-        topicId,
-        contentType: 'research',
-        userLevel: options.userLevel || 'intermediate',
-        learningStyle: options.learningStyle || 'textual',
-        NOT: {
-          userLevel: "cache"
-        }
-      }
-    });
-
-    if (existingResearchContent && existingResearchContent.metadata) {
-      const metadata = existingResearchContent.metadata as any;
-      if (metadata.researchResult && metadata.isUserContent) {
-        console.log('Found existing user research content for this topic');
-        // Convert research result to content format if needed
-        const researchResult = metadata.researchResult;
-        return res.json({
-          success: true,
-          content: researchResult.content?.content || existingResearchContent.content,
-          metadata: {
-            ...researchResult.metadata,
-            contentType: options.contentType,
-            adaptedFromResearch: true
-          },
-          sources: researchResult.sources || [],
-          topicId: existingResearchContent.topicId,
-          cached: false,
-          fromDatabase: true,
-          adaptedFromResearch: true
-        });
-      }
-    }
-
-    // Check if we have research results from iterative research
-    const existingIterativeContent = await context.entities.GeneratedContent.findFirst({
-      where: {
-        topicId,
-        contentType: 'exploration',
-        NOT: {
-          userLevel: "cache"
-        }
-      }
-    });
-
-    if (existingIterativeContent) {
-      return res.json({
-        success: true,
-        content: existingIterativeContent.content,
-        metadata: existingIterativeContent.metadata,
-        sources: existingIterativeContent.sources || [],
-        topicId: existingIterativeContent.topicId,
-        fromDatabase: true
-      });
-    }
-
-    // Get the topic
+    // Get topic to use for research
     const topic = await context.entities.Topic.findUnique({
       where: { id: topicId }
     });
@@ -116,13 +30,96 @@ export const generateContentHandler = async (req: Request, res: Response, contex
       return res.status(404).json({ error: 'Topic not found' });
     }
 
-    // If no content found, research hasn't completed yet
-    return res.status(400).json({ 
-      error: 'Topic research in progress',
-      message: 'Please wait for research to complete before generating content',
-      needsResearch: false,
-      topicId: topic.id
-    });
+    console.log('🚀 Delegating to iterative research system for:', topic.title);
+
+    // Use iterative research system to generate/get content
+    const userContext = {
+      userId: context.user.id,
+      level: options.userLevel || 'beginner',
+      style: options.learningStyle || 'textual'
+    };
+
+    const researchOptions = {
+      maxDepth: 3,
+      forceRefresh: false,
+      userContext: {
+        level: options.userLevel || 'beginner',
+        interests: [],
+        previousKnowledge: []
+      }
+    };
+
+    try {
+      // Use the iterative research engine
+      const researchResult = await iterativeResearchEngine.researchAndGenerate(
+        topic.title,
+        researchOptions,
+        userContext
+      );
+
+      // Store the results to database if not already stored
+      await iterativeResearchEngine.storeToDatabase(researchResult, topic.slug);
+
+      // Return content in the expected format
+      return res.json({
+        success: true,
+        content: researchResult.mainTopic.content.content,
+        metadata: {
+          ...researchResult.mainTopic.metadata,
+          contentType: options.contentType || 'exploration',
+          totalTopicsProcessed: researchResult.totalTopicsProcessed,
+          cacheHits: researchResult.cacheHits,
+          processingTime: researchResult.totalProcessingTime
+        },
+        sources: researchResult.mainTopic.sources.map(source => ({
+          id: source.id,
+          title: source.title,
+          url: source.url,
+          source: source.source,
+          engine: source.engine,
+          relevanceScore: source.relevanceScore,
+          contentType: source.contentType
+        })),
+        topicId: topic.id,
+        fromIterativeResearch: true,
+        cached: false
+      });
+
+    } catch (researchError) {
+      console.error('Iterative research failed:', researchError);
+      
+      // Fallback: check if we have any existing content
+      const fallbackContent = await context.entities.GeneratedContent.findFirst({
+        where: {
+          topicId,
+          NOT: {
+            userLevel: "cache"
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (fallbackContent) {
+        console.log('Using fallback content from database');
+        return res.json({
+          success: true,
+          content: fallbackContent.content,
+          metadata: fallbackContent.metadata,
+          sources: fallbackContent.sources || [],
+          topicId: fallbackContent.topicId,
+          fromDatabase: true,
+          fallback: true
+        });
+      }
+
+      // If all else fails, trigger research
+      return res.status(202).json({
+        error: 'Research in progress',
+        message: `Starting research for "${topic.title}". Please wait and try again.`,
+        needsResearch: true,
+        topicId: topic.id
+      });
+    }
 
   } catch (error) {
     console.error('=== SERVER CONTENT GENERATION ERROR ===');

@@ -39,15 +39,16 @@ export function useTopicTree(options: UseTopicTreeOptions = {}): UseTopicTreeRet
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Auto-refresh when generating is complete
-  useEffect(() => {
-    if (!isGenerating) {
-      const timer = setTimeout(() => {
-        refreshTree();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isGenerating, refreshTree]);
+  // REMOVED: Auto-refresh when generating is complete - this was causing render loops and duplicate generation
+  // Tree refresh is now handled manually when needed to prevent unwanted re-renders
+  // useEffect(() => {
+  //   if (!isGenerating) {
+  //     const timer = setTimeout(() => {
+  //       refreshTree();
+  //     }, 1000);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [isGenerating, refreshTree]);
 
   const selectTopic = useCallback((topic: TopicTreeItem) => {
     setSelectedTopic(topic);

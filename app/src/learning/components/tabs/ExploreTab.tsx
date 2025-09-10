@@ -8,7 +8,7 @@ import { EnhancedTopicTree } from '../ui/EnhancedTopicTree';
 import { MDXContent } from '../ui/MDXContent';
 import { LoadingSkeleton } from '../ui/LoadingSkeleton';
 import { useTopicTree, useTopicContent } from '../../hooks/useTopicTree';
-import { useContentGeneration, useContentBookmarks } from '../../hooks/useContentGeneration';
+import { useContentBookmarks } from '../../hooks/useContentGeneration';
 import { useIterativeResearch } from '../../hooks/useIterativeResearch';
 import { useTopicNavigation } from '../../hooks/useTopicNavigation';
 import { SubtopicCards, topicsToSubtopicCards } from '../ui/SubtopicCards';
@@ -120,31 +120,60 @@ export function ExploreTab() {
     handleDeepLink
   } = useTopicNavigation(topics);
 
-  // Content generation system - integrate with navigation
-  const {
-    content,
-    sources,
-    isGenerating: isGeneratingLegacyContent,
-    isResetting,
-    generateContent
-  } = useContentGeneration({
-    topic: selectedTopic || (topic ? {
-      id: topic.id,
-      title: topic.title,
-      slug: topic.slug,
-      summary: topic.summary,
-      depth: 0,
-      status: 'active',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      children: []
-    } : null),
-    activeTopicId: (selectedSubtopic || selectedTopic)?.id, // Pass the currently active topic ID
-    autoGenerate: false // Disable auto-generation to prevent loops - we'll trigger manually
-  });
+  // Determine the currently active topic and content target
+  const activeTopicForContent = selectedSubtopic || selectedTopic || (topic ? {
+    id: topic.id,
+    title: topic.title,
+    slug: topic.slug,
+    summary: topic.summary,
+    depth: 0,
+    status: 'active',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    children: []
+  } : null);
 
-  // Combine loading states
-  const isGeneratingContent = isGeneratingNavContent || isGeneratingLegacyContent || isResetting;
+  // Helper function to get subtopic result (handles both Map and Object)
+  const getSubtopicResult = (subtopicTitle: string) => {
+    if (!researchResult?.subtopicResults) return null;
+    
+    // Handle Map interface (internal research engine)
+    if (typeof researchResult.subtopicResults.get === 'function') {
+      return researchResult.subtopicResults.get(subtopicTitle);
+    }
+    
+    // Handle Object interface (serialized data from API)
+    return researchResult.subtopicResults[subtopicTitle];
+  };
+
+  // Use iterative research system as primary content source
+  const currentContent = researchResult ? {
+    content: selectedSubtopic 
+      ? getSubtopicResult(selectedSubtopic.title)?.content?.content || ''
+      : researchResult.mainTopic.content.content,
+    sources: selectedSubtopic
+      ? getSubtopicResult(selectedSubtopic.title)?.sources || []
+      : researchResult.mainTopic.sources,
+    isFromResearch: true
+  } : { content: '', sources: [], isFromResearch: false };
+
+  // Combine loading states - prioritize research system
+  const isGeneratingContent = isResearching || isGeneratingNavContent;
+
+  // Debug logging (can be removed after testing)
+  // console.log('🔥 EXPLORE TAB DEBUG:', {
+  //   selectedTopic: selectedTopic?.title,
+  //   selectedTopicId: selectedTopic?.id,
+  //   selectedSubtopic: selectedSubtopic?.title,
+  //   selectedSubtopicId: selectedSubtopic?.id,
+  //   activeTopicForContent: activeTopicForContent?.title,
+  //   activeTopicId,
+  //   hasContent: !!content,
+  //   contentLength: content?.length,
+  //   isGeneratingLegacyContent,
+  //   isResetting,
+  //   isGeneratingContent
+  // });
 
   const {
     bookmarks,
@@ -152,7 +181,7 @@ export function ExploreTab() {
     isBookmarked,
     markAsRead,
     isRead
-  } = useContentBookmarks((selectedSubtopic || selectedTopic)?.id || null);
+  } = useContentBookmarks(activeTopicForContent?.id || null);
 
   // State for layout management
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -187,31 +216,30 @@ export function ExploreTab() {
   // Ref to track debouncing timeout
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Enhanced content generation handler with proper error handling and retry logic
+  // Content generation handler using iterative research system
   const handleGenerateContent = useCallback(async () => {
-    const targetTopic = selectedSubtopic || selectedTopic;
+    const targetTopic = activeTopicForContent;
     if (!targetTopic) {
       console.warn('No topic selected for content generation');
       setSelectionError('No topic selected for content generation');
       return;
     }
 
-    console.log('Starting content generation for:', targetTopic.title, 'ID:', targetTopic.id);
+    console.log('Manual research triggered for:', targetTopic.title, 'ID:', targetTopic.id);
     setSelectionError(null);
 
     try {
-      // Use the legacy content generation system directly since it handles the UI state properly
-      await generateContent();
-      console.log('Content generation completed successfully for:', targetTopic.title);
-      
+      // Use the iterative research system for content generation
+      await startResearch({ forceRefresh: true });
+      console.log('Manual research completed successfully for:', targetTopic.title);
     } catch (error) {
-      console.error('Content generation failed for topic:', targetTopic.title, error);
+      console.error('Manual research failed for topic:', targetTopic.title, error);
       
-      // Set user-friendly error message based on error type
+      // Set user-friendly error message
       let errorMessage = 'Failed to generate content';
       if (error instanceof Error) {
         if (error.message.includes('research')) {
-          errorMessage = `Research data needed for "${targetTopic.title}". The topic may need to be researched first.`;
+          errorMessage = `Research failed for "${targetTopic.title}". Please try again.`;
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
           errorMessage = 'Network error occurred. Please check your connection and try again.';
         } else if (error.message.includes('rate') || error.message.includes('limit')) {
@@ -223,7 +251,7 @@ export function ExploreTab() {
       
       setSelectionError(errorMessage);
     }
-  }, [selectedSubtopic, selectedTopic, generateContent]);
+  }, [activeTopicForContent, startResearch]);
 
   // Enhanced unified topic selection handler that works for both sidebar and cards
   const handleTopicSelect = async (topic: TopicTreeItem, source: 'sidebar' | 'cards' | 'breadcrumb' = 'sidebar') => {
@@ -236,7 +264,7 @@ export function ExploreTab() {
         topicId: topic.id,
         currentSelectedTopic: selectedTopic?.title,
         currentSelectedSubtopic: selectedSubtopic?.title,
-        hasExistingContent: !!content
+        hasExistingContent: !!currentContent.content
       });
 
       // Determine if this is a subtopic selection or main topic selection
@@ -284,7 +312,7 @@ export function ExploreTab() {
         subtopicId: subtopic.id,
         currentSelectedTopic: selectedTopic?.title,
         currentSelectedSubtopic: selectedSubtopic?.title,
-        hasExistingContent: !!content
+        hasExistingContent: !!currentContent.content
       });
 
       // Always treat card clicks as subtopic selections
@@ -319,78 +347,17 @@ export function ExploreTab() {
     return parentTopic.children ? findInChildren(parentTopic.children) : false;
   };
 
-  // Debounced content generation function
-  const debouncedGenerateContent = useCallback((currentTopic: any) => {
-    // Clear any existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-    
-    // Set new timeout to debounce rapid calls
-    debounceTimeoutRef.current = setTimeout(() => {
-      if (lastGeneratedTopicRef.current !== currentTopic.id && !isGeneratingContent) {
-        console.log('🚀 Debounced content generation for:', currentTopic.title, 'ID:', currentTopic.id);
-        lastGeneratedTopicRef.current = currentTopic.id;
-        generateContent();
-      }
-    }, 100); // 100ms debounce
-  }, [isGeneratingContent, generateContent]);
-
-  // Clear selection error when topic changes and reset generation tracking
+  // Clear selection error when topic changes
   useEffect(() => {
     setSelectionError(null);
-    // Reset the generation tracking when topic changes to allow fresh generation
-    lastGeneratedTopicRef.current = null;
-    
-    // Clear any pending debounced calls
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-  }, [selectedTopic, selectedSubtopic]);
+  }, [activeTopicForContent?.id]);
 
-  // Handle topic selection changes and update content if needed
+  // Mark content as read when it's viewed
   useEffect(() => {
-    const currentTopic = selectedSubtopic || selectedTopic || (topic ? {
-      id: topic.id,
-      title: topic.title,
-      slug: topic.slug,
-      summary: topic.summary,
-      depth: 0,
-      status: 'active',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      children: []
-    } : null);
-    
-    if (!currentTopic) return;
-
-    // Enhanced logging for topic selection
-    console.log('🔍 Topic selection change detected:', {
-      currentTopic: currentTopic.title,
-      currentTopicId: currentTopic.id,
-      selectedTopic: selectedTopic?.title,
-      selectedSubtopic: selectedSubtopic?.title,
-      hasContent: !!content,
-      isGenerating: isGeneratingContent
-    });
-
-    // Use debounced content generation to prevent rapid multiple calls
-    debouncedGenerateContent(currentTopic);
-
-    // Mark the topic as read when content is viewed (only if we have content)
-    if (content && !isRead(currentTopic.id)) {
-      markAsRead(currentTopic.id);
+    if (currentContent.content && activeTopicForContent?.id && !isRead(activeTopicForContent.id)) {
+      markAsRead(activeTopicForContent.id);
     }
-  }, [selectedTopic?.id, selectedSubtopic?.id, topic?.id, debouncedGenerateContent]); // Use debouncedGenerateContent instead
-  
-  // Cleanup debounce timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
+  }, [currentContent.content, activeTopicForContent?.id, isRead, markAsRead]);
 
   // Bookmark management
   const toggleTopicBookmark = (topicId: string) => {
@@ -642,7 +609,7 @@ export function ExploreTab() {
                         topics={topicsToShow}
                         selectedTopicPath={contentPath}
                         onTopicSelect={(topic, path) => handleTopicSelect(topic, 'sidebar')}
-                        onGenerateSubtopics={generateSubtopics}
+                        onGenerateSubtopics={undefined}
                         isGenerating={isGenerating}
                         searchQuery={filterText}
                         onSearchChange={() => {}}
@@ -659,7 +626,7 @@ export function ExploreTab() {
                   allTopics={topics}
                   onTopicSelect={(topic) => handleTopicSelect(topic, 'sidebar')}
                   onToggleBookmark={toggleTopicBookmark}
-                  selectedTopicId={(selectedSubtopic || selectedTopic)?.id}
+                  selectedTopicId={activeTopicForContent?.id}
                 />
               )}
               
@@ -669,7 +636,7 @@ export function ExploreTab() {
                   onTopicSelect={(topic) => handleTopicSelect(topic, 'sidebar')}
                   onToggleBookmark={toggleTopicBookmark}
                   bookmarkedTopics={bookmarkedTopics}
-                  selectedTopicId={(selectedSubtopic || selectedTopic)?.id}
+                  selectedTopicId={activeTopicForContent?.id}
                 />
               )}
             </div>
@@ -693,27 +660,27 @@ export function ExploreTab() {
             <div className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               <h3 className="font-semibold text-sm">
-                {(selectedSubtopic || selectedTopic) ? (selectedSubtopic || selectedTopic)!.title : 'Select a Topic'}
+                {activeTopicForContent ? activeTopicForContent.title : 'Select a Topic'}
               </h3>
-              {(selectedSubtopic || selectedTopic) && (
+              {activeTopicForContent && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => toggleTopicBookmark((selectedSubtopic || selectedTopic)!.id)}
+                  onClick={() => toggleTopicBookmark(activeTopicForContent.id)}
                   className="h-6 w-6 p-0 ml-2"
                 >
-                  {bookmarkedTopics.includes((selectedSubtopic || selectedTopic)!.id) ? (
+                  {bookmarkedTopics.includes(activeTopicForContent.id) ? (
                     <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
                   ) : (
                     <BookmarkPlus className="w-3 h-3 text-muted-foreground" />
                   )}
                 </Button>
               )}
-              {(selectedSubtopic || selectedTopic) && (selectedSubtopic || selectedTopic)!.summary && (
+              {activeTopicForContent && activeTopicForContent.summary && (
                 <>
                   <Separator orientation="vertical" className="h-4" />
                   <p className="text-xs text-muted-foreground truncate max-w-md">
-                    {(selectedSubtopic || selectedTopic)!.summary}
+                    {activeTopicForContent.summary}
                   </p>
                 </>
               )}
@@ -732,20 +699,19 @@ export function ExploreTab() {
                   <ChevronLeft className="w-4 h-4" />
                 )}
               </Button>
-              {(selectedSubtopic || selectedTopic) && (
+              {activeTopicForContent && (
                 <>
-                  {isRead((selectedSubtopic || selectedTopic)!.id) && (
+                  {isRead(activeTopicForContent.id) && (
                     <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
                       <Eye className="w-3 h-3" />
                       Read
                     </div>
                   )}
-                  {(isGeneratingContent || isTransitioning || isResetting) && (
+                  {(isGeneratingContent || isTransitioning) && (
                     <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      {isResetting ? 'Switching content...' : 
-                       isTransitioning ? 'Loading topic...' : 
-                       isGeneratingContent ? 'Generating content...' : 'Loading...'}
+                      {isTransitioning ? 'Loading topic...' : 
+                       isGeneratingContent ? 'Researching content...' : 'Loading...'}
                     </div>
                   )}
                   {selectionError && (
@@ -775,7 +741,7 @@ export function ExploreTab() {
                     </div>
                   )}
                   {/* Show manual generate button if no content exists and no error */}
-                  {!content && !isGeneratingContent && !selectionError && (selectedSubtopic || selectedTopic) && (
+                  {!currentContent.content && !isGeneratingContent && !selectionError && (
                     <Button
                       variant="default"
                       size="sm"
@@ -784,21 +750,21 @@ export function ExploreTab() {
                       className="text-xs"
                     >
                       <Zap className="w-3 h-3 mr-1" />
-                      Generate Content
+                      Start Research
                     </Button>
                   )}
                   {/* Show regenerate button if content exists */}
-                  {content && !isGeneratingContent && (selectedSubtopic || selectedTopic) && (
+                  {currentContent.content && !isGeneratingContent && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleGenerateContent}
                       disabled={isGeneratingContent}
                       className="text-xs"
-                      title="Regenerate content"
+                      title="Research again"
                     >
                       <Zap className="w-3 h-3 mr-1" />
-                      Regenerate
+                      Research Again
                     </Button>
                   )}
                   {/* Navigation controls */}
@@ -826,20 +792,18 @@ export function ExploreTab() {
                   )}
                   
                   {/* Deep Link Manager */}
-                  {(selectedSubtopic || selectedTopic) && (
-                    <DeepLinkManager
-                      currentTopic={selectedSubtopic || selectedTopic || undefined}
-                      generateShareableURL={generateShareableURL}
-                      validateDeepLink={validateDeepLink}
-                      onNavigateToDeepLink={(path) => {
-                        const success = handleDeepLink(path);
-                        if (!success) {
-                          console.warn('Failed to navigate to deep link:', path);
-                        }
-                      }}
-                      className="h-8"
-                    />
-                  )}
+                  <DeepLinkManager
+                    currentTopic={activeTopicForContent}
+                    generateShareableURL={generateShareableURL}
+                    validateDeepLink={validateDeepLink}
+                    onNavigateToDeepLink={(path) => {
+                      const success = handleDeepLink(path);
+                      if (!success) {
+                        console.warn('Failed to navigate to deep link:', path);
+                      }
+                    }}
+                    className="h-8"
+                  />
                 </>
               )}
             </div>
@@ -900,14 +864,14 @@ export function ExploreTab() {
                   key={`research-${researchResult.mainTopic.topic}`}
                   content={researchResult.mainTopic.content.content}
                   topicTitle={researchResult.mainTopic.topic}
-                  sources={researchResult.mainTopic.sources.map(s => ({
+                  sources={researchResult.mainTopic.sources.map((s: any) => ({
                     id: s.id,
                     title: s.title,
                     url: s.url,
                     source: s.source,
-                    engine: s.engine,
-                    relevanceScore: s.relevanceScore,
-                    contentType: s.contentType
+                    engine: s.engine || s.source,
+                    relevanceScore: s.relevanceScore || 0.8,
+                    contentType: s.contentType || 'article'
                   }))}
                   bookmarks={bookmarks}
                   onToggleBookmark={toggleBookmark}
@@ -953,7 +917,7 @@ export function ExploreTab() {
                 )}
               </div>
             </div>
-          ) : (selectedSubtopic || selectedTopic) ? (
+          ) : activeTopicForContent ? (
             <TopicErrorBoundary
               onError={(error, errorInfo) => {
                 console.error('Content area error:', error, errorInfo);
@@ -961,19 +925,19 @@ export function ExploreTab() {
               }}
             >
               {/* Show navigation errors */}
-              {hasError((selectedSubtopic || selectedTopic)!.id) && (
+              {hasError(activeTopicForContent.id) && (
                 <div className="p-4 border-b">
                   <ErrorDisplay
-                    error={getError((selectedSubtopic || selectedTopic)!.id)!}
-                    onRetry={() => retryLastOperation((selectedSubtopic || selectedTopic)!.id)}
-                    onDismiss={() => clearNavigationError((selectedSubtopic || selectedTopic)!.id)}
+                    error={getError(activeTopicForContent.id)!}
+                    onRetry={() => retryLastOperation(activeTopicForContent.id)}
+                    onDismiss={() => clearNavigationError(activeTopicForContent.id)}
                     isRetrying={isGeneratingContent}
                   />
                 </div>
               )}
               
-              {content && !isResetting ? (
-                <div key={`content-${(selectedSubtopic || selectedTopic)!.id}`} className="p-6 space-y-6">
+              {currentContent.content && !isGeneratingContent ? (
+                <div key={`content-${activeTopicForContent.id}`} className="p-6 space-y-6">
                   {/* Breadcrumb Navigation */}
                   <BreadcrumbNavigation
                     navigationPath={getNavigationBreadcrumbs()}
@@ -981,23 +945,21 @@ export function ExploreTab() {
                   />
 
                   {/* Enhanced Content Header */}
-                  {(selectedSubtopic || selectedTopic) && (
-                    <ContentHeader
-                      topic={selectedSubtopic || selectedTopic!}
+                  <ContentHeader
+                    topic={activeTopicForContent}
                     isSubtopic={selectedSubtopic !== null}
                     parentTopic={selectedTopic}
-                    onBookmarkToggle={() => toggleTopicBookmark((selectedSubtopic || selectedTopic)!.id)}
-                    isBookmarked={bookmarkedTopics.includes((selectedSubtopic || selectedTopic)!.id)}
-                    isRead={isRead((selectedSubtopic || selectedTopic)!.id)}
-                    onMarkAsRead={() => markAsRead((selectedSubtopic || selectedTopic)!.id)}
+                    onBookmarkToggle={() => toggleTopicBookmark(activeTopicForContent.id)}
+                    isBookmarked={bookmarkedTopics.includes(activeTopicForContent.id)}
+                    isRead={isRead(activeTopicForContent.id)}
+                    onMarkAsRead={() => markAsRead(activeTopicForContent.id)}
                   />
-                  )}
                   
                   <MDXContent
-                    key={(selectedSubtopic || selectedTopic)!.id}
-                    content={content}
-                    topicTitle={(selectedSubtopic || selectedTopic)!.title}
-                    sources={sources}
+                    key={activeTopicForContent.id}
+                    content={currentContent.content}
+                    topicTitle={activeTopicForContent.title}
+                    sources={currentContent.sources}
                     bookmarks={bookmarks}
                     onToggleBookmark={toggleBookmark}
                     isBookmarked={isBookmarked}
@@ -1005,26 +967,47 @@ export function ExploreTab() {
                     isRead={isRead}
                   />
                   
-                  {/* Show subtopic cards if the current topic has children */}
-                  {(selectedSubtopic || selectedTopic)?.children && (selectedSubtopic || selectedTopic)!.children!.length > 0 && (
+                  {/* Show subtopic cards if the current topic has children or research subtopics */}
+                  {(activeTopicForContent?.children && activeTopicForContent.children.length > 0) || 
+                   (researchResult && !selectedSubtopic && (researchResult as any).mainTopic?.subtopics?.length > 0) ? (
                     <div className="border-t pt-6">
-                      <SubtopicCards
-                        key={`subtopics-${(selectedSubtopic || selectedTopic)!.id}`}
-                        subtopics={topicsToSubtopicCards((selectedSubtopic || selectedTopic)!.children!)}
-                        onSubtopicClick={handleSubtopicCardClick}
-                        selectedSubtopicId={selectedSubtopic?.id}
-                        isGeneratingContent={isGeneratingContent || isTransitioning}
-                      />
+                      {activeTopicForContent?.children && activeTopicForContent.children.length > 0 ? (
+                        <SubtopicCards
+                          key={`subtopics-${activeTopicForContent.id}`}
+                          subtopics={topicsToSubtopicCards(activeTopicForContent.children)}
+                          onSubtopicClick={handleSubtopicCardClick}
+                          selectedSubtopicId={selectedSubtopic?.id}
+                          isGeneratingContent={isGeneratingContent || isTransitioning}
+                        />
+                      ) : (
+                        // Show research subtopics as cards
+                        <div className="space-y-4">
+                          <h2 className="text-xl font-semibold">Explore Further</h2>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {researchResult!.mainTopic.subtopics.map((subtopic, index) => (
+                              <div key={index} className="cursor-pointer hover:shadow-md transition-shadow p-4 border rounded-lg">
+                                <h3 className="font-medium text-sm">{subtopic.title}</h3>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {subtopic.description}
+                                </p>
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  {subtopic.estimatedReadTime}min read • {subtopic.complexity}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : null}
                 </div>
-              ) : (isGeneratingContent || isResetting) ? (
+              ) : isGeneratingContent ? (
                 <div className="p-6">
                   <ContentGenerationSkeleton />
                 </div>
               ) : (
                 <ContentPlaceholder
-                  topic={(selectedSubtopic || selectedTopic)!}
+                  topic={activeTopicForContent}
                   onGenerateContent={handleGenerateContent}
                   isGeneratingContent={isGeneratingContent}
                   error={selectionError}

@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from 'wasp/client/auth';
-import { createTopic, startIterativeResearch } from 'wasp/client/operations';
+import { createTopic } from 'wasp/client/operations';
 import { OnboardingFlow, useOnboarding } from '../learning/components/help/OnboardingFlow';
 import { storePendingTopic } from './utils/pendingTopicHandler';
 import { logPerformanceMetrics, requestIdleCallback, cancelIdleCallback } from './utils/performance';
@@ -97,23 +97,8 @@ export default function LandingPage() {
       console.log('Topic created successfully, redirecting to:', `/learn/${topic.slug}`);
       window.location.href = `/learn/${topic.slug}`;
       
-      // Step 2: Start research automatically in background (don't block navigation)
-      startIterativeResearch({
-        topicSlug: topic.slug,
-        options: {
-          maxDepth: 3,
-          forceRefresh: false,
-          userContext: {
-            level: 'intermediate',
-            interests: [],
-            previousKnowledge: []
-          }
-        }
-      }).then(() => {
-        console.log('Research started for topic:', topic.id);
-      }).catch((researchError) => {
-        console.warn('Failed to start research automatically:', researchError);
-      });
+      // Note: Research will be automatically started by ExploreTab's useIterativeResearch hook
+      console.log('Topic created, ExploreTab will handle research automatically');
       
     } catch (error) {
       console.error('Failed to create topic:', error);

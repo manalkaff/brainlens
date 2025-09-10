@@ -456,6 +456,21 @@ query checkResearchFreshness {
   entities: [Topic, GeneratedContent]
 }
 
+// Migration Operations
+action migrateToIterativeResearch {
+  fn: import { migrateToIterativeResearch } from "@src/server/operations/migrateToIterativeResearch",
+  entities: [Topic, GeneratedContent, VectorDocument]
+}
+
+action cleanupOldSystem {
+  fn: import { cleanupOldSystem } from "@src/server/operations/migrateToIterativeResearch",
+  entities: [GeneratedContent]
+}
+
+query validateMigration {
+  fn: import { validateMigration } from "@src/server/operations/migrateToIterativeResearch",
+  entities: [Topic, GeneratedContent, VectorDocument]
+}
 
 // Learning API Namespace for CORS
 apiNamespace learningApis {

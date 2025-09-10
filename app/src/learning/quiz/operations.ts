@@ -108,34 +108,42 @@ export const generateQuiz: GenerateQuiz<GenerateQuizInput, Quiz> = async (args, 
     // Determine difficulty level
     const quizDifficulty = difficulty || determineDifficulty(userProgress, topic);
 
-    // Get vector documents for context
+    // Get vector documents for context (from iterative research system)
     const vectorDocuments = await context.entities.VectorDocument.findMany({
       where: { topicId },
-      take: 10, // Limit to most relevant documents
+      take: 15, // Increased limit for better quiz generation
       orderBy: { createdAt: 'desc' }
     });
 
-    // If no vector documents, check for generated content as fallback
-    let hasContent = vectorDocuments.length > 0;
+    // Check for generated content from iterative research system
     let generatedContent: any[] = [];
-    
-    if (!hasContent) {
-      generatedContent = await context.entities.GeneratedContent.findMany({
-        where: { topicId },
-        take: 5, // Limit to most recent content
-        orderBy: { createdAt: 'desc' }
-      });
-      hasContent = generatedContent.length > 0;
-    }
+    generatedContent = await context.entities.GeneratedContent.findMany({
+      where: { 
+        topicId,
+        // Prioritize research-generated content
+        OR: [
+          { contentType: 'exploration' },
+          { contentType: 'research' }
+        ],
+        NOT: {
+          userLevel: 'cache'
+        }
+      },
+      take: 8, // Increased for more comprehensive quiz generation
+      orderBy: { createdAt: 'desc' }
+    });
 
+    // Combine available content sources
+    const hasContent = vectorDocuments.length > 0 || generatedContent.length > 0;
+    
     if (!hasContent) {
       throw createLearningError(
         ErrorType.QUIZ_GENERATION_ERROR,
         ERROR_CODES.QUIZ_GENERATION_FAILED,
         'No content available for quiz generation',
         {
-          userMessage: 'This topic needs more content before a quiz can be generated. Please explore the topic first.',
-          context: { topicId, userId: user.id }
+          userMessage: 'This topic needs to be researched before a quiz can be generated. Please start research in the Explore tab first.',
+          context: { topicId, userId: user.id, suggestion: 'use_iterative_research' }
         }
       );
     }

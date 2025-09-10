@@ -565,6 +565,14 @@ export function useTopicNavigation(
     source: 'sidebar' | 'cards' | 'url' | 'breadcrumb' = 'sidebar'
   ) => {
     try {
+      console.log('🔥 SUBTOPIC SELECTION DEBUG:', {
+        subtopicTitle: subtopic.title,
+        subtopicId: subtopic.id,
+        source,
+        currentSelectedTopic: state.selectedTopic?.title,
+        currentSelectedSubtopic: state.selectedSubtopic?.title
+      });
+      
       errorHandler.clearError(subtopic.id);
       
       const subtopicPath = buildTopicPath(subtopic);

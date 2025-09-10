@@ -1,4 +1,4 @@
-import { createTopic, startIterativeResearch } from 'wasp/client/operations';
+import { createTopic } from 'wasp/client/operations';
 
 export const PENDING_TOPIC_KEY = 'pendingTopic';
 
@@ -42,25 +42,8 @@ export async function createPendingTopic(): Promise<{ id: string; slug: string }
       description: `Comprehensive learning material for ${pendingTopic}`
     });
 
-    // Start research automatically (optional - don't fail if this fails)
-    try {
-      await startIterativeResearch({
-        topicSlug: topic.slug,
-        options: {
-          maxDepth: 3,
-          forceRefresh: false,
-          userContext: {
-            level: 'intermediate',
-            interests: [],
-            previousKnowledge: []
-          }
-        }
-      });
-      console.log('Research started for pending topic:', topic.id);
-    } catch (researchError) {
-      console.warn('Failed to start research for pending topic:', researchError);
-      // Don't block navigation if research fails
-    }
+    // Note: Research will be automatically started by ExploreTab
+    console.log('Pending topic created, ExploreTab will handle research automatically');
 
     return { id: topic.id, slug: topic.slug };
   } catch (error) {
