@@ -77,12 +77,16 @@ Create content that helps readers truly understand ${topic} and how to apply it 
 
     let result;
     try {
+      const aiStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting AI content generation using ${this.model.modelId} - prompt length: ${prompt.length} chars`);
       result = await (generateObject as any)({
         model: this.model,
         prompt,
         schema: ContentStructureSchema,
         temperature: 0.7,
       });
+      const aiDuration = Date.now() - aiStartTime;
+      console.log(`TIMING LOGS: Completed AI content generation in ${aiDuration}ms - model: ${this.model.modelId}`);
     } catch (error) {
       console.error(
         "Structured generation failed, attempting enhanced fallback:",
@@ -92,6 +96,8 @@ Create content that helps readers truly understand ${topic} and how to apply it 
       // Enhanced fallback mechanism (Requirements 3.5, 4.4, 4.5)
       try {
         // First attempt: text generation with structured parsing
+        const fallbackAiStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting fallback AI content generation using text mode`);
         const textResult = await generateText({
           model: this.model,
           prompt:
@@ -99,21 +105,33 @@ Create content that helps readers truly understand ${topic} and how to apply it 
             "\n\nGenerate the response in a structured format that can be parsed as JSON.",
           temperature: 0.7,
         });
+        const fallbackAiDuration = Date.now() - fallbackAiStartTime;
+        console.log(`TIMING LOGS: Completed fallback AI content generation in ${fallbackAiDuration}ms`);
 
         // Try to parse the fallback response
+        const parsingStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting fallback content parsing`);
         result = { object: this.parseContentFallback(textResult.text, topic) };
+        const parsingDuration = Date.now() - parsingStartTime;
+        console.log(`TIMING LOGS: Completed fallback content parsing in ${parsingDuration}ms`);
         console.log("✅ Text generation fallback succeeded");
         
       } catch (fallbackError) {
         console.error("Text generation fallback also failed:", fallbackError);
         
         // Final fallback: create structured content using synthesis data
+        const finalFallbackStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting final fallback content creation using synthesis data`);
         const fallbackContent = this.createBasicFallbackContent(topic, synthesis, error as Error);
+        const finalFallbackDuration = Date.now() - finalFallbackStartTime;
+        console.log(`TIMING LOGS: Completed final fallback content creation in ${finalFallbackDuration}ms`);
         return fallbackContent;
       }
     }
 
     // Convert structured result to our content format
+    const processingStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting content structure processing and validation`);
     const content = result.object;
 
     // Ensure arrays contain only strings and validate progressive structure
@@ -129,6 +147,9 @@ Create content that helps readers truly understand ${topic} and how to apply it 
 
     // Validate progressive learning structure
     this.validateProgressiveLearningStructure(cleanSections);
+    
+    const processingDuration = Date.now() - processingStartTime;
+    console.log(`TIMING LOGS: Completed content structure processing in ${processingDuration}ms - ${cleanSections.length} sections`);
 
     const estimatedReadTime = this.estimateReadTime(
       cleanSections.reduce(

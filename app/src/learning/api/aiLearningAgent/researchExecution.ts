@@ -46,16 +46,23 @@ export class ResearchExecutionModule {
     let specializedQueriesSuccessful = 0;
 
     // Execute research queries with enhanced error handling and engine availability monitoring
+    const executionStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting parallel research execution for ${researchPlan.researchQueries.length} queries`);
+    
     const researchPromises = researchPlan.researchQueries.map(
-      async ({ query, engine, reasoning }) => {
+      async ({ query, engine, reasoning }, index) => {
+        const queryStartTime = Date.now();
         try {
           console.log(`  🔍 Searching ${engine}: "${query}"`);
+          console.log(`TIMING LOGS: Starting search query ${index + 1}/${researchPlan.researchQueries.length} - engine: ${engine}`);
           
           // Enhanced error handling with engine availability checks
           const response = await SearxngUtils.searchWithAgent(
             engine as AgentConfigName,
             query,
           );
+          const queryDuration = Date.now() - queryStartTime;
+          console.log(`TIMING LOGS: Completed search query ${index + 1} (${engine}) in ${queryDuration}ms - found ${response.results?.length || 0} results`);
 
           // Validate response structure
           if (!response || !response.results || !Array.isArray(response.results)) {
@@ -69,6 +76,8 @@ export class ResearchExecutionModule {
             specializedQueriesSuccessful++;
           }
 
+          const processingStartTime = Date.now();
+          console.log(`TIMING LOGS: Starting result processing for query ${index + 1} (${engine}) - ${response.results.length} raw results`);
           const processedResults = response.results.map((result: SearchResult) => ({
             ...result,
             title: result.title || "Untitled",
@@ -79,13 +88,17 @@ export class ResearchExecutionModule {
             engine: engine,
             reasoning: reasoning,
           }));
+          const processingDuration = Date.now() - processingStartTime;
+          console.log(`TIMING LOGS: Completed result processing for query ${index + 1} in ${processingDuration}ms`);
 
           console.log(`  ✅ ${engine} search successful: ${processedResults.length} results`);
           return processedResults;
 
         } catch (error) {
+          const queryDuration = Date.now() - queryStartTime;
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           console.error(`❌ Failed to search ${engine} for "${query}":`, errorMessage);
+          console.log(`TIMING LOGS: Failed search query ${index + 1} (${engine}) after ${queryDuration}ms - error: ${errorMessage}`);
           
           // Track failed queries for analysis
           failedQueries.push({
@@ -108,11 +121,18 @@ export class ResearchExecutionModule {
       },
     );
 
+    console.log(`TIMING LOGS: Waiting for all ${researchPlan.researchQueries.length} parallel search queries to complete`);
     const researchResultsArrays = await Promise.all(researchPromises);
+    const executionDuration = Date.now() - executionStartTime;
+    console.log(`TIMING LOGS: Completed all parallel research execution in ${executionDuration}ms`);
 
     // Flatten and deduplicate results
+    const aggregationStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting result aggregation and deduplication`);
     const allResults = researchResultsArrays.flat();
     const deduplicatedResults = this.deduplicateResults(allResults);
+    const aggregationDuration = Date.now() - aggregationStartTime;
+    console.log(`TIMING LOGS: Completed result aggregation in ${aggregationDuration}ms - ${allResults.length} -> ${deduplicatedResults.length} unique results`);
 
     // Enhanced validation of research execution success (requirement 5.5)
     this.validateResearchExecutionSuccess(

@@ -14,7 +14,10 @@ export class UtilsModule {
     researchResults: SearchResultWithEngine[],
     sections: ContentSection[],
   ): SourceAttribution[] {
-    return researchResults.map((result, index) => ({
+    const attributionStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting source attribution building for ${researchResults.length} results`);
+    
+    const attributions = researchResults.map((result, index) => ({
       id: `source-${index + 1}`,
       title: result.title,
       url: result.url,
@@ -25,6 +28,10 @@ export class UtilsModule {
       contentType: this.classifyContentType(result),
       usedInSections: this.findUsageInSections(result, sections),
     }));
+    
+    const attributionDuration = Date.now() - attributionStartTime;
+    console.log(`TIMING LOGS: Completed source attribution building in ${attributionDuration}ms - ${attributions.length} attributions`);
+    return attributions;
   }
 
   /**
@@ -96,13 +103,20 @@ export class UtilsModule {
     researchResults: SearchResult[],
     content: GeneratedContent,
   ): number {
+    const scoreStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting confidence score calculation for ${researchResults.length} sources`);
+    
     const sourceQuality =
       researchResults.reduce((sum, r) => sum + (r.relevanceScore || 0.5), 0) /
       researchResults.length;
     const contentDepth = Math.min(content.sections.length / 5, 1); // Expect ~5 sections for full score
     const sourceCount = Math.min(researchResults.length / 15, 1); // Expect ~15 sources for full score
 
-    return sourceQuality * 0.4 + contentDepth * 0.3 + sourceCount * 0.3;
+    const confidenceScore = sourceQuality * 0.4 + contentDepth * 0.3 + sourceCount * 0.3;
+    const scoreDuration = Date.now() - scoreStartTime;
+    console.log(`TIMING LOGS: Completed confidence score calculation in ${scoreDuration}ms - score: ${confidenceScore.toFixed(3)}`);
+    
+    return confidenceScore;
   }
 
   /**

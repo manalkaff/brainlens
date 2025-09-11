@@ -82,21 +82,31 @@ CRITICAL REQUIREMENTS:
 - Do not add subtopics from your own knowledge - only those that emerged from the research data`;
 
     try {
+      const aiStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting AI subtopic identification using ${this.fastModel.modelId} - prompt length: ${prompt.length} chars`);
       const result = await (generateObject as any)({
         model: this.fastModel, // Use faster model for subtopic identification
         prompt,
         schema: SubtopicsSchema,
         temperature: 0.6, // Lower temperature for more consistent structure
       });
+      const aiDuration = Date.now() - aiStartTime;
+      console.log(`TIMING LOGS: Completed AI subtopic identification in ${aiDuration}ms - model: ${this.fastModel.modelId}`);
 
       if (!result.object || !result.object.subtopics || !Array.isArray(result.object.subtopics)) {
         throw new Error('Invalid subtopics structure generated');
       }
 
-      return result.object.subtopics.map((subtopic: any) => ({
+      const processingStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting subtopic result processing and read time estimation`);
+      const processedSubtopics = result.object.subtopics.map((subtopic: any) => ({
         ...subtopic,
         estimatedReadTime: this.estimateSubtopicReadTime(subtopic.complexity),
       }));
+      const processingDuration = Date.now() - processingStartTime;
+      console.log(`TIMING LOGS: Completed subtopic processing in ${processingDuration}ms - ${processedSubtopics.length} subtopics`);
+
+      return processedSubtopics;
       
     } catch (error) {
       console.error('Structured subtopic generation failed, creating fallback subtopics:', error);

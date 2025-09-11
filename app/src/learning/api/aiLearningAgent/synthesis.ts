@@ -22,9 +22,15 @@ export class SynthesisModule {
     researchResults: SearchResultWithEngine[],
   ): Promise<SynthesisResult> {
     // Enhanced source weighting: prioritize general sources for practical understanding
+    const weightingStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting source weighting for practical understanding - ${researchResults.length} results`);
     const weightedResults = this.weightSourcesForPracticalUnderstanding(researchResults);
+    const weightingDuration = Date.now() - weightingStartTime;
+    console.log(`TIMING LOGS: Completed source weighting in ${weightingDuration}ms`);
     
     // Build research context with balanced representation
+    const contextStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting research context building from top 20 weighted sources`);
     const researchContext = weightedResults
       .slice(0, 20) // Use top 20 weighted sources for synthesis
       .map(
@@ -36,6 +42,8 @@ export class SynthesisModule {
           )} | Practical Weight: ${result.practicalWeight?.toFixed(2)}\n`,
       )
       .join("\n");
+    const contextDuration = Date.now() - contextStartTime;
+    console.log(`TIMING LOGS: Completed research context building in ${contextDuration}ms - context length: ${researchContext.length} chars`);
 
     const prompt = `You are a knowledge analyst synthesizing information about "${topic}". Extract key insights and themes from the sources provided below, focusing on practical understanding and real-world applications.
 
@@ -63,17 +71,25 @@ SYNTHESIS APPROACH:
 
 Provide insights and themes that help explain what ${topic} is, how it works, and why it's useful in practical terms.`;
 
+    const aiStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting AI synthesis generation using ${this.model.modelId} - prompt length: ${prompt.length} chars`);
     const result = await generateText({
       model: this.model,
       prompt,
       temperature: 0.6,
     });
+    const aiDuration = Date.now() - aiStartTime;
+    console.log(`TIMING LOGS: Completed AI synthesis generation in ${aiDuration}ms - response length: ${result.text.length} chars`);
 
     // Parse the AI response with enhanced focus on practical insights
+    const analysisStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting synthesis result analysis and extraction`);
     const insights = this.extractPracticalInsights(result.text);
     const themes = this.extractPracticalThemes(result.text);
     const quality = this.assessBalancedSourceQuality(researchResults);
     const comprehensiveness = this.calculatePracticalComprehensiveness(researchResults);
+    const analysisDuration = Date.now() - analysisStartTime;
+    console.log(`TIMING LOGS: Completed synthesis analysis in ${analysisDuration}ms - extracted ${insights.length} insights, ${themes.length} themes`);
 
     return {
       keyInsights: insights,

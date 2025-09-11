@@ -20,10 +20,16 @@ export class FallbackModule {
     console.warn(`🔧 Creating fallback content for "${topic}" due to generation failure:`, error.message);
 
     // Extract available insights and themes
+    const extractionStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting fallback content data extraction from synthesis`);
     const insights = synthesis?.keyInsights || [];
     const themes = synthesis?.contentThemes || [];
+    const extractionDuration = Date.now() - extractionStartTime;
+    console.log(`TIMING LOGS: Completed fallback data extraction in ${extractionDuration}ms - ${insights.length} insights, ${themes.length} themes`);
     
     // Create basic progressive structure
+    const structureStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting fallback content structure creation`);
     const sections: ContentSection[] = [
       {
         title: `Understanding ${topic} - Foundation`,
@@ -47,11 +53,19 @@ export class FallbackModule {
         learningObjective: `Apply ${topic} concepts in practical situations`
       }
     ];
+    const structureDuration = Date.now() - structureStartTime;
+    console.log(`TIMING LOGS: Completed fallback content structure creation in ${structureDuration}ms - ${sections.length} sections`);
 
     // Create fallback takeaways and next steps
+    const takeawaysStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting fallback takeaways and next steps creation`);
     const keyTakeaways = this.createFallbackTakeaways(topic, insights, themes);
     const nextSteps = this.createFallbackNextSteps(topic);
+    const takeawaysDuration = Date.now() - takeawaysStartTime;
+    console.log(`TIMING LOGS: Completed fallback takeaways creation in ${takeawaysDuration}ms - ${keyTakeaways.length} takeaways, ${nextSteps.length} next steps`);
 
+    const formattingStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting fallback content formatting and finalization`);
     const fallbackContent: GeneratedContent = {
       title: `Understanding ${topic}`,
       content: formatAsMDX({
@@ -67,6 +81,8 @@ export class FallbackModule {
         sections.reduce((total, section) => total + section.content.length, 0)
       )
     };
+    const formattingDuration = Date.now() - formattingStartTime;
+    console.log(`TIMING LOGS: Completed fallback content formatting in ${formattingDuration}ms`);
 
     console.log("✅ Fallback content created with progressive learning structure");
     return fallbackContent;

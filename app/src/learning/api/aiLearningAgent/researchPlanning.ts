@@ -63,12 +63,16 @@ INSTRUCTIONS:
 Your goal: Create a comprehensive research plan that balances general accessibility (via 5 general queries) with specialized depth (via recommended engine queries), following the research-driven recommendations above.`;
 
     try {
+      const aiStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting AI research plan generation using ${this.model.modelId} - prompt length: ${prompt.length} chars`);
       const result = await (generateObject as any)({
         model: this.model,
         prompt,
         schema: ResearchPlanSchema,
         temperature: 0.6, // Lower temperature for more consistent, logical planning
       });
+      const aiDuration = Date.now() - aiStartTime;
+      console.log(`TIMING LOGS: Completed AI research plan generation in ${aiDuration}ms - model: ${this.model.modelId}`);
 
       // Validate the result structure
       if (!result.object || !result.object.researchQueries || !Array.isArray(result.object.researchQueries)) {
@@ -78,25 +82,39 @@ Your goal: Create a comprehensive research plan that balances general accessibil
 
       // Enhanced validation with schema refinement
       try {
+        const validationStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting research plan schema validation`);
         const validatedPlan = ResearchPlanSchema.parse(result.object);
+        const validationDuration = Date.now() - validationStartTime;
+        console.log(`TIMING LOGS: Completed research plan schema validation in ${validationDuration}ms`);
         console.log('✅ Research plan passed schema validation');
         
         // Additional validation and enhancement
+        const enhancementStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting research plan enhancement and query validation`);
         const plan = this.ensureGeneralQueries(validatedPlan, topic);
+        const enhancementDuration = Date.now() - enhancementStartTime;
+        console.log(`TIMING LOGS: Completed research plan enhancement in ${enhancementDuration}ms`);
         return plan;
         
       } catch (schemaError) {
         console.warn('⚠️ Research plan failed schema validation, applying corrections:', schemaError);
         
         // Try to fix the plan before falling back
+        const correctionStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting research plan correction due to validation failure`);
         const correctedPlan = this.ensureGeneralQueries(result.object, topic);
         
         // Validate the corrected plan
         try {
           const finalPlan = ResearchPlanSchema.parse(correctedPlan);
+          const correctionDuration = Date.now() - correctionStartTime;
+          console.log(`TIMING LOGS: Completed research plan correction in ${correctionDuration}ms`);
           console.log('✅ Corrected research plan passed validation');
           return finalPlan;
         } catch (finalError) {
+          const correctionDuration = Date.now() - correctionStartTime;
+          console.log(`TIMING LOGS: Failed research plan correction after ${correctionDuration}ms`);
           console.error('❌ Failed to correct research plan, using fallback');
           throw finalError;
         }
@@ -106,7 +124,12 @@ Your goal: Create a comprehensive research plan that balances general accessibil
       console.error('❌ Structured research plan generation failed, creating fallback plan:', error);
       
       // Create fallback plan with mandatory 5 general queries
-      return this.createFallbackPlan(topic, understanding);
+      const fallbackStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting fallback research plan creation due to AI generation failure`);
+      const fallbackPlan = this.createFallbackPlan(topic, understanding);
+      const fallbackDuration = Date.now() - fallbackStartTime;
+      console.log(`TIMING LOGS: Completed fallback research plan creation in ${fallbackDuration}ms`);
+      return fallbackPlan;
     }
   }
 

@@ -352,17 +352,17 @@ export const getResearchStats = async (
 
     // Try to get real-time progress from Redis
     try {
-      console.log(`🔍 DEBUG: Getting progress for topicId: ${topicId}`);
+      // console.log(`🔍 DEBUG: Getting progress for topicId: ${topicId}`);
       let progressData = await progressTracker.getProgressWithFallback(topicId);
       
       // Fallback: try with topic title if no progress found with ID
       if (!progressData && topic) {
-        console.log(`🔍 DEBUG: No progress found with ID, trying with topic title: ${topic.title}`);
+        // console.log(`🔍 DEBUG: No progress found with ID, trying with topic title: ${topic.title}`);
         progressData = await progressTracker.getProgressWithFallback(topic.title);
       }
       
       if (progressData) {
-        console.log(`🔍 DEBUG: Found progress data for ${topicId}:`, JSON.stringify(progressData, null, 2));
+        // console.log(`🔍 DEBUG: Found progress data for ${topicId}:`, JSON.stringify(progressData, null, 2));
         // Research is active or recently completed
         response.realTimeProgress = {
           isActive: progressData.status !== 'completed' && progressData.status !== 'failed',

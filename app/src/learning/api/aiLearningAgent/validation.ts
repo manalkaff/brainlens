@@ -11,22 +11,42 @@ export class ValidationModule {
    * Requirements 3.5, 4.4, 4.5: Validate accessibility, structure, logical flow, and clear takeaways
    */
   validateContentAccessibility(content: GeneratedContent): ContentValidationResult {
+    const validationStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting comprehensive content validation`);
     const issues: string[] = [];
     const suggestions: string[] = [];
 
     // Validate content accessibility (Requirement 3.5)
+    const accessibilityStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting language accessibility validation`);
     this.validateLanguageAccessibility(content, issues, suggestions);
+    const accessibilityDuration = Date.now() - accessibilityStartTime;
+    console.log(`TIMING LOGS: Completed language accessibility validation in ${accessibilityDuration}ms`);
     
     // Validate content structure (Requirement 4.4)
+    const structureStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting content structure validation`);
     this.validateContentStructure(content, issues, suggestions);
+    const structureDuration = Date.now() - structureStartTime;
+    console.log(`TIMING LOGS: Completed content structure validation in ${structureDuration}ms`);
     
     // Validate logical flow (Requirement 4.5)
+    const flowStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting logical flow validation`);
     this.validateLogicalFlow(content, issues, suggestions);
+    const flowDuration = Date.now() - flowStartTime;
+    console.log(`TIMING LOGS: Completed logical flow validation in ${flowDuration}ms`);
     
     // Validate clear takeaways (Requirement 4.5)
+    const takeawaysStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting clear takeaways validation`);
     this.validateClearTakeaways(content, issues, suggestions);
+    const takeawaysDuration = Date.now() - takeawaysStartTime;
+    console.log(`TIMING LOGS: Completed clear takeaways validation in ${takeawaysDuration}ms`);
 
     const isValid = issues.length === 0;
+    const totalValidationDuration = Date.now() - validationStartTime;
+    console.log(`TIMING LOGS: Completed comprehensive content validation in ${totalValidationDuration}ms - found ${issues.length} issues`);
     
     if (!isValid) {
       console.warn(`⚠️ Content validation found ${issues.length} issues:`, issues);

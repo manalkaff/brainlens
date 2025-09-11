@@ -24,7 +24,11 @@ export class TopicUnderstandingModule {
       const basicQuery = `What is "${topic}" definition meaning explanation`;
       
       console.log(`🔎 Basic research query: "${basicQuery}"`);
+      const searchStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting SearXNG search for topic understanding - query: "${basicQuery}"`);
       const searchResponse = await SearxngUtils.searchWithAgent("general", basicQuery);
+      const searchDuration = Date.now() - searchStartTime;
+      console.log(`TIMING LOGS: Completed SearXNG search for topic understanding in ${searchDuration}ms - found ${searchResponse.results?.length || 0} results`);
       
       if (!searchResponse.results || searchResponse.results.length === 0) {
         throw new Error(`No search results found for topic: ${topic}`);
@@ -34,11 +38,15 @@ export class TopicUnderstandingModule {
       const topResults = searchResponse.results.slice(0, 5);
       
       // Step 2: Build research context from sources
+      const contextStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting research context building from ${topResults.length} search results`);
       const researchContext = topResults
         .map((result: SearchResult, index: number) => 
           `[Source ${index + 1}] ${result.title}\n${result.snippet}\nURL: ${result.url}\n`
         )
         .join("\n");
+      const contextDuration = Date.now() - contextStartTime;
+      console.log(`TIMING LOGS: Completed research context building in ${contextDuration}ms - context length: ${researchContext.length} chars`);
       
       // Step 3: AI analyzes research to understand the topic
       const analysisPrompt = `You are a research analyst tasked with understanding a topic based ONLY on the research provided below. You have NO prior knowledge about this topic.
@@ -72,18 +80,24 @@ Based ONLY on what you learned from these research sources, analyze the topic "$
 
 IMPORTANT: Use ONLY the exact enum values specified above. Be analytical and logical. Base your recommendations ONLY on what the research sources reveal about this topic.`;
 
+      const aiStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting AI topic analysis using ${this.fastModel.modelId} - prompt length: ${analysisPrompt.length} chars`);
       const result = await (generateObject as any)({
         model: this.fastModel,
         prompt: analysisPrompt,
         schema: TopicUnderstandingSchema,
         temperature: 0.3, // Low temperature for analytical consistency
       });
+      const aiDuration = Date.now() - aiStartTime;
+      console.log(`TIMING LOGS: Completed AI topic analysis in ${aiDuration}ms - model: ${this.fastModel.modelId}`);
 
       // Validate the result structure
       if (!result.object || typeof result.object !== 'object') {
         throw new Error('Invalid topic understanding structure generated');
       }
       
+      const processingStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting topic understanding result processing`);
       const understanding = result.object;
       
       console.log(`✅ Topic understanding complete:`);
@@ -91,6 +105,9 @@ IMPORTANT: Use ONLY the exact enum values specified above. Be analytical and log
       console.log(`   Category: ${understanding.category}`);
       console.log(`   Complexity: ${understanding.complexity}`);
       console.log(`   Recommended engines: ${Object.entries(understanding.engineRecommendations).filter(([_, value]) => value).map(([key]) => key).join(', ')}`);
+      
+      const processingDuration = Date.now() - processingStartTime;
+      console.log(`TIMING LOGS: Completed topic understanding result processing in ${processingDuration}ms`);
       
       return understanding;
       

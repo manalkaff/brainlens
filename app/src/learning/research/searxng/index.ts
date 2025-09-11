@@ -76,31 +76,58 @@ export class SearxngUtils {
     totalResults: number;
     query: string;
   }> {
+    const searchStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting SearXNG search with agent "${agentName}" - query: "${query}"`);
+    
     const client = this.createClientForAgent(agentName);
+    
+    const optimizationStartTime = Date.now();
+    console.log(`TIMING LOGS: Starting query optimization for agent "${agentName}"`);
     const optimizedQueries = AgentConfigManager.optimizeQuery(agentName, query, context);
     const searchOptions = AgentConfigManager.getSearchOptions(agentName);
+    const optimizationDuration = Date.now() - optimizationStartTime;
+    console.log(`TIMING LOGS: Completed query optimization in ${optimizationDuration}ms - ${optimizedQueries.length} optimized queries`);
 
     // Use the first optimized query for the main search
     const mainQuery = optimizedQueries[0] || query;
     
     try {
+      const networkStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting network request to SearXNG for agent "${agentName}"`);
       const response = await searxngRetryHandler.execute(async () => {
         return await searxngCircuitBreaker.execute(async () => {
           return await client.search(mainQuery, searchOptions);
         });
       });
+      const networkDuration = Date.now() - networkStartTime;
+      console.log(`TIMING LOGS: Completed SearXNG network request in ${networkDuration}ms - found ${response.results?.length || 0} raw results`);
 
       // Filter results based on agent configuration
+      const filteringStartTime = Date.now();
+      console.log(`TIMING LOGS: Starting result filtering for agent "${agentName}"`);
       const filteredResults = AgentConfigManager.filterResults(agentName, response.results);
+      const filteringDuration = Date.now() - filteringStartTime;
+      console.log(`TIMING LOGS: Completed result filtering in ${filteringDuration}ms - ${filteredResults.length} filtered results`);
+
+      const totalSearchDuration = Date.now() - searchStartTime;
+      console.log(`TIMING LOGS: Completed full SearXNG search with agent "${agentName}" in ${totalSearchDuration}ms`);
 
       return {
         ...response,
         results: filteredResults
       };
     } catch (error) {
+      const errorDuration = Date.now() - searchStartTime;
+      console.log(`TIMING LOGS: SearXNG search failed for agent "${agentName}" after ${errorDuration}ms - error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
       // Handle errors with recovery strategies
       if (isSearxngError(error)) {
-        return await SearxngErrorRecovery.handleError(error, 'cache');
+        const recoveryStartTime = Date.now();
+        console.log(`TIMING LOGS: Starting SearXNG error recovery`);
+        const recoveryResult = await SearxngErrorRecovery.handleError(error, 'cache');
+        const recoveryDuration = Date.now() - recoveryStartTime;
+        console.log(`TIMING LOGS: Completed SearXNG error recovery in ${recoveryDuration}ms`);
+        return recoveryResult;
       }
       throw error;
     }
