@@ -9,6 +9,19 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
+        ws: true,
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            // Ensure cookies are forwarded for authentication
+            if (req.headers.cookie) {
+              proxyReq.setHeader('cookie', req.headers.cookie);
+            }
+            // Forward other important headers
+            if (req.headers.authorization) {
+              proxyReq.setHeader('authorization', req.headers.authorization);
+            }
+          });
+        }
       },
       // Proxy operations calls to the backend server
       '/operations': {

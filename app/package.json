@@ -1,5 +1,24 @@
 {
-  "name": "opensaas",
+  "name": "brainlens",
+  "version": "1.0.0",
+  "description": "AI-Powered Learning Research Platform - Hackathon submission for Code with Kiro",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/brainlens.git"
+  },
+  "keywords": [
+    "ai",
+    "learning",
+    "education",
+    "research",
+    "kiro",
+    "hackathon",
+    "wasp",
+    "typescript",
+    "react"
+  ],
+  "author": "BrainLens Team",
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@ai-sdk/openai": "^2.0.10",

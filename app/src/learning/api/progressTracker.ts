@@ -22,6 +22,7 @@ export interface SubtopicProgress {
   duration?: number;
   result?: any;
   error?: string;
+  topicId?: string; // Database ID of the stored subtopic
 }
 
 export interface ResearchProgress {
@@ -324,7 +325,8 @@ export class ProgressTracker {
       endTime: subtopicProgress.endTime || (subtopicProgress.status === 'completed' ? now : undefined),
       duration: subtopicProgress.duration,
       result: subtopicProgress.result,
-      error: subtopicProgress.error
+      error: subtopicProgress.error,
+      topicId: subtopicProgress.topicId // Include database ID
     };
 
     if (existingIndex !== -1) {

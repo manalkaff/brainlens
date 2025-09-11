@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
@@ -8,6 +9,7 @@ import { EnhancedTopicTree } from '../ui/EnhancedTopicTree';
 import { MDXContent } from '../ui/MDXContent';
 import { LoadingSkeleton } from '../ui/LoadingSkeleton';
 import { useTopicTree, useTopicContent } from '../../hooks/useTopicTree';
+import { useSubtopicContent } from '../../hooks/useSubtopicContent';
 import { useContentBookmarks } from '../../hooks/useContentGeneration';
 import { useIterativeResearch } from '../../hooks/useIterativeResearch';
 import { useTopicNavigation } from '../../hooks/useTopicNavigation';
@@ -56,6 +58,29 @@ import {
 
 export function ExploreTab() {
   const { topic, isLoading: topicLoading, enhancedResearchStats, isResearching } = useTopicContext();
+  
+  // URL parameter handling for subtopic selection
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSubtopicId = searchParams.get('subtopic');
+  
+  // Parse the subtopic ID if it's in comma-separated format (maintopicid,subtopicid)
+  const parseSubtopicId = useCallback((rawSubtopicId: string | null): { mainTopicId: string | null; subtopicId: string | null } => {
+    if (!rawSubtopicId) {
+      return { mainTopicId: null, subtopicId: null };
+    }
+    
+    if (rawSubtopicId.includes(',')) {
+      const parts = rawSubtopicId.split(',');
+      if (parts.length === 2) {
+        return { mainTopicId: parts[0], subtopicId: parts[1] };
+      }
+    }
+    
+    // If not comma-separated, treat as plain subtopic ID
+    return { mainTopicId: null, subtopicId: rawSubtopicId };
+  }, []);
+  
+  const { mainTopicId: parsedMainTopicId, subtopicId: parsedSubtopicId } = parseSubtopicId(selectedSubtopicId);
   
   // New iterative research system (legacy hook for backward compatibility)
   const {
@@ -120,9 +145,42 @@ export function ExploreTab() {
     generateShareableURL,
     handleDeepLink
   } = useTopicNavigation(topics);
+  
+  // Subtopic content handling using the new API
+  const {
+    content: subtopicContent,
+    isLoading: isLoadingSubtopic,
+    isGenerating: isGeneratingSubtopic,
+    error: subtopicError,
+    progress: subtopicProgress,
+    refetch: refetchSubtopic,
+    clearError: clearSubtopicError
+  } = useSubtopicContent(
+    topic?.id || null,
+    selectedSubtopicId,
+    {
+      userLevel: 'intermediate',
+      learningStyle: 'textual'
+    }
+  );
+  
 
+  // Find the subtopic by ID if one is selected via URL
+  const findTopicById = useCallback((topicList: any[], id: string): any | null => {
+    for (const topicItem of topicList) {
+      if (topicItem.id === id) return topicItem;
+      if (topicItem.children) {
+        const found = findTopicById(topicItem.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  }, []);
+
+  const selectedSubtopicFromUrl = parsedSubtopicId ? findTopicById(topics, parsedSubtopicId) : null;
+  
   // Determine the currently active topic and content target
-  const activeTopicForContent = selectedSubtopic || selectedTopic || (topic ? {
+  const activeTopicForContent = selectedSubtopicFromUrl || selectedSubtopic || selectedTopic || (topic ? {
     id: topic.id,
     title: topic.title,
     slug: topic.slug,
@@ -147,24 +205,49 @@ export function ExploreTab() {
     return (researchResult.subtopicResults as Record<string, any>)[subtopicTitle];
   };
 
-  // Use iterative research system as primary content source
-  const currentContent = researchResult ? {
-    content: selectedSubtopic 
-      ? getSubtopicResult(selectedSubtopic.title)?.content?.content || ''
-      : researchResult.mainTopic.content.content,
-    sources: selectedSubtopic
-      ? getSubtopicResult(selectedSubtopic.title)?.sources || []
-      : researchResult.mainTopic.sources,
-    isFromResearch: true
-  } : { content: '', sources: [], isFromResearch: false };
+  // Determine content source - prioritize URL-based subtopic content
+  const currentContent = useMemo(() => {
+    // Priority 1: URL-based subtopic content (if parsedSubtopicId exists and content is available)
+    if (parsedSubtopicId && subtopicContent?.success && subtopicContent.content) {
+      return {
+        content: subtopicContent.content,
+        sources: subtopicContent.sources || [],
+        isFromResearch: false,
+        isFromSubtopicAPI: true
+      };
+    }
+    
+    // Priority 2: Navigation hook subtopic content (fallback for backward compatibility)
+    if (selectedSubtopic && researchResult) {
+      return {
+        content: getSubtopicResult(selectedSubtopic.title)?.content?.content || '',
+        sources: getSubtopicResult(selectedSubtopic.title)?.sources || [],
+        isFromResearch: true,
+        isFromSubtopicAPI: false
+      };
+    }
+    
+    // Priority 3: Main topic content from research results
+    if (researchResult) {
+      return {
+        content: researchResult.mainTopic.content.content,
+        sources: researchResult.mainTopic.sources,
+        isFromResearch: true,
+        isFromSubtopicAPI: false
+      };
+    }
+    
+    return { content: '', sources: [], isFromResearch: false, isFromSubtopicAPI: false };
+  }, [parsedSubtopicId, subtopicContent, selectedSubtopic, researchResult, getSubtopicResult, subtopicContent?.content]);
 
   // Determine if main topic is still being researched (not subtopics)
   const isMainTopicResearching = isResearching && 
     enhancedResearchStats?.realTimeProgress && 
     !enhancedResearchStats.realTimeProgress.mainTopicCompleted;
 
-  // Combine loading states - only show as generating if main topic is still being researched
-  const isGeneratingContent = isMainTopicResearching || isGeneratingNavContent;
+  // Combine loading states - include subtopic states
+  const isGeneratingContent = isMainTopicResearching || isGeneratingNavContent || isGeneratingSubtopic;
+  const isLoadingContent = isLoadingSubtopic;
 
   // Debug logging (can be removed after testing)
   // console.log('🔥 EXPLORE TAB DEBUG:', {
@@ -259,6 +342,17 @@ export function ExploreTab() {
     }
   }, [activeTopicForContent, startResearch]);
 
+  // URL parameter update functions
+  const updateSubtopicUrl = useCallback((subtopicId: string | null) => {
+    const newSearchParams = new URLSearchParams(searchParams);
+    if (subtopicId) {
+      newSearchParams.set('subtopic', subtopicId);
+    } else {
+      newSearchParams.delete('subtopic');
+    }
+    setSearchParams(newSearchParams);
+  }, [searchParams, setSearchParams]);
+
   // Enhanced unified topic selection handler that works for both sidebar and cards
   const handleTopicSelect = async (topic: TopicTreeItem, source: 'sidebar' | 'cards' | 'breadcrumb' = 'sidebar') => {
     try {
@@ -270,6 +364,7 @@ export function ExploreTab() {
         topicId: topic.id,
         currentSelectedTopic: selectedTopic?.title,
         currentSelectedSubtopic: selectedSubtopic?.title,
+        selectedSubtopicId,
         hasExistingContent: !!currentContent.content
       });
 
@@ -285,19 +380,23 @@ export function ExploreTab() {
         });
         
         if (isSubtopic) {
-          console.log('🌿 Selecting as subtopic');
+          console.log('🌿 Selecting as subtopic via URL');
+          updateSubtopicUrl(topic.id);
           selectSubtopic(topic, source);
         } else {
           console.log('🌳 Selecting as new main topic');
+          updateSubtopicUrl(null); // Clear subtopic when selecting new main topic
           selectTopic(topic, source);
         }
       } else {
         console.log('🌳 Selecting as main topic (no parent or same topic)');
+        updateSubtopicUrl(null); // Clear subtopic when selecting main topic
         selectTopic(topic, source);
       }
 
       // Clear any previous errors
       setSelectionError(null);
+      clearSubtopicError();
     } catch (error) {
       console.error('❌ Topic selection failed:', error);
       setSelectionError(error instanceof Error ? error.message : 'Failed to select topic');
@@ -307,7 +406,7 @@ export function ExploreTab() {
     }
   };
 
-  // Enhanced subtopic card click handler
+  // Enhanced subtopic card click handler with URL integration
   const handleSubtopicCardClick = async (subtopic: TopicTreeItem) => {
     try {
       setSelectionError(null);
@@ -318,19 +417,24 @@ export function ExploreTab() {
         subtopicId: subtopic.id,
         currentSelectedTopic: selectedTopic?.title,
         currentSelectedSubtopic: selectedSubtopic?.title,
+        selectedSubtopicId,
         hasExistingContent: !!currentContent.content
       });
 
+      // Update URL with subtopic ID
+      updateSubtopicUrl(subtopic.id);
+
       // Always treat card clicks as subtopic selections
       if (selectedTopic) {
-        console.log('🔄 Selecting subtopic via navigation hook');
+        console.log('🔄 Selecting subtopic via navigation hook and URL');
         selectSubtopic(subtopic, 'cards');
       } else {
         console.log('🔄 Selecting as main topic via navigation hook');
         selectTopic(subtopic, 'cards');
       }
 
-      // The content generation will be triggered by the useEffect that monitors selectedSubtopic changes
+      // Clear any previous errors
+      clearSubtopicError();
       
     } catch (error) {
       console.error('❌ Subtopic card selection failed:', error);
@@ -356,7 +460,16 @@ export function ExploreTab() {
   // Clear selection error when topic changes
   useEffect(() => {
     setSelectionError(null);
-  }, [activeTopicForContent?.id]);
+    clearSubtopicError();
+  }, [activeTopicForContent?.id, clearSubtopicError]);
+  
+  // Handle back to main topic function
+  const handleBackToMainTopic = useCallback(() => {
+    updateSubtopicUrl(null);
+    if (selectedTopic) {
+      selectTopic(selectedTopic, 'breadcrumb');
+    }
+  }, [updateSubtopicUrl, selectedTopic, selectTopic]);
 
   // Mark content as read when it's viewed
   useEffect(() => {
@@ -364,6 +477,14 @@ export function ExploreTab() {
       markAsRead(activeTopicForContent.id);
     }
   }, [currentContent.content, activeTopicForContent?.id, isRead, markAsRead]);
+
+  // Sync navigation hook with URL parameters to ensure consistency
+  useEffect(() => {
+    if (parsedSubtopicId && selectedSubtopicFromUrl && selectedSubtopic?.id !== parsedSubtopicId) {
+      // URL changed but navigation hook hasn't caught up - sync it
+      selectSubtopic(selectedSubtopicFromUrl, 'url');
+    }
+  }, [selectedSubtopicId, parsedSubtopicId, selectedSubtopicFromUrl, selectedSubtopic?.id, selectSubtopic]);
 
   // Bookmark management
   const toggleTopicBookmark = (topicId: string) => {
@@ -726,32 +847,37 @@ export function ExploreTab() {
                       Read
                     </div>
                   )}
-                  {(isGeneratingContent || isTransitioning) && (
+                  {(isGeneratingContent || isTransitioning || isLoadingContent) && (
                     <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       {isTransitioning ? 'Loading topic...' : 
+                       isGeneratingSubtopic ? `Generating subtopic... ${subtopicProgress}%` :
+                       isLoadingContent ? 'Loading subtopic content...' :
                        isGeneratingContent ? 'Researching content...' : 'Loading...'}
                     </div>
                   )}
-                  {selectionError && (
+                  {(selectionError || subtopicError) && (
                     <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-1 rounded">
-                      <span className="max-w-xs truncate" title={selectionError}>
-                        {selectionError}
+                      <span className="max-w-xs truncate" title={selectionError || subtopicError || ''}>
+                        {subtopicError || selectionError}
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={handleGenerateContent}
-                        disabled={isGeneratingContent}
+                        onClick={parsedSubtopicId ? refetchSubtopic : handleGenerateContent}
+                        disabled={isGeneratingContent || isLoadingContent}
                         className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
-                        title="Retry content generation"
+                        title={parsedSubtopicId ? "Retry subtopic content" : "Retry content generation"}
                       >
                         <Zap className="w-3 h-3" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSelectionError(null)}
+                        onClick={() => {
+                          setSelectionError(null);
+                          clearSubtopicError();
+                        }}
                         className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
                         title="Dismiss error"
                       >
@@ -760,30 +886,44 @@ export function ExploreTab() {
                     </div>
                   )}
                   {/* Show manual generate button if no content exists and no error */}
-                  {!currentContent.content && !isGeneratingContent && !selectionError && (
+                  {!currentContent.content && !isGeneratingContent && !isLoadingContent && !selectionError && !subtopicError && (
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={handleGenerateContent}
-                      disabled={isGeneratingContent}
+                      onClick={parsedSubtopicId ? refetchSubtopic : handleGenerateContent}
+                      disabled={isGeneratingContent || isLoadingContent}
                       className="text-xs"
                     >
                       <Zap className="w-3 h-3 mr-1" />
-                      Start Research
+                      {parsedSubtopicId ? 'Load Subtopic' : 'Start Research'}
                     </Button>
                   )}
                   {/* Show regenerate button if content exists */}
-                  {currentContent.content && !isGeneratingContent && (
+                  {currentContent.content && !isGeneratingContent && !isLoadingContent && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleGenerateContent}
-                      disabled={isGeneratingContent}
+                      onClick={parsedSubtopicId ? refetchSubtopic : handleGenerateContent}
+                      disabled={isGeneratingContent || isLoadingContent}
                       className="text-xs"
-                      title="Research again"
+                      title={parsedSubtopicId ? "Refresh subtopic" : "Research again"}
                     >
                       <Zap className="w-3 h-3 mr-1" />
-                      Research Again
+                      {parsedSubtopicId ? 'Refresh Subtopic' : 'Research Again'}
+                    </Button>
+                  )}
+                  
+                  {/* Show back to main topic button when viewing subtopic */}
+                  {parsedSubtopicId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleBackToMainTopic}
+                      className="text-xs"
+                      title="Back to main topic"
+                    >
+                      <ChevronLeft className="w-3 h-3 mr-1" />
+                      Main Topic
                     </Button>
                   )}
                   {/* Navigation controls */}
@@ -831,8 +971,91 @@ export function ExploreTab() {
 
         {/* Content Display Area */}
         <div className="flex-1 overflow-auto">
-          {/* Show research results if available */}
-          {researchResult ? (
+          {/* PRIORITY 1: Show subtopic content if subtopic is selected and has content */}
+          {parsedSubtopicId && currentContent.content && !isGeneratingContent && !isLoadingContent ? (
+            <div key={`content-${activeTopicForContent.id}`} className="p-6 space-y-6">{/* Breadcrumb Navigation */}
+              <BreadcrumbNavigation
+                navigationPath={getNavigationBreadcrumbs()}
+                onNavigateToPath={navigateToPath}
+              />
+              
+              {/* Show subtopic indicator if viewing subtopic */}
+              {parsedSubtopicId && selectedSubtopicFromUrl && (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-sm text-blue-800">
+                    <strong>Viewing Subtopic:</strong> {selectedSubtopicFromUrl.title}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBackToMainTopic}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    <ChevronLeft className="w-3 h-3 mr-1" />
+                    Back to {topic?.title}
+                  </Button>
+                </div>
+              )}
+
+              {/* Enhanced Content Header */}
+              <ContentHeader
+                topic={activeTopicForContent}
+                isSubtopic={selectedSubtopic !== null}
+                parentTopic={selectedTopic}
+                onBookmarkToggle={() => toggleTopicBookmark(activeTopicForContent.id)}
+                isBookmarked={bookmarkedTopics.includes(activeTopicForContent.id)}
+                isRead={isRead(activeTopicForContent.id)}
+                onMarkAsRead={() => markAsRead(activeTopicForContent.id)}
+              />
+              <MDXContent
+                key={`${activeTopicForContent.id}-${parsedSubtopicId || 'main'}-${currentContent.content ? btoa(currentContent.content.substring(0, 50)) : 'empty'}`}
+                content={currentContent.content}
+                topicTitle={selectedSubtopicFromUrl?.title || activeTopicForContent.title}
+                sources={currentContent.sources}
+                bookmarks={bookmarks}
+                onToggleBookmark={toggleBookmark}
+                isBookmarked={isBookmarked}
+                onMarkAsRead={markAsRead}
+                isRead={isRead}
+                isSubtopic={!!parsedSubtopicId}
+                onBackToMain={parsedSubtopicId ? handleBackToMainTopic : undefined}
+              />
+            </div>
+          ) : parsedSubtopicId && subtopicContent && !subtopicContent.success && !isLoadingSubtopic ? (
+            <div className="p-6">
+              <div className="text-center py-8">
+                <div className="mb-4">
+                  <BookOpen className="w-12 h-12 mx-auto text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Subtopic Content Not Available</h3>
+                <p className="text-muted-foreground mb-4">
+                  {subtopicContent.message || `Content for "${selectedSubtopicFromUrl?.title}" hasn't been generated yet.`}
+                </p>
+                <p className="text-sm text-muted-foreground mb-6">
+                  {subtopicContent.suggestion || 'Try generating the main topic content first to create subtopic content.'}
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <Button onClick={handleBackToMainTopic} variant="outline">
+                    <ChevronLeft className="w-4 h-4 mr-2" />
+                    Back to Main Topic
+                  </Button>
+                  <Button onClick={() => refetchSubtopic()} disabled={isLoadingSubtopic}>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Try Again
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : parsedSubtopicId && (isLoadingSubtopic || isGeneratingSubtopic) ? (
+            <div className="p-6">
+              <div className="text-center py-8">
+                <div className="mb-4">
+                  <Loader2 className="w-8 h-8 mx-auto animate-spin text-primary" />
+                </div>
+                <p className="text-muted-foreground">Loading subtopic content...</p>
+              </div>
+            </div>
+          ) : researchResult ? (
             <div className="p-6">
               {/* Main topic content */}
               <div className="space-y-6">
@@ -955,13 +1178,93 @@ export function ExploreTab() {
                 </div>
               )}
               
-              {currentContent.content && !isGeneratingContent ? (
+              {/* Show generating state for subtopics */}
+              {parsedSubtopicId && isGeneratingSubtopic && (
+                <div className="p-6">
+                  <RealTimeProgressDisplay
+                    progressData={{
+                      isActive: true,
+                      phase: 'subtopics',
+                      currentStep: {
+                        number: 1,
+                        name: 'Generating Subtopic',
+                        description: `Generating subtopic content... ${subtopicProgress}%`,
+                        startTime: new Date().toISOString(),
+                        progress: subtopicProgress
+                      },
+                      completedSteps: [],
+                      overallProgress: subtopicProgress,
+                      mainTopicCompleted: true
+                    }}
+                    topicTitle={selectedSubtopicFromUrl?.title || 'Subtopic'}
+                    onRetry={refetchSubtopic}
+                    onClear={clearSubtopicError}
+                    error={subtopicError}
+                  />
+                </div>
+              )}
+              
+              {/* Show subtopic error state */}
+              {parsedSubtopicId && subtopicError && !isGeneratingSubtopic && (
+                <div className="p-6">
+                  <ErrorDisplay
+                    error={{
+                      type: 'content_generation',
+                      message: subtopicError,
+                      retryable: true,
+                      timestamp: new Date()
+                    }}
+                    onRetry={refetchSubtopic}
+                    onDismiss={clearSubtopicError}
+                    isRetrying={isLoadingContent}
+                  />
+                </div>
+              )}
+              
+              {/* Show loading state for subtopic */}
+              {parsedSubtopicId && isLoadingContent && !isGeneratingSubtopic && (
+                <div className="p-6">
+                  <ContentGenerationSkeleton />
+                </div>
+              )}
+              
+              {/* Debug: Always visible debug box */}
+              <div style={{padding: '10px', background: '#ffcccc', margin: '10px 0', fontSize: '12px', border: '2px solid red'}}>
+                🐛 ALWAYS VISIBLE DEBUG: 
+                Content Length: {currentContent.content?.length || 0} | 
+                Subtopic: {selectedSubtopicFromUrl?.title || 'Main Topic'} |
+                ID: {parsedSubtopicId || 'none'} |
+                Hash: {currentContent.content ? btoa(currentContent.content.substring(0, 20)) : 'empty'} |
+                isGenerating: {isGeneratingContent ? 'true' : 'false'} |
+                isLoading: {isLoadingContent ? 'true' : 'false'} |
+                hasContent: {currentContent.content ? 'true' : 'false'}
+              </div>
+
+              {currentContent.content && !isGeneratingContent && !isLoadingContent ? (
                 <div key={`content-${activeTopicForContent.id}`} className="p-6 space-y-6">
                   {/* Breadcrumb Navigation */}
                   <BreadcrumbNavigation
                     navigationPath={getNavigationBreadcrumbs()}
                     onNavigateToPath={navigateToPath}
                   />
+                  
+                  {/* Show subtopic indicator if viewing subtopic */}
+                  {parsedSubtopicId && selectedSubtopicFromUrl && (
+                    <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="text-sm text-blue-800">
+                        <strong>Viewing Subtopic:</strong> {selectedSubtopicFromUrl.title}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleBackToMainTopic}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        <ChevronLeft className="w-3 h-3 mr-1" />
+                        Back to {topic?.title}
+                      </Button>
+                    </div>
+                  )}
 
                   {/* Enhanced Content Header */}
                   <ContentHeader
@@ -974,16 +1277,31 @@ export function ExploreTab() {
                     onMarkAsRead={() => markAsRead(activeTopicForContent.id)}
                   />
                   
+                  {(() => {
+                    console.log('🚀 RENDERING MDXContent with:', {
+                      key: `${activeTopicForContent.id}-${parsedSubtopicId || 'main'}`,
+                      contentLength: currentContent.content?.length,
+                      contentPreview: currentContent.content?.substring(0, 100) + '...',
+                      topicTitle: selectedSubtopicFromUrl?.title || activeTopicForContent.title,
+                      isFromSubtopicAPI: currentContent.isFromSubtopicAPI,
+                      activeTopicId: activeTopicForContent.id,
+                      parsedSubtopicId
+                    });
+                    return null;
+                  })()}
+                  
                   <MDXContent
-                    key={activeTopicForContent.id}
+                    key={`${activeTopicForContent.id}-${parsedSubtopicId || 'main'}-${currentContent.content ? btoa(currentContent.content.substring(0, 50)) : 'empty'}`}
                     content={currentContent.content}
-                    topicTitle={activeTopicForContent.title}
+                    topicTitle={selectedSubtopicFromUrl?.title || activeTopicForContent.title}
                     sources={currentContent.sources}
                     bookmarks={bookmarks}
                     onToggleBookmark={toggleBookmark}
                     isBookmarked={isBookmarked}
                     onMarkAsRead={markAsRead}
                     isRead={isRead}
+                    isSubtopic={!!parsedSubtopicId}
+                    onBackToMain={parsedSubtopicId ? handleBackToMainTopic : undefined}
                   />
                   
                   {/* Show subtopic cards if the current topic has children or research subtopics */}
@@ -995,8 +1313,8 @@ export function ExploreTab() {
                           key={`subtopics-${activeTopicForContent.id}`}
                           subtopics={topicsToSubtopicCards(activeTopicForContent.children)}
                           onSubtopicClick={handleSubtopicCardClick}
-                          selectedSubtopicId={selectedSubtopic?.id}
-                          isGeneratingContent={isGeneratingContent || isTransitioning}
+                          selectedSubtopicId={parsedSubtopicId || selectedSubtopic?.id}
+                          isGeneratingContent={isGeneratingContent || isTransitioning || isLoadingContent}
                         />
                       ) : (
                         // Show research subtopics as cards
@@ -1023,6 +1341,31 @@ export function ExploreTab() {
               ) : isGeneratingContent ? (
                 <div className="p-6">
                   <ContentGenerationSkeleton />
+                </div>
+              ) : parsedSubtopicId && subtopicContent && !subtopicContent.success && !isLoadingSubtopic ? (
+                <div className="p-6">
+                  <div className="text-center py-8">
+                    <div className="mb-4">
+                      <BookOpen className="w-12 h-12 mx-auto text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Subtopic Content Not Available</h3>
+                    <p className="text-muted-foreground mb-4">
+                      {subtopicContent.message || `Content for "${selectedSubtopicFromUrl?.title}" hasn't been generated yet.`}
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      {subtopicContent.suggestion || 'Try generating the main topic content first to create subtopic content.'}
+                    </p>
+                    <div className="flex gap-2 justify-center">
+                      <Button onClick={handleBackToMainTopic} variant="outline">
+                        <ChevronLeft className="w-4 h-4 mr-2" />
+                        Back to Main Topic
+                      </Button>
+                      <Button onClick={() => refetchSubtopic()} disabled={isLoadingSubtopic}>
+                        <Zap className="w-4 h-4 mr-2" />
+                        Try Again
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <ContentPlaceholder

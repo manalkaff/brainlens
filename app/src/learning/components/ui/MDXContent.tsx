@@ -35,6 +35,8 @@ interface MDXContentProps {
   onMarkAsRead: (sectionId: string) => void;
   isBookmarked: (sectionId: string) => boolean;
   isRead: (sectionId: string) => boolean;
+  isSubtopic?: boolean;
+  onBackToMain?: () => void;
 }
 
 interface TableOfContentsItem {

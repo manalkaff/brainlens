@@ -239,7 +239,7 @@ export class IterativeResearchEngine {
   }
 
   /**
-   * New method for background subtopic processing with progress updates
+   * New method for background subtopic processing with progress updates and database storage
    */
   private async processSubtopicsInBackground(
     subtopics: SubtopicInfo[],
@@ -251,8 +251,24 @@ export class IterativeResearchEngine {
     try {
       console.log(`🚀 Starting background processing of ${subtopics.length} subtopics for: ${mainTopicId}`);
       
-      // Process subtopics sequentially to avoid overwhelming the system  
-      for (const subtopic of subtopics) {
+      // Get main topic from database for parent relationship
+      const mainTopicRecord = await prisma.topic.findFirst({
+        where: {
+          OR: [
+            { id: mainTopicId },
+            { title: mainTopicId },
+            { slug: this.generateSlug(mainTopicId) }
+          ]
+        }
+      });
+      
+      if (!mainTopicRecord) {
+        console.error(`❌ Main topic not found in database: ${mainTopicId}`);
+        throw new Error(`Main topic not found: ${mainTopicId}`);
+      }
+      
+      // Process subtopics in parallel for better performance
+      const subtopicPromises = subtopics.map(async (subtopic) => {
         try {
           await progressTracker.updateSubtopicProgress(mainTopicId, subtopic.title, {
             status: 'in_progress',
@@ -273,16 +289,110 @@ export class IterativeResearchEngine {
             style: userContext.style
           } : undefined);
           
+          // Store subtopic in database
+          let subtopicId: string;
+          if (userContext?.userId) {
+            // Store as user content (will handle topic creation internally)
+            await this.storeUserContent(subtopic.title, result.result, {
+              userId: userContext.userId,
+              level: userContext.level,
+              style: userContext.style
+            });
+            
+            // Get the stored subtopic record to get its ID and set parent relationship
+            const subtopicSlug = this.generateSlug(subtopic.title);
+            let subtopicRecord = await prisma.topic.findFirst({
+              where: {
+                OR: [
+                  { title: subtopic.title },
+                  { slug: subtopicSlug },
+                  { slug: { startsWith: subtopicSlug + '-' } }
+                ]
+              }
+            });
+            
+            if (subtopicRecord) {
+              // Update parent relationship if not already set
+              if (!subtopicRecord.parentId) {
+                await prisma.topic.update({
+                  where: { id: subtopicRecord.id },
+                  data: { 
+                    parentId: mainTopicRecord.id,
+                    depth: 1,
+                    status: 'COMPLETED'
+                  }
+                });
+              }
+              subtopicId = subtopicRecord.id;
+            } else {
+              console.error(`❌ Failed to find stored subtopic: ${subtopic.title}`);
+              subtopicId = '';
+            }
+          } else {
+            // Store subtopic directly in database using existing logic
+            const baseSlug = this.generateSlug(subtopic.title);
+            
+            // Check if subtopic already exists with this parent relationship
+            let subtopicRecord = await prisma.topic.findFirst({
+              where: {
+                slug: baseSlug,
+                parentId: mainTopicRecord.id
+              }
+            });
+            
+            if (!subtopicRecord) {
+              // Generate unique slug to avoid conflicts
+              const uniqueSlug = await this.generateUniqueSlug(baseSlug, mainTopicRecord.slug);
+              
+              // Create subtopic with parent relationship
+              subtopicRecord = await prisma.topic.upsert({
+                where: { slug: uniqueSlug },
+                update: {
+                  title: subtopic.title,
+                  summary: result.result.content.keyTakeaways.join(" "),
+                  status: 'COMPLETED',
+                  parentId: mainTopicRecord.id,
+                  depth: 1,
+                  metadata: {
+                    researchMetadata: JSON.parse(JSON.stringify(result.result.metadata)),
+                    cacheKey: result.result.cacheKey,
+                    lastResearchUpdate: ensureTimestamp(result.result.timestamp).toISOString()
+                  } as any
+                },
+                create: {
+                  slug: uniqueSlug,
+                  title: subtopic.title,
+                  summary: result.result.content.keyTakeaways.join(" "),
+                  depth: 1,
+                  parentId: mainTopicRecord.id,
+                  status: 'COMPLETED',
+                  metadata: {
+                    researchMetadata: JSON.parse(JSON.stringify(result.result.metadata)),
+                    cacheKey: result.result.cacheKey,
+                    lastResearchUpdate: ensureTimestamp(result.result.timestamp).toISOString()
+                  } as any
+                }
+              });
+            }
+            
+            // Store generated content for subtopic
+            await this.storeGeneratedContent(subtopicRecord.id, result.result);
+            subtopicId = subtopicRecord.id;
+          }
+          
+          // Update progress tracking with database ID
           await progressTracker.updateSubtopicProgress(mainTopicId, subtopic.title, {
             status: 'completed',
             progress: 100,
+            topicId: subtopicId, // Add database ID to progress tracking
             result: {
               content: result.result.content.content,
               sourcesCount: result.result.sources.length
             }
           });
           
-          console.log(`✅ Completed background subtopic: ${subtopic.title}`);
+          console.log(`✅ Completed and stored background subtopic: ${subtopic.title} (ID: ${subtopicId})`);
+          return { subtopic, subtopicId, success: true };
           
         } catch (error) {
           console.error(`❌ Failed to process subtopic "${subtopic.title}":`, error);
@@ -291,12 +401,22 @@ export class IterativeResearchEngine {
             progress: 0,
             error: error instanceof Error ? error.message : 'Unknown error'
           });
+          return { subtopic, error, success: false };
         }
-      }
+      });
+
+      // Wait for all subtopics to complete (parallel processing)
+      const results = await Promise.allSettled(subtopicPromises);
+      
+      // Log summary of parallel processing results
+      const successfulCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failedCount = results.length - successfulCount;
+      
+      console.log(`🏁 Parallel subtopic processing completed: ${successfulCount}/${subtopics.length} successful, ${failedCount} failed`);
       
       // All subtopics completed
       await progressTracker.completeResearch(mainTopicId);
-      console.log(`🏁 All background subtopics completed for: ${mainTopicId}`);
+      console.log(`🏁 All background subtopics completed and stored for: ${mainTopicId}`);
       
     } catch (error) {
       console.error(`❌ Background subtopics processing failed for "${mainTopicId}":`, error);
@@ -307,81 +427,6 @@ export class IterativeResearchEngine {
     }
   }
 
-  /**
-   * Process subtopics recursively in parallel
-   */
-  private async processSubtopicsRecursively(
-    subtopics: SubtopicInfo[],
-    currentDepth: number,
-    maxDepth: number,
-    resultsMap: Map<string, TopicResearchResult>,
-    options: IterativeResearchOptions,
-    onProgress: (fromCache: boolean) => void,
-    userContext?: { userId?: string; level?: string; style?: string }
-  ): Promise<void> {
-    if (currentDepth >= maxDepth || subtopics.length === 0) {
-      return;
-    }
-    
-    // Sort subtopics by priority (1 = highest priority)
-    const sortedSubtopics = [...subtopics].sort((a, b) => a.priority - b.priority);
-    
-    // Process subtopics in batches to avoid overwhelming the system
-    const batches = this.chunkArray(sortedSubtopics, this.MAX_PARALLEL_SUBTOPICS);
-    
-    for (const batch of batches) {
-      console.log(`🚀 Processing batch of ${batch.length} subtopics at depth ${currentDepth}`);
-      
-      // Process batch in parallel
-      const batchPromises = batch.map(async (subtopic) => {
-        try {
-          const subtopicRequest: TopicResearchRequest = {
-            topic: subtopic.title,
-            depth: currentDepth,
-            maxDepth,
-            parentTopic: subtopic.title, // Store parent reference
-            userContext: options.userContext
-          };
-          
-          const { result, fromCache } = await this.researchSingleTopic(
-            subtopicRequest, 
-            options.forceRefresh || false,
-            userContext?.userId ? {
-              userId: userContext.userId,
-              level: userContext.level,
-              style: userContext.style
-            } : undefined
-          );
-          
-          resultsMap.set(subtopic.title, result);
-          onProgress(fromCache);
-          
-          // Recursively process subtopics of this subtopic
-          if (result.subtopics.length > 0 && currentDepth + 1 < maxDepth) {
-            await this.processSubtopicsRecursively(
-              result.subtopics,
-              currentDepth + 1,
-              maxDepth,
-              resultsMap,
-              options,
-              onProgress,
-              userContext?.userId ? {
-                userId: userContext.userId,
-                level: userContext.level,
-                style: userContext.style
-              } : undefined
-            );
-          }
-          
-        } catch (error) {
-          console.error(`Failed to process subtopic "${subtopic.title}":`, error);
-          // Continue with other subtopics even if one fails
-        }
-      });
-      
-      await Promise.allSettled(batchPromises);
-    }
-  }
 
   /**
    * Store research results to database for persistence
@@ -867,13 +912,6 @@ export class IterativeResearchEngine {
     return finalSlug;
   }
 
-  private chunkArray<T>(array: T[], chunkSize: number): T[][] {
-    const chunks: T[][] = [];
-    for (let i = 0; i < array.length; i += chunkSize) {
-      chunks.push(array.slice(i, i + chunkSize));
-    }
-    return chunks;
-  }
 }
 
 // Export singleton instance and main function

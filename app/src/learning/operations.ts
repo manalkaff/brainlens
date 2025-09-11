@@ -6,7 +6,8 @@ import type {
   GetTopicTree, 
   UpdateTopicProgress,
   GetUserProgressStats,
-  GetTopicProgressSummary
+  GetTopicProgressSummary,
+  GetSubtopicContent
 } from 'wasp/server/operations';
 import type { Topic, UserTopicProgress } from 'wasp/entities';
 import { TopicStatus } from '@prisma/client';
@@ -690,4 +691,194 @@ export const getTopicProgressSummary: GetTopicProgressSummary<TopicProgressSumma
       hierarchyProgress
     };
   }, 'GET_TOPIC_PROGRESS_SUMMARY', { userId: user.id, topicId: validatedTopicId });
+};
+
+// Subtopic Content Retrieval Query
+export const getSubtopicContentQuery: GetSubtopicContent = async ({ mainTopicId, subtopicId: rawSubtopicId, options }: { mainTopicId: string; subtopicId: string; options?: any }, context) => {
+  if (!context.user) {
+    throw createAuthenticationError('Authentication required', { code: ERROR_CODES.AUTH_REQUIRED });
+  }
+
+  return withDatabaseErrorHandling(async () => {
+    console.log('🔍 SUBTOPIC CONTENT QUERY:', { 
+      mainTopicId,
+      rawSubtopicId, 
+      options,
+      timestamp: new Date().toISOString()
+    });
+
+    // Validate required parameters
+    if (!mainTopicId) {
+      throw createValidationError('mainTopicId', 'Main topic ID is required');
+    }
+
+    if (!rawSubtopicId) {
+      throw createValidationError('subtopicId', 'Subtopic ID is required');
+    }
+
+    // Parse subtopicId - handle both formats: "mainTopicId,subtopicId" and plain "subtopicId"
+    let subtopicId: string;
+    if (rawSubtopicId.includes(',')) {
+      const parts = rawSubtopicId.split(',');
+      if (parts.length !== 2) {
+        throw createValidationError('subtopicId', 'Invalid subtopic ID format');
+      }
+      const [receivedMainTopicId, actualSubtopicId] = parts;
+      
+      // Verify the main topic ID matches
+      if (receivedMainTopicId !== mainTopicId) {
+        throw createValidationError('subtopicId', 'Subtopic ID format mismatch with main topic ID');
+      }
+      
+      subtopicId = actualSubtopicId;
+    } else {
+      subtopicId = rawSubtopicId;
+    }
+
+    // Validate the parsed subtopic ID is not empty
+    if (!subtopicId.trim()) {
+      throw createValidationError('subtopicId', 'Invalid subtopic ID');
+    }
+
+    console.log(`FINDING SUBTOPIC: ${subtopicId} WITH MainTopic: ${mainTopicId}`)
+
+    // Find subtopic by ID and verify it belongs to main topic
+    const subtopic = await context.entities.Topic.findFirst({
+      where: {
+        id: subtopicId,
+        parentId: mainTopicId
+      }
+    });
+
+    if (!subtopic) {
+      throw createLearningError(
+        ErrorType.VALIDATION_ERROR,
+        ERROR_CODES.TOPIC_NOT_FOUND,
+        'The requested subtopic does not exist or does not belong to the specified main topic',
+        {
+          context: { subtopicId, mainTopicId },
+          userMessage: 'Subtopic not found2'
+        }
+      );
+    }
+
+    console.log(`🔍 Found subtopic: ${subtopic.title} (ID: ${subtopicId})`);
+
+    // Look for existing content for this subtopic
+    const existingContent = await context.entities.GeneratedContent.findFirst({
+      where: {
+        topicId: subtopicId,
+        userLevel: options?.userLevel || 'intermediate',
+        learningStyle: options?.learningStyle || 'textual'
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // If content exists, return it immediately
+    if (existingContent) {
+      console.log('✅ Found existing subtopic content in database');
+      
+      return {
+        success: true,
+        content: existingContent.content,
+        metadata: {
+          ...(existingContent.metadata as Record<string, any> || {}),
+          fromDatabase: true,
+          contentAge: Math.floor((Date.now() - existingContent.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        },
+        sources: existingContent.sources || [],
+        topicId: subtopicId,
+        parentTopicId: mainTopicId,
+        subtopicTitle: subtopic.title,
+        fromDatabase: true
+      };
+    }
+
+    console.log('🔍 No existing content found, checking if subtopics are generating...');
+
+    // Check if main topic has subtopics currently generating
+    const { progressTracker } = await import('./api/progressTracker');
+    const progress = await progressTracker.getProgress(mainTopicId);
+    
+    if (progress) {
+      console.log('📊 Found progress data:', {
+        status: progress.status,
+        phase: progress.phase,
+        subtopicsCount: progress.subtopicsProgress?.length || 0
+      });
+
+      // Look for this specific subtopic in progress
+      const subtopicProgress = progress.subtopicsProgress?.find(sp => 
+        sp.title === subtopic.title || sp.topicId === subtopicId
+      );
+
+      if (subtopicProgress) {
+        console.log(`🔄 Found subtopic progress:`, subtopicProgress);
+        
+        // If subtopic is currently generating
+        if (subtopicProgress.status === 'in_progress') {
+          return {
+            success: false,
+            generating: true,
+            progress: {
+              status: subtopicProgress.status,
+              progress: subtopicProgress.progress || 0,
+              message: `Researching subtopic "${subtopic.title}"...`
+            },
+            message: `Subtopic "${subtopic.title}" is currently being generated`,
+            subtopicTitle: subtopic.title,
+            parentTopicId: mainTopicId
+          };
+        }
+
+        // If subtopic completed but content not found (edge case)
+        if (subtopicProgress.status === 'completed') {
+          console.warn(`⚠️ Subtopic marked as completed in progress but no content found in database`);
+        }
+      }
+
+      // Check if subtopics are still being processed in general
+      const hasSubtopicsInProgress = progress.subtopicsProgress?.some(sp => 
+        sp.status === 'in_progress'
+      );
+
+      if (hasSubtopicsInProgress || progress.phase === 'subtopics') {
+        // Check if this specific subtopic is planned to be generated
+        const isSubtopicPlanned = progress.subtopicsProgress?.some(sp => 
+          sp.title === subtopic.title && sp.status === 'pending'
+        );
+
+        if (isSubtopicPlanned) {
+          return {
+            success: false,
+            generating: true,
+            progress: {
+              status: 'pending',
+              progress: 0,
+              message: `Subtopic "${subtopic.title}" is queued for generation...`
+            },
+            message: `Subtopic "${subtopic.title}" will be generated soon`,
+            subtopicTitle: subtopic.title,
+            parentTopicId: mainTopicId
+          };
+        }
+      }
+    }
+
+    // No content found and not generating
+    console.log('❌ No content found and subtopics are not currently generating');
+    
+    throw createLearningError(
+      ErrorType.VALIDATION_ERROR,
+      ERROR_CODES.TOPIC_NOT_FOUND,
+      `No content found for subtopic "${subtopic.title}". The subtopic may not have been generated yet.`,
+      {
+        context: {
+          subtopicTitle: subtopic.title,
+          parentTopicId: mainTopicId
+        },
+        userMessage: 'Try generating the main topic content first, which will trigger subtopic generation in the background.'
+      }
+    );
+  }, 'GET_SUBTOPIC_CONTENT', { userId: context.user!.id, mainTopicId, subtopicId: rawSubtopicId });
 };
