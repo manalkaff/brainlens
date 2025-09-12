@@ -78,8 +78,8 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./deployment/searxng/settings.yml:/etc/searxng/settings.yml:ro
-      - ./deployment/searxng/limiter.toml:/etc/searxng/limiter.toml:ro
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ./searxng/limiter.toml:/etc/searxng/limiter.toml:ro
       - searxng_cache:/var/cache/searxng
     environment:
       - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:8080/}
@@ -106,7 +106,7 @@ services:
     restart: unless-stopped
     volumes:
       - qdrant_data:/qdrant/storage
-      - ./deployment/qdrant-config.yaml:/qdrant/config/production.yaml
+      - ./qdrant/dev-config.yaml:/qdrant/config/production.yaml
     ports:
       - "6333:6333"
       - "6334:6334"
