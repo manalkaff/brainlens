@@ -13,8 +13,6 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-    env_file:
-      - .env.server
     volumes:
       - ./logs:/app/logs
       - ./backups:/app/backups
