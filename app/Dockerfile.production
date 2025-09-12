@@ -31,7 +31,8 @@ COPY tsconfig.json* ./
 COPY tailwind.config* ./
 COPY vite.config* ./
 
-# Build the Wasp application
+# Setup TypeScript and build the Wasp application
+RUN wasp ts-setup
 RUN wasp build
 
 # Stage 2: Production stage
