@@ -28,6 +28,7 @@ RUN which wasp && wasp version
 
 # Copy Wasp project files
 COPY main.wasp ./
+COPY schema.prisma ./
 COPY migrations ./migrations/
 COPY src ./src/
 COPY public ./public/
