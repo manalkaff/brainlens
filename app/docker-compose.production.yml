@@ -1,6 +1,4 @@
 # Production Docker Compose for Learning Research Platform
-version: '3.8'
-
 services:
   # Main application
   app:
@@ -61,7 +59,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "6369:6369"
     networks:
       - learning-platform
     healthcheck:
