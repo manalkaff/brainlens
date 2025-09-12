@@ -5,7 +5,7 @@ services:
   # Main application
   app:
     build:
-      context: .
+      context: .wasp/build
       dockerfile: Dockerfile.production
     container_name: learning-platform-app
     restart: unless-stopped
@@ -133,6 +133,7 @@ services:
       - ./deployment/nginx.conf:/etc/nginx/nginx.conf
       - ./deployment/ssl:/etc/nginx/ssl
       - ./logs/nginx:/var/log/nginx
+      - ./.wasp/build/web-app/build:/var/www/html
     depends_on:
       - app
     networks:
