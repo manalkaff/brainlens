@@ -1,31 +1,38 @@
-# Production Dockerfile for Learning Research Platform
+# Production Dockerfile for Wasp Learning Research Platform
 # Multi-stage build for optimized production image
 
-# Stage 1: Build stage
+# Stage 1: Build stage with Wasp
 FROM node:18-alpine AS builder
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including curl for Wasp installation
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    git
+    git \
+    curl \
+    bash
 
-# Copy package files
-COPY package*.json ./
+# Install Wasp
+RUN curl -sSL https://get.wasp-lang.dev/installer.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy Wasp project files
+COPY main.wasp ./
+COPY migrations ./migrations/
+COPY src ./src/
+COPY public ./public/
 COPY .wasproot ./
+COPY package*.json ./
+COPY tsconfig.json* ./
+COPY tailwind.config* ./
+COPY vite.config* ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy source code
-COPY . .
-
-# Build the application
-RUN npm run build
+# Build the Wasp application
+RUN wasp build
 
 # Stage 2: Production stage
 FROM node:18-alpine AS production
@@ -47,9 +54,8 @@ RUN apk add --no-cache \
     curl \
     bash
 
-# Copy built application from builder stage
+# Copy built Wasp application from builder stage
 COPY --from=builder --chown=wasp:nodejs /app/.wasp/build ./
-COPY --from=builder --chown=wasp:nodejs /app/node_modules ./node_modules
 
 # Copy production scripts
 COPY --chown=wasp:nodejs deployment/backup-scripts ./scripts
@@ -72,5 +78,5 @@ USER wasp
 # Expose port
 EXPOSE 3001
 
-# Start command
-CMD ["node", "server.js"]
+# Start command for Wasp application
+CMD ["node", "./server.js"]
