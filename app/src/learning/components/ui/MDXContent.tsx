@@ -1,20 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
-import { Separator } from '../../../components/ui/separator';
-import { Input } from '../../../components/ui/input';
 import { 
-  BookOpen, 
-  Bookmark, 
-  BookmarkCheck, 
-  Download, 
   FileText, 
   Hash,
   Copy,
   Check,
-  ExternalLink,
-  Search
+  BookmarkCheck,
+  Bookmark,
+  ExternalLink
 } from 'lucide-react';
 
 interface SourceAttribution {
@@ -24,6 +18,14 @@ interface SourceAttribution {
   source: string;
   contentType: string;
   relevanceScore?: number;
+}
+
+interface TableOfContentsItem {
+  id: string;
+  title: string;
+  level: number;
+  isBookmarked: boolean;
+  isRead: boolean;
 }
 
 interface MDXContentProps {
@@ -39,13 +41,6 @@ interface MDXContentProps {
   onBackToMain?: () => void;
 }
 
-interface TableOfContentsItem {
-  id: string;
-  title: string;
-  level: number;
-  isBookmarked: boolean;
-  isRead: boolean;
-}
 
 export function MDXContent({
   content,
@@ -389,142 +384,9 @@ export function MDXContent({
   };
 
   return (
-    <div className="flex gap-6 h-full">
-      {/* Table of Contents - Fixed Sidebar */}
-      <div className="w-64 flex-shrink-0">
-        <div className="sticky top-0">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BookOpen className="w-4 h-4" />
-                Contents
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Content Search */}
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                <Input
-                  placeholder="Search content..."
-                  value={contentSearchQuery}
-                  onChange={(e) => setContentSearchQuery(e.target.value)}
-                  className="pl-7 text-xs h-7"
-                />
-              </div>
-
-              {/* Table of Contents */}
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {filteredTableOfContents.map((item) => (
-                  <a
-                    key={item.id}
-                    href={`#${item.id}`}
-                    className={`
-                      block text-xs p-2 rounded transition-colors
-                      ${activeSection === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}
-                      ${item.isRead ? 'line-through opacity-60' : ''}
-                    `}
-                    style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
-                    onClick={() => onMarkAsRead(item.id)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="truncate">
-                        {contentSearchQuery ? highlightSearchText(item.title, contentSearchQuery) : item.title}
-                      </span>
-                      <div className="flex items-center gap-1 ml-2">
-                        {item.isBookmarked && (
-                          <Bookmark className="w-3 h-3 text-yellow-500" />
-                        )}
-                      </div>
-                    </div>
-                  </a>
-                ))}
-                
-                {contentSearchQuery && filteredTableOfContents.length === 0 && (
-                  <div className="text-center py-4 text-muted-foreground">
-                    <Search className="w-4 h-4 mx-auto mb-1 opacity-50" />
-                    <p className="text-xs">No sections found</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Sources List */}
-          {sources.length > 0 && (
-            <Card className="mt-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <ExternalLink className="w-4 h-4" />
-                  Sources
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {sources.map((source, index) => (
-                  <div key={source.id} className="text-xs p-2 bg-muted/30 rounded border">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">
-                        {index + 1}
-                      </Badge>
-                      <span className="font-medium truncate">{source.title}</span>
-                    </div>
-                    <div className="text-muted-foreground mt-1">
-                      {source.source}
-                    </div>
-                    {source.url && (
-                      <a
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline text-[10px] flex items-center gap-1 mt-1"
-                      >
-                        Visit source <ExternalLink className="w-2 h-2" />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Export Actions */}
-          <Card className="mt-4">
-            <CardContent className="p-3">
-              <div className="flex flex-col gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={exportToPDF}
-                  className="text-xs w-full"
-                >
-                  <Download className="w-3 h-3 mr-1" />
-                  Export PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={exportToMarkdown}
-                  className="text-xs w-full"
-                >
-                  <Download className="w-3 h-3 mr-1" />
-                  Export Markdown
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={exportToHTML}
-                  className="text-xs w-full"
-                >
-                  <Download className="w-3 h-3 mr-1" />
-                  Export HTML
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 min-w-0">
+    <div className="w-full">
+      {/* Main Content - Full Width */}
+      <div className="w-full">
         <div ref={contentRef} className="prose prose-sm max-w-none">
           {content ? renderMarkdown(content) : (
             <div className="text-center py-12 text-muted-foreground">

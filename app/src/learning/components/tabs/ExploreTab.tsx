@@ -4,6 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { Separator } from '../../../components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../../components/ui/dropdown-menu';
 import { useTopicContext } from '../../context/TopicContext';
 import { EnhancedTopicTree } from '../ui/EnhancedTopicTree';
 import { MDXContent } from '../ui/MDXContent';
@@ -53,7 +59,9 @@ import {
   TrendingUp,
   Target,
   Home,
-  ChevronDown
+  ChevronDown,
+  List,
+  ExternalLink
 } from 'lucide-react';
 
 export function ExploreTab() {
@@ -299,6 +307,10 @@ export function ExploreTab() {
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   
+  // State for Contents and Sources data extracted from content
+  const [tableOfContents, setTableOfContents] = useState<Array<{id: string, title: string, level: number}>>([]);
+  const [contentSources, setContentSources] = useState<Array<{id: string, title: string, url?: string, source: string}>>([]);
+  
   // Ref to track last generated topic to prevent infinite loops
   const lastGeneratedTopicRef = useRef<string | null>(null);
   
@@ -478,6 +490,29 @@ export function ExploreTab() {
     }
   }, [currentContent.content, activeTopicForContent?.id, isRead, markAsRead]);
 
+  // Extract table of contents and sources from current content
+  useEffect(() => {
+    if (currentContent.content) {
+      // Extract headings from markdown content
+      const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+      const headings: Array<{id: string, title: string, level: number}> = [];
+      let match;
+      
+      while ((match = headingRegex.exec(currentContent.content)) !== null) {
+        const level = match[1].length;
+        const title = match[2].trim();
+        const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        headings.push({ id, title, level });
+      }
+      
+      setTableOfContents(headings);
+      setContentSources(currentContent.sources || []);
+    } else {
+      setTableOfContents([]);
+      setContentSources([]);
+    }
+  }, [currentContent]);
+
   // Sync navigation hook with URL parameters to ensure consistency
   useEffect(() => {
     if (parsedSubtopicId && selectedSubtopicFromUrl && selectedSubtopic?.id !== parsedSubtopicId) {
@@ -646,8 +681,8 @@ export function ExploreTab() {
   const topicsToShow = currentTopicInTree ? [currentTopicInTree] : topics;
 
   return (
-    <div className="flex h-[calc(100vh-200px)] bg-background">
-      {/* Left Sidebar - Topic Tree Navigation */}
+    <div className="flex h-full bg-background">
+      {/* Left Sidebar - Clean Design */}
       <div 
         className={`
           flex-shrink-0 border-r bg-card transition-all duration-300 ease-in-out
@@ -656,67 +691,71 @@ export function ExploreTab() {
         style={{ width: sidebarCollapsed ? '48px' : `${sidebarWidth}px` }}
       >
 
-        {/* Navigation Tabs */}
+        {/* Clean Navigation Tabs */}
         {!sidebarCollapsed && (
-          <div className="border-b">
-            <div className="flex bg-muted/20">
+          <div className="border-b border-gray-100">
+            <div className="flex bg-gray-50">
               <button
                 onClick={() => setActiveTab('tree')}
-                className={`flex-1 py-2.5 px-1 text-xs font-medium transition-colors border-b-2 flex flex-col items-center gap-1 ${
+                className={`flex-1 py-3 px-2 text-sm font-medium transition-colors border-b-2 flex flex-col items-center gap-1.5 ${
                   activeTab === 'tree' 
-                    ? 'border-primary text-primary bg-background' 
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    ? 'border-gray-900 text-gray-900 bg-white' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                <BookOpen className="w-3 h-3" />
+                <BookOpen className="w-4 h-4" />
                 Topics
               </button>
               <button
                 onClick={() => setActiveTab('bookmarks')}
-                className={`flex-1 py-2.5 px-1 text-xs font-medium transition-colors border-b-2 flex flex-col items-center gap-1 ${
+                className={`flex-1 py-3 px-2 text-sm font-medium transition-colors border-b-2 flex flex-col items-center gap-1.5 ${
                   activeTab === 'bookmarks' 
-                    ? 'border-primary text-primary bg-background' 
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    ? 'border-gray-900 text-gray-900 bg-white' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                <Bookmark className="w-3 h-3" />
+                <Bookmark className="w-4 h-4" />
                 Saved
               </button>
               <button
                 onClick={() => setActiveTab('recent')}
-                className={`flex-1 py-2.5 px-1 text-xs font-medium transition-colors border-b-2 flex flex-col items-center gap-1 ${
+                className={`flex-1 py-3 px-2 text-sm font-medium transition-colors border-b-2 flex flex-col items-center gap-1.5 ${
                   activeTab === 'recent' 
-                    ? 'border-primary text-primary bg-background' 
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    ? 'border-gray-900 text-gray-900 bg-white' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                <History className="w-3 h-3" />
+                <History className="w-4 h-4" />
                 Recent
               </button>
             </div>
           </div>
         )}
 
-        {/* Search and Filters */}
+        {/* Clean Search and Filters */}
         {!sidebarCollapsed && activeTab === 'tree' && (
-          <div className="p-3 border-b space-y-3">
+          <div className="p-4 border-b border-gray-100 space-y-3">
             <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search topics..."
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full pl-10 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-colors"
               />
             </div>
             <Button
               variant={showCompletedOnly ? 'default' : 'outline'}
               size="sm"
               onClick={() => setShowCompletedOnly(!showCompletedOnly)}
-              className="w-full h-8 text-xs"
+              className={`w-full h-9 text-sm font-medium ${
+                showCompletedOnly 
+                  ? 'bg-gray-900 hover:bg-gray-800 text-white' 
+                  : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+              }`}
             >
-              <Eye className="w-3 h-3 mr-2" />
+              <Eye className="w-4 h-4 mr-2" />
               {showCompletedOnly ? 'Show All Topics' : 'Show Read Only'}
             </Button>
           </div>
@@ -784,189 +823,226 @@ export function ExploreTab() {
         </div>
       </div>
 
-      {/* Resize Handle */}
+      {/* Clean Resize Handle */}
       {!sidebarCollapsed && (
         <div
-          className="w-1 bg-border hover:bg-primary/20 cursor-col-resize transition-colors"
+          className="w-1 bg-gray-200 hover:bg-gray-300 cursor-col-resize transition-colors"
           onMouseDown={handleMouseDown}
         />
       )}
 
       {/* Right Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Content Header */}
+        {/* Clean Modern Header */}
         <div className="border-b bg-card">
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold text-sm">
-                {activeTopicForContent ? activeTopicForContent.title : 'Select a Topic'}
-              </h3>
-              {activeTopicForContent && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => toggleTopicBookmark(activeTopicForContent.id)}
-                  className="h-6 w-6 p-0 ml-2"
-                >
-                  {bookmarkedTopics.includes(activeTopicForContent.id) ? (
-                    <Bookmark className="w-3 h-3 text-yellow-600 fill-current" />
-                  ) : (
-                    <BookmarkPlus className="w-3 h-3 text-muted-foreground" />
-                  )}
-                </Button>
-              )}
-              {activeTopicForContent && activeTopicForContent.summary && (
-                <>
-                  <Separator orientation="vertical" className="h-4" />
-                  <p className="text-xs text-muted-foreground truncate max-w-md">
-                    {activeTopicForContent.summary}
-                  </p>
-                </>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center justify-between px-6 py-4">
+            <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 hover:bg-gray-100"
               >
                 {sidebarCollapsed ? (
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4 text-gray-600" />
                 ) : (
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
                 )}
               </Button>
+              
               {activeTopicForContent && (
                 <>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-gray-700" />
+                    <h1 className="text-xl font-semibold text-gray-900">
+                      {activeTopicForContent.title}
+                    </h1>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleTopicBookmark(activeTopicForContent.id)}
+                      className="h-8 w-8 p-0 hover:bg-gray-100"
+                    >
+                      {bookmarkedTopics.includes(activeTopicForContent.id) ? (
+                        <Bookmark className="w-4 h-4 text-amber-500 fill-current" />
+                      ) : (
+                        <BookmarkPlus className="w-4 h-4 text-gray-500" />
+                      )}
+                    </Button>
+                    
+                    {/* Deep Link Manager - Share Button */}
+                    <DeepLinkManager
+                      currentTopic={activeTopicForContent}
+                      generateShareableURL={generateShareableURL}
+                      validateDeepLink={validateDeepLink}
+                      onNavigateToDeepLink={(path) => {
+                        const success = handleDeepLink(path);
+                        if (!success) {
+                          console.warn('Failed to navigate to deep link:', path);
+                        }
+                      }}
+                      className="h-8"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {activeTopicForContent && (
+                <>
+                  {/* Contents Dropdown */}
+                  {tableOfContents.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <List className="w-4 h-4" />
+                          Contents
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-80 max-h-96 overflow-y-auto">
+                        {tableOfContents.map((item) => (
+                          <DropdownMenuItem
+                            key={item.id}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              const element = document.getElementById(item.id);
+                              if (element) {
+                                element.scrollIntoView({ behavior: 'smooth' });
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              <div className={`w-${Math.min(item.level, 4)} flex-shrink-0`} />
+                              <span className="text-sm font-medium truncate">{item.title}</span>
+                            </div>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+
+                  {/* Sources Dropdown */}
+                  {contentSources.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <ExternalLink className="w-4 h-4" />
+                          Sources ({contentSources.length})
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-96 max-h-96 overflow-y-auto">
+                        {contentSources.map((source, index) => (
+                          <DropdownMenuItem
+                            key={source.id || index}
+                            className="cursor-pointer p-3"
+                            onClick={() => {
+                              if (source.url) {
+                                window.open(source.url, '_blank');
+                              }
+                            }}
+                          >
+                            <div className="flex flex-col gap-1 w-full">
+                              <span className="text-sm font-medium line-clamp-2">{source.title}</span>
+                              <span className="text-xs text-muted-foreground">{source.source}</span>
+                            </div>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+
                   {isRead(activeTopicForContent.id) && (
-                    <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                      <Eye className="w-3 h-3" />
+                    <div className="flex items-center gap-1.5 text-sm text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+                      <Eye className="w-3.5 h-3.5" />
                       Read
                     </div>
                   )}
                   {(isGeneratingContent || isTransitioning || isLoadingContent) && (
-                    <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      {isTransitioning ? 'Loading topic...' : 
-                       isGeneratingSubtopic ? `Generating subtopic... ${subtopicProgress}%` :
-                       isLoadingContent ? 'Loading subtopic content...' :
-                       isGeneratingContent ? 'Researching content...' : 'Loading...'}
+                    <div className="flex items-center gap-1.5 text-sm text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {isTransitioning ? 'Loading...' : 
+                       isGeneratingSubtopic ? `Generating...` :
+                       isLoadingContent ? 'Loading...' :
+                       isGeneratingContent ? 'Researching...' : 'Loading...'}
                     </div>
                   )}
                   {(selectionError || subtopicError) && (
-                    <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-1 rounded">
+                    <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 px-3 py-1.5 rounded-full border border-red-100">
                       <span className="max-w-xs truncate" title={selectionError || subtopicError || ''}>
-                        {subtopicError || selectionError}
+                        Error occurred
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={parsedSubtopicId ? refetchSubtopic : handleGenerateContent}
                         disabled={isGeneratingContent || isLoadingContent}
-                        className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
-                        title={parsedSubtopicId ? "Retry subtopic content" : "Retry content generation"}
+                        className="h-5 w-5 p-0 text-red-700 hover:text-red-800"
+                        title="Retry"
                       >
                         <Zap className="w-3 h-3" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectionError(null);
-                          clearSubtopicError();
-                        }}
-                        className="h-5 w-5 p-0 text-red-600 hover:text-red-700"
-                        title="Dismiss error"
-                      >
-                        ×
-                      </Button>
                     </div>
                   )}
-                  {/* Show manual generate button if no content exists and no error */}
-                  {!currentContent.content && !isGeneratingContent && !isLoadingContent && !selectionError && !subtopicError && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={parsedSubtopicId ? refetchSubtopic : handleGenerateContent}
-                      disabled={isGeneratingContent || isLoadingContent}
-                      className="text-xs"
-                    >
-                      <Zap className="w-3 h-3 mr-1" />
-                      {parsedSubtopicId ? 'Load Subtopic' : 'Start Research'}
-                    </Button>
-                  )}
-                  {/* Show regenerate button if content exists */}
-                  {currentContent.content && !isGeneratingContent && !isLoadingContent && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={parsedSubtopicId ? refetchSubtopic : handleGenerateContent}
-                      disabled={isGeneratingContent || isLoadingContent}
-                      className="text-xs"
-                      title={parsedSubtopicId ? "Refresh subtopic" : "Research again"}
-                    >
-                      <Zap className="w-3 h-3 mr-1" />
-                      {parsedSubtopicId ? 'Refresh Subtopic' : 'Research Again'}
-                    </Button>
-                  )}
                   
-                  {/* Show back to main topic button when viewing subtopic */}
-                  {parsedSubtopicId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleBackToMainTopic}
-                      className="text-xs"
-                      title="Back to main topic"
-                    >
-                      <ChevronLeft className="w-3 h-3 mr-1" />
-                      Main Topic
-                    </Button>
-                  )}
                   {/* Navigation controls */}
                   {(canNavigateBack || canNavigateForward) && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={navigateBack}
                         disabled={!canNavigateBack}
-                        className="h-6 w-6 p-0"
+                        className="h-8 w-8 p-0 hover:bg-gray-100"
                       >
-                        <ChevronLeft className="w-3 h-3" />
+                        <ChevronLeft className="w-4 h-4 text-gray-600" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={navigateForward}
                         disabled={!canNavigateForward}
-                        className="h-6 w-6 p-0"
+                        className="h-8 w-8 p-0 hover:bg-gray-100"
                       >
-                        <ChevronRight className="w-3 h-3" />
+                        <ChevronRight className="w-4 h-4 text-gray-600" />
                       </Button>
                     </div>
                   )}
-                  
-                  {/* Deep Link Manager */}
-                  <DeepLinkManager
-                    currentTopic={activeTopicForContent}
-                    generateShareableURL={generateShareableURL}
-                    validateDeepLink={validateDeepLink}
-                    onNavigateToDeepLink={(path) => {
-                      const success = handleDeepLink(path);
-                      if (!success) {
-                        console.warn('Failed to navigate to deep link:', path);
-                      }
-                    }}
-                    className="h-8"
-                  />
                 </>
               )}
             </div>
           </div>
+          
+          {/* Research Stats - Clean Design */}
+          {researchResult && (
+            <div className="px-6 pb-4">
+              <div className="flex items-center gap-1 text-sm text-gray-600 mb-3">
+                <span>Researched by AI Learning Engine</span>
+                <span className="text-gray-400">•</span>
+                <span>{researchResult.totalTopicsProcessed} topics explored</span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-6">
+                <div className="text-center">
+                  <div className="text-2xl font-semibold text-gray-900">{researchResult.mainTopic.sources.length}</div>
+                  <div className="text-sm text-gray-600 mt-1">Sources Used</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-semibold text-gray-900">{Math.round(researchResult.totalProcessingTime / 1000)}s</div>
+                  <div className="text-sm text-gray-600 mt-1">Research Time</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-semibold text-gray-900">{Math.round(researchResult.mainTopic.metadata.confidenceScore * 100)}%</div>
+                  <div className="text-sm text-gray-600 mt-1">Confidence</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Content Display Area */}
@@ -979,19 +1055,19 @@ export function ExploreTab() {
                 onNavigateToPath={navigateToPath}
               />
               
-              {/* Show subtopic indicator if viewing subtopic */}
+              {/* Clean subtopic indicator */}
               {parsedSubtopicId && selectedSubtopicFromUrl && (
-                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="text-sm text-blue-800">
-                    <strong>Viewing Subtopic:</strong> {selectedSubtopicFromUrl.title}
+                <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <div className="text-sm text-blue-900">
+                    <span className="font-medium">Viewing Subtopic:</span> {selectedSubtopicFromUrl.title}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleBackToMainTopic}
-                    className="text-xs text-blue-600 hover:text-blue-800"
+                    className="text-sm text-blue-700 hover:text-blue-900 hover:bg-blue-100"
                   >
-                    <ChevronLeft className="w-3 h-3 mr-1" />
+                    <ChevronLeft className="w-4 h-4 mr-1" />
                     Back to {topic?.title}
                   </Button>
                 </div>
@@ -1059,47 +1135,6 @@ export function ExploreTab() {
             <div className="p-6">
               {/* Main topic content */}
               <div className="space-y-6">
-                <div className="border-b pb-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h1 className="text-2xl font-bold">{researchResult.mainTopic.topic}</h1>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Researched by AI Learning Engine • {researchResult.totalTopicsProcessed} topics explored
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={refreshResearch}
-                        disabled={isResearching}
-                      >
-                        {isResearching ? (
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : (
-                          <Zap className="w-4 h-4 mr-2" />
-                        )}
-                        Refresh Research
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Research metadata */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
-                  <div className="text-center">
-                    <div className="text-lg font-semibold">{researchResult.mainTopic.sources.length}</div>
-                    <div className="text-xs text-muted-foreground">Sources Used</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-semibold">{Math.round(researchResult.totalProcessingTime / 1000)}s</div>
-                    <div className="text-xs text-muted-foreground">Research Time</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-semibold">{Math.round(researchResult.mainTopic.metadata.confidenceScore * 100)}%</div>
-                    <div className="text-xs text-muted-foreground">Confidence</div>
-                  </div>
-                </div>
 
                 {/* Main content */}
                 <MDXContent
@@ -1248,19 +1283,19 @@ export function ExploreTab() {
                     onNavigateToPath={navigateToPath}
                   />
                   
-                  {/* Show subtopic indicator if viewing subtopic */}
+                  {/* Clean subtopic indicator */}
                   {parsedSubtopicId && selectedSubtopicFromUrl && (
-                    <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="text-sm text-blue-800">
-                        <strong>Viewing Subtopic:</strong> {selectedSubtopicFromUrl.title}
+                    <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                      <div className="text-sm text-blue-900">
+                        <span className="font-medium">Viewing Subtopic:</span> {selectedSubtopicFromUrl.title}
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={handleBackToMainTopic}
-                        className="text-xs text-blue-600 hover:text-blue-800"
+                        className="text-sm text-blue-700 hover:text-blue-900 hover:bg-blue-100"
                       >
-                        <ChevronLeft className="w-3 h-3 mr-1" />
+                        <ChevronLeft className="w-4 h-4 mr-1" />
                         Back to {topic?.title}
                       </Button>
                     </div>

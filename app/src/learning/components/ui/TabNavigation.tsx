@@ -4,6 +4,7 @@ import { Badge } from '../../../components/ui/badge';
 import { useTopicContext } from '../../context/TopicContext';
 import { useSharedTopicState } from '../../hooks/useSharedTopicState';
 import type { TabId } from '../../hooks/useTabNavigation';
+import { Search, GraduationCap, MessageSquare, Brain, HelpCircle, BookOpen } from 'lucide-react';
 
 interface TabConfig {
   id: TabId;
@@ -18,36 +19,42 @@ const tabConfigs: TabConfig[] = [
     id: 'explore',
     label: 'Explore',
     color: 'bg-primary',
+    icon: <Search className="w-4 h-4" />,
     description: 'AI-powered deep topic exploration'
   },
   {
     id: 'learn',
     label: 'Learn',
     color: 'bg-success',
+    icon: <GraduationCap className="w-4 h-4" />,
     description: 'Guided learning experience'
   },
   {
     id: 'ask',
     label: 'Ask',
     color: 'bg-blue-500',
+    icon: <MessageSquare className="w-4 h-4" />,
     description: 'Chat with AI assistant'
   },
   {
     id: 'mindmap',
     label: 'MindMap',
     color: 'bg-amber-500',
+    icon: <Brain className="w-4 h-4" />,
     description: 'Visual knowledge map'
   },
   {
     id: 'quiz',
     label: 'Quiz',
     color: 'bg-destructive',
+    icon: <HelpCircle className="w-4 h-4" />,
     description: 'Test your knowledge'
   },
   {
     id: 'sources',
     label: 'Sources',
     color: 'bg-blue-600',
+    icon: <BookOpen className="w-4 h-4" />,
     description: 'View all research sources'
   }
 ];
@@ -74,14 +81,12 @@ export function TabNavigation({ className }: TabNavigationProps) {
             className="flex items-center space-x-2 relative group"
             title={tab.description}
           >
-            {/* Tab indicator dot */}
-            <div className={`w-2 h-2 rounded-full transition-all duration-200 ${
-              isActive 
-                ? tab.color 
-                : wasVisited 
-                  ? `${tab.color} opacity-60` 
-                  : 'bg-slate-400 dark:bg-slate-500'
-            }`} />
+            {/* Tab icon */}
+            <div className={`transition-all duration-200 ${
+              isActive ? 'text-foreground' : wasVisited ? 'text-foreground opacity-80' : 'text-muted-foreground'
+            }`}>
+              {tab.icon}
+            </div>
             
             {/* Tab label */}
             <span className={`transition-all duration-200 ${
