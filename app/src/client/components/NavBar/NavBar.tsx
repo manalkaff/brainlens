@@ -63,7 +63,7 @@ export default function NavBar({ navigationItems }: { navigationItems: Navigatio
                     'ml-2 text-xs': isScrolled,
                   })}
                 >
-                  Your SaaS
+                  BrainLens
                 </span>
               </WaspRouterLink>
 
@@ -214,7 +214,7 @@ const NavLogo = ({ isScrolled }: { isScrolled: boolean }) => (
       'size-8': !isScrolled,
       'size-7': isScrolled,
     })}
-    src={logo}
+    src='/favicon.png'
     alt='Your SaaS App'
   />
 );

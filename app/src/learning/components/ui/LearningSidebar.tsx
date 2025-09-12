@@ -341,7 +341,7 @@ function LearningSidebarContent({ currentPath }: LearningSidebarProps) {
       {/* Header */}
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-1">
-          <Brain className="h-6 w-6 text-primary flex-shrink-0" />
+          <img src='/favicon.png' width={25} />
           {!isCollapsed && (
             <span className="font-bold text-lg text-primary">BrainLens</span>
           )}
