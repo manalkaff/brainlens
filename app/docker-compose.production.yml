@@ -5,7 +5,7 @@ services:
   # Main application
   app:
     build:
-      context: .wasp/build
+      context: .
       dockerfile: Dockerfile.production
     container_name: learning-platform-app
     restart: unless-stopped
