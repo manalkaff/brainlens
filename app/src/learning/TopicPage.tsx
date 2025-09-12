@@ -30,10 +30,6 @@ import { MindMapTab } from "./components/tabs/MindMapTab";
 import { QuizTab } from "./components/tabs/QuizTab";
 import { SourcesTab } from "./components/tabs/SourcesTab";
 import { HelpSystem } from "./components/help/HelpSystem";
-import {
-  OnboardingFlow,
-  useOnboarding,
-} from "./components/help/OnboardingFlow";
 import StreamingErrorBoundary from "./components/ui/StreamingErrorBoundary";
 import { useErrorHandler } from "./hooks/useErrorHandler";
 import { LearningSidebar } from "./components/ui/LearningSidebar";
@@ -119,8 +115,6 @@ export default function TopicPage() {
 // Topic page content with combined navbar
 function TopicPageContent() {
   const { activeTab, setActiveTab, isLoading, error } = useTopicContext();
-  const { showOnboarding, setShowOnboarding, completeOnboarding } =
-    useOnboarding();
   const { slug } = useParams<{ slug: string }>();
   const errorHandler = useErrorHandler({
     maxRetries: 3,
@@ -269,13 +263,6 @@ function TopicPageContent() {
           </Tabs>
         </div>
 
-        {/* Onboarding Flow */}
-        <OnboardingFlow
-          isOpen={showOnboarding}
-          onClose={() => setShowOnboarding(false)}
-          onComplete={completeOnboarding}
-          currentTab={activeTab}
-        />
       </SidebarInset>
     </SidebarProvider>
   );

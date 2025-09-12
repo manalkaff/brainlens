@@ -1,7 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { createTopic } from 'wasp/client/operations';
-import { OnboardingFlow, useOnboarding } from '../learning/components/help/OnboardingFlow';
 import { storePendingTopic } from './utils/pendingTopicHandler';
 import { logPerformanceMetrics, requestIdleCallback, cancelIdleCallback } from './utils/performance';
 import { HeroSection } from './components/HeroSection';
@@ -41,7 +40,6 @@ const FooterSection = lazy(() =>
 export default function LandingPage() {
   const [isCreating, setIsCreating] = useState(false);
   const { data: user } = useAuth();
-  const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
 
   // Performance monitoring
   useEffect(() => {
@@ -175,12 +173,6 @@ export default function LandingPage() {
         </Suspense>
       </LazySection>
 
-      {/* Onboarding Flow */}
-      <OnboardingFlow
-        isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-        onComplete={completeOnboarding}
-      />
     </div>
   );
 }

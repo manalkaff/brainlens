@@ -5,7 +5,6 @@ import { createTopic } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent } from '../components/ui/card';
-import { OnboardingFlow, useOnboarding } from './components/help/OnboardingFlow';
 
 // Removed example topics for cleaner design
 
@@ -14,7 +13,6 @@ export default function TopicInputLandingPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [researchStatus, setResearchStatus] = useState('');
   const { data: user } = useAuth();
-  const { showOnboarding, setShowOnboarding, completeOnboarding } = useOnboarding();
 
   const handleStartLearning = async () => {
     if (!topicInput.trim()) return;
@@ -159,11 +157,6 @@ export default function TopicInputLandingPage() {
         </div>
       </main>
 
-      <OnboardingFlow
-        isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-        onComplete={completeOnboarding}
-      />
     </div>
   );
 }
