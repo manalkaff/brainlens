@@ -1,0 +1,16 @@
+import { prisma } from 'wasp/server'
+
+import { startIterativeResearch } from '../../../../../src/server/operations/iterativeResearch'
+
+
+export default async function (args, context) {
+  return (startIterativeResearch as any)(args, {
+    ...context,
+    entities: {
+      Topic: prisma.topic,
+      UserTopicProgress: prisma.userTopicProgress,
+      VectorDocument: prisma.vectorDocument,
+      GeneratedContent: prisma.generatedContent,
+    },
+  })
+}

@@ -1,0 +1,805 @@
+import OpenAI from 'openai';
+import { AssessmentResult, UserTopicProgress, Topic, DetailedProgressMetrics, LearningInsight } from '@src/learning/types';
+import { LearningStyleProfile } from '@src/learning/analytics/learningStyleDetector';
+import LearningStyleDetector from '@src/learning/analytics/learningStyleDetector';
+import { AdvancedProgressTracker } from '@src/learning/analytics/progressTracker';
+import { NextStepsEngine } from '@src/learning/recommendations/nextStepsEngine';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface StreamingContentRequest {
+  userId: string;
+  topicId: string;
+  currentSection: string;
+  userAssessment: AssessmentResult;
+  progressMetrics: DetailedProgressMetrics;
+  learningStyleProfile: LearningStyleProfile;
+  sessionContext: {
+    timeSpent: number;
+    strugglingConcepts: string[];
+    masteredConcepts: string[];
+    currentDifficulty: 'beginner' | 'intermediate' | 'advanced';
+    attentionLevel: number; // 0-1
+    engagementScore: number; // 0-1
+  };
+  preferences: {
+    contentLength: 'short' | 'medium' | 'long';
+    explanationDepth: 'overview' | 'detailed' | 'comprehensive';
+    exampleType: 'abstract' | 'concrete' | 'mixed';
+    interactivityLevel: 'low' | 'medium' | 'high';
+  };
+}
+
+export interface AdaptiveContentChunk {
+  id: string;
+  type: 'explanation' | 'example' | 'question' | 'summary' | 'transition' | 'reinforcement';
+  content: string;
+  metadata: {
+    difficulty: number; // 0-1
+    estimatedReadTime: number; // seconds
+    concepts: string[];
+    prerequisites: string[];
+    adaptationReason: string;
+  };
+  interactiveElements?: {
+    type: 'quiz' | 'reflection' | 'application' | 'exploration';
+    prompt: string;
+    expectedResponse?: string;
+  }[];
+  visualElements?: {
+    type: 'diagram' | 'chart' | 'mindmap' | 'infographic';
+    description: string;
+    elements: any[];
+  };
+  personalizations: {
+    learningStyle: string[];
+    knowledgeLevel: string;
+    preferences: string[];
+  };
+}
+
+export interface StreamingSession {
+  id: string;
+  userId: string;
+  topicId: string;
+  startTime: Date;
+  lastUpdate: Date;
+  chunks: AdaptiveContentChunk[];
+  adaptationHistory: AdaptationEvent[];
+  currentState: SessionState;
+  metrics: SessionMetrics;
+}
+
+export interface AdaptationEvent {
+  timestamp: Date;
+  trigger: 'performance' | 'engagement' | 'time' | 'user_feedback' | 'confusion';
+  adaptation: string;
+  previousState: any;
+  newState: any;
+  confidence: number;
+}
+
+export interface SessionState {
+  currentDifficulty: number;
+  engagementLevel: number;
+  comprehensionScore: number;
+  attentionScore: number;
+  pacePreference: number; // How fast content should be delivered
+  lastInteraction: Date;
+  strugglingConcepts: string[];
+  needsReinforcement: string[];
+}
+
+export interface SessionMetrics {
+  chunksDelivered: number;
+  adaptationsApplied: number;
+  userInteractions: number;
+  avgEngagement: number;
+  conceptsMastered: number;
+  timeSpent: number;
+  completionRate: number;
+}
+
+export interface StreamingAdaptationRule {
+  id: string;
+  name: string;
+  trigger: {
+    type: 'metric' | 'behavior' | 'time' | 'performance';
+    condition: string;
+    threshold?: number;
+  };
+  adaptation: {
+    type: 'content' | 'pacing' | 'difficulty' | 'style' | 'interaction';
+    action: string;
+    parameters: Record<string, any>;
+  };
+  priority: number;
+  confidence: number;
+}
+
+class AdaptiveContentStreamer {
+  private static instance: AdaptiveContentStreamer;
+  private sessions: Map<string, StreamingSession> = new Map();
+  private adaptationRules: StreamingAdaptationRule[] = [];
+  private styleDetector = LearningStyleDetector.getInstance();
+  private progressTracker = AdvancedProgressTracker.getInstance();
+  private nextStepsEngine = NextStepsEngine.getInstance();
+
+  static getInstance(): AdaptiveContentStreamer {
+    if (!AdaptiveContentStreamer.instance) {
+      AdaptiveContentStreamer.instance = new AdaptiveContentStreamer();
+      AdaptiveContentStreamer.instance.initializeAdaptationRules();
+    }
+    return AdaptiveContentStreamer.instance;
+  }
+
+  /**
+   * Start a new adaptive streaming session
+   */
+  async startStreamingSession(request: StreamingContentRequest): Promise<string> {
+    const sessionId = `stream-${request.userId}-${request.topicId}-${Date.now()}`;
+    
+    const session: StreamingSession = {
+      id: sessionId,
+      userId: request.userId,
+      topicId: request.topicId,
+      startTime: new Date(),
+      lastUpdate: new Date(),
+      chunks: [],
+      adaptationHistory: [],
+      currentState: {
+        currentDifficulty: this.calculateInitialDifficulty(request.userAssessment),
+        engagementLevel: 0.7, // Start optimistic
+        comprehensionScore: request.userAssessment.overallScore || 0.5,
+        attentionScore: request.sessionContext.attentionLevel || 0.7,
+        pacePreference: this.calculateInitialPace(request.learningStyleProfile),
+        lastInteraction: new Date(),
+        strugglingConcepts: request.sessionContext.strugglingConcepts || [],
+        needsReinforcement: []
+      },
+      metrics: {
+        chunksDelivered: 0,
+        adaptationsApplied: 0,
+        userInteractions: 0,
+        avgEngagement: 0.7,
+        conceptsMastered: 0,
+        timeSpent: 0,
+        completionRate: 0
+      }
+    };
+
+    this.sessions.set(sessionId, session);
+    return sessionId;
+  }
+
+  /**
+   * Generate next adaptive content chunk
+   */
+  async generateAdaptiveChunk(
+    sessionId: string,
+    request: StreamingContentRequest
+  ): Promise<AdaptiveContentChunk | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Streaming session ${sessionId} not found`);
+    }
+
+    try {
+      // Update session state based on current context
+      await this.updateSessionState(session, request);
+
+      // Check for needed adaptations
+      const adaptations = await this.evaluateAdaptationNeeds(session, request);
+      
+      // Apply adaptations
+      for (const adaptation of adaptations) {
+        await this.applyAdaptation(session, adaptation, request);
+      }
+
+      // Generate content chunk based on current state
+      const chunk = await this.generateContentChunk(session, request);
+      
+      if (chunk) {
+        session.chunks.push(chunk);
+        session.metrics.chunksDelivered++;
+        session.lastUpdate = new Date();
+        
+        // Update metrics
+        await this.updateSessionMetrics(session, chunk);
+      }
+
+      return chunk;
+    } catch (error) {
+      console.error(`Error generating adaptive chunk for session ${sessionId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Update session state based on user behavior
+   */
+  private async updateSessionState(session: StreamingSession, request: StreamingContentRequest): Promise<void> {
+    const state = session.currentState;
+    const context = request.sessionContext;
+
+    // Update engagement based on recent activity
+    if (context.engagementScore !== undefined) {
+      state.engagementLevel = (state.engagementLevel * 0.7) + (context.engagementScore * 0.3);
+    }
+
+    // Update attention level
+    if (context.attentionLevel !== undefined) {
+      state.attentionScore = (state.attentionScore * 0.8) + (context.attentionLevel * 0.2);
+    }
+
+    // Update comprehension based on performance
+    const recentPerformance = request.userAssessment.sectionScores?.[request.currentSection] || 0.5;
+    state.comprehensionScore = (state.comprehensionScore * 0.6) + (recentPerformance * 0.4);
+
+    // Update struggling concepts
+    state.strugglingConcepts = [
+      ...new Set([
+        ...state.strugglingConcepts,
+        ...context.strugglingConcepts
+      ])
+    ];
+
+    // Remove mastered concepts from struggling list
+    state.strugglingConcepts = state.strugglingConcepts.filter(
+      concept => !context.masteredConcepts.includes(concept)
+    );
+
+    // Update difficulty based on performance
+    if (recentPerformance > 0.8 && state.currentDifficulty < 0.9) {
+      state.currentDifficulty = Math.min(0.95, state.currentDifficulty + 0.1);
+    } else if (recentPerformance < 0.4 && state.currentDifficulty > 0.1) {
+      state.currentDifficulty = Math.max(0.1, state.currentDifficulty - 0.15);
+    }
+
+    state.lastInteraction = new Date();
+  }
+
+  /**
+   * Evaluate what adaptations are needed
+   */
+  private async evaluateAdaptationNeeds(
+    session: StreamingSession,
+    request: StreamingContentRequest
+  ): Promise<StreamingAdaptationRule[]> {
+    const neededAdaptations: StreamingAdaptationRule[] = [];
+    const state = session.currentState;
+
+    for (const rule of this.adaptationRules) {
+      if (await this.shouldApplyRule(rule, session, request)) {
+        neededAdaptations.push(rule);
+      }
+    }
+
+    // Sort by priority
+    return neededAdaptations.sort((a, b) => b.priority - a.priority);
+  }
+
+  /**
+   * Check if adaptation rule should be applied
+   */
+  private async shouldApplyRule(
+    rule: StreamingAdaptationRule,
+    session: StreamingSession,
+    request: StreamingContentRequest
+  ): Promise<boolean> {
+    const trigger = rule.trigger;
+    const state = session.currentState;
+
+    switch (trigger.type) {
+      case 'metric':
+        switch (trigger.condition) {
+          case 'low_engagement':
+            return state.engagementLevel < (trigger.threshold || 0.5);
+          case 'low_comprehension':
+            return state.comprehensionScore < (trigger.threshold || 0.6);
+          case 'low_attention':
+            return state.attentionScore < (trigger.threshold || 0.5);
+          case 'high_difficulty':
+            return state.currentDifficulty > (trigger.threshold || 0.8);
+        }
+        break;
+
+      case 'behavior':
+        switch (trigger.condition) {
+          case 'struggling_concepts':
+            return state.strugglingConcepts.length > (trigger.threshold || 2);
+          case 'long_session':
+            return (Date.now() - session.startTime.getTime()) > ((trigger.threshold || 45) * 60 * 1000);
+          case 'rapid_interactions':
+            return session.metrics.userInteractions / Math.max(1, session.metrics.timeSpent / 60) > (trigger.threshold || 3);
+        }
+        break;
+
+      case 'time':
+        switch (trigger.condition) {
+          case 'session_length':
+            return (Date.now() - session.startTime.getTime()) > ((trigger.threshold || 30) * 60 * 1000);
+          case 'inactivity':
+            return (Date.now() - state.lastInteraction.getTime()) > ((trigger.threshold || 10) * 60 * 1000);
+        }
+        break;
+
+      case 'performance':
+        switch (trigger.condition) {
+          case 'declining_performance':
+            const recentChunks = session.chunks.slice(-3);
+            return recentChunks.length >= 2 && 
+                   recentChunks.every(chunk => chunk.metadata.difficulty > state.comprehensionScore);
+        }
+        break;
+    }
+
+    return false;
+  }
+
+  /**
+   * Apply specific adaptation
+   */
+  private async applyAdaptation(
+    session: StreamingSession,
+    rule: StreamingAdaptationRule,
+    request: StreamingContentRequest
+  ): Promise<void> {
+    const adaptation = rule.adaptation;
+    const state = session.currentState;
+
+    const adaptationEvent: AdaptationEvent = {
+      timestamp: new Date(),
+      trigger: rule.trigger.condition as any,
+      adaptation: rule.name,
+      previousState: { ...state },
+      newState: {},
+      confidence: rule.confidence
+    };
+
+    switch (adaptation.type) {
+      case 'difficulty':
+        if (adaptation.action === 'decrease') {
+          state.currentDifficulty = Math.max(0.1, state.currentDifficulty - (adaptation.parameters.amount || 0.2));
+        } else if (adaptation.action === 'increase') {
+          state.currentDifficulty = Math.min(0.95, state.currentDifficulty + (adaptation.parameters.amount || 0.1));
+        }
+        break;
+
+      case 'pacing':
+        if (adaptation.action === 'slow_down') {
+          state.pacePreference = Math.max(0.1, state.pacePreference - (adaptation.parameters.amount || 0.2));
+        } else if (adaptation.action === 'speed_up') {
+          state.pacePreference = Math.min(1.0, state.pacePreference + (adaptation.parameters.amount || 0.1));
+        }
+        break;
+
+      case 'content':
+        if (adaptation.action === 'add_examples') {
+          request.preferences.exampleType = 'concrete';
+          request.preferences.explanationDepth = 'detailed';
+        } else if (adaptation.action === 'simplify') {
+          request.preferences.contentLength = 'short';
+          request.preferences.explanationDepth = 'overview';
+        } else if (adaptation.action === 'add_interaction') {
+          request.preferences.interactivityLevel = 'high';
+        }
+        break;
+
+      case 'style':
+        if (adaptation.action === 'emphasize_visual') {
+          // Will be handled in content generation
+        } else if (adaptation.action === 'add_structure') {
+          // Will be handled in content generation
+        }
+        break;
+
+      case 'interaction':
+        if (adaptation.action === 'prompt_engagement') {
+          // Add engagement prompt to next chunk
+        } else if (adaptation.action === 'suggest_break') {
+          // Will be handled in content generation
+        }
+        break;
+    }
+
+    adaptationEvent.newState = { ...state };
+    session.adaptationHistory.push(adaptationEvent);
+    session.metrics.adaptationsApplied++;
+  }
+
+  /**
+   * Generate content chunk with AI
+   */
+  private async generateContentChunk(
+    session: StreamingSession,
+    request: StreamingContentRequest
+  ): Promise<AdaptiveContentChunk> {
+    const state = session.currentState;
+    const profile = request.learningStyleProfile;
+
+    // Determine chunk type based on session progress and needs
+    const chunkType = this.determineChunkType(session, request);
+
+    const prompt = this.buildContentPrompt(chunkType, session, request);
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert adaptive learning content generator. Create personalized educational content that adapts to the learner's style, performance, and current state. Always respond with valid JSON.`
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      });
+
+      const aiResponse = response.choices[0]?.message?.content;
+      if (!aiResponse) {
+        throw new Error('No response from AI');
+      }
+
+      const contentData = JSON.parse(aiResponse);
+      
+      // Create adaptive content chunk
+      const chunk: AdaptiveContentChunk = {
+        id: `chunk-${session.id}-${session.chunks.length + 1}`,
+        type: chunkType,
+        content: contentData.content,
+        metadata: {
+          difficulty: state.currentDifficulty,
+          estimatedReadTime: this.estimateReadTime(contentData.content),
+          concepts: contentData.concepts || [],
+          prerequisites: contentData.prerequisites || [],
+          adaptationReason: contentData.adaptationReason || 'Standard content generation'
+        },
+        interactiveElements: contentData.interactiveElements || [],
+        visualElements: contentData.visualElements || [],
+        personalizations: {
+          learningStyle: [profile.primaryStyle, profile.secondaryStyle].filter(Boolean),
+          knowledgeLevel: request.sessionContext.currentDifficulty,
+          preferences: Object.entries(request.preferences)
+            .map(([key, value]) => `${key}: ${value}`)
+        }
+      };
+
+      return chunk;
+    } catch (error) {
+      console.error('Error generating content chunk:', error);
+      
+      // Fallback content
+      return {
+        id: `chunk-${session.id}-${session.chunks.length + 1}`,
+        type: 'explanation',
+        content: 'Let\'s continue exploring this topic. What would you like to learn more about?',
+        metadata: {
+          difficulty: state.currentDifficulty,
+          estimatedReadTime: 10,
+          concepts: [],
+          prerequisites: [],
+          adaptationReason: 'Fallback content due to generation error'
+        },
+        personalizations: {
+          learningStyle: [profile.primaryStyle].filter(Boolean),
+          knowledgeLevel: request.sessionContext.currentDifficulty,
+          preferences: []
+        }
+      };
+    }
+  }
+
+  /**
+   * Determine what type of content chunk to generate
+   */
+  private determineChunkType(
+    session: StreamingSession,
+    request: StreamingContentRequest
+  ): AdaptiveContentChunk['type'] {
+    const state = session.currentState;
+    const recentChunks = session.chunks.slice(-3);
+    const recentTypes = recentChunks.map(chunk => chunk.type);
+
+    // If user is struggling, provide reinforcement
+    if (state.strugglingConcepts.length > 0 && !recentTypes.includes('reinforcement')) {
+      return 'reinforcement';
+    }
+
+    // If engagement is low, add interaction
+    if (state.engagementLevel < 0.5 && !recentTypes.includes('question')) {
+      return 'question';
+    }
+
+    // If user has been learning for a while without examples
+    if (session.chunks.length > 0 && !recentTypes.includes('example') && 
+        recentTypes.filter(type => type === 'explanation').length >= 2) {
+      return 'example';
+    }
+
+    // If it's time for a summary
+    if (session.chunks.length > 0 && session.chunks.length % 5 === 0) {
+      return 'summary';
+    }
+
+    // Default to explanation for most content
+    return 'explanation';
+  }
+
+  /**
+   * Build AI prompt for content generation
+   */
+  private buildContentPrompt(
+    chunkType: AdaptiveContentChunk['type'],
+    session: StreamingSession,
+    request: StreamingContentRequest
+  ): string {
+    const state = session.currentState;
+    const profile = request.learningStyleProfile;
+    const context = request.sessionContext;
+
+    return `Generate an adaptive learning content chunk with the following specifications:
+
+LEARNER PROFILE:
+- Primary Learning Style: ${profile.primaryStyle}
+- Secondary Learning Style: ${profile.secondaryStyle || 'None'}
+- Current Knowledge Level: ${context.currentDifficulty}
+- Learning Velocity: ${profile.learningVelocity}
+- Attention Span: ${profile.attentionSpan}
+- Preferred Session Length: ${profile.preferredSessionLength} minutes
+
+CURRENT CONTEXT:
+- Topic: ${request.currentSection}
+- Current Difficulty: ${state.currentDifficulty}
+- Engagement Level: ${state.engagementLevel}
+- Comprehension Score: ${state.comprehensionScore}
+- Attention Score: ${state.attentionScore}
+- Time in Session: ${session.metrics.timeSpent} minutes
+- Struggling Concepts: ${state.strugglingConcepts.join(', ') || 'None'}
+- Mastered Concepts: ${context.masteredConcepts.join(', ') || 'None'}
+
+CONTENT REQUIREMENTS:
+- Chunk Type: ${chunkType}
+- Content Length: ${request.preferences.contentLength}
+- Explanation Depth: ${request.preferences.explanationDepth}
+- Example Type: ${request.preferences.exampleType}
+- Interactivity Level: ${request.preferences.interactivityLevel}
+
+ADAPTATIONS APPLIED:
+${session.adaptationHistory.slice(-3).map(event => 
+  `- ${event.adaptation}: ${event.trigger} (${new Date(event.timestamp).toLocaleTimeString()})`
+).join('\n') || 'None recent'}
+
+Please generate content that:
+1. Matches the specified chunk type and requirements
+2. Adapts to the learner's style and current state
+3. Addresses struggling concepts if any exist
+4. Maintains appropriate difficulty level
+5. Includes interactive elements if requested
+6. Provides visual elements for visual learners
+
+Respond with a JSON object containing:
+{
+  "content": "The main content text",
+  "concepts": ["concept1", "concept2"],
+  "prerequisites": ["prereq1", "prereq2"],
+  "adaptationReason": "Why this content was chosen",
+  "interactiveElements": [
+    {
+      "type": "quiz|reflection|application|exploration",
+      "prompt": "Interactive prompt",
+      "expectedResponse": "Optional expected response"
+    }
+  ],
+  "visualElements": [
+    {
+      "type": "diagram|chart|mindmap|infographic",
+      "description": "Visual description",
+      "elements": ["element1", "element2"]
+    }
+  ]
+}`;
+  }
+
+  /**
+   * Update session metrics
+   */
+  private async updateSessionMetrics(session: StreamingSession, chunk: AdaptiveContentChunk): Promise<void> {
+    const metrics = session.metrics;
+    
+    metrics.timeSpent = (Date.now() - session.startTime.getTime()) / 1000 / 60; // minutes
+    metrics.avgEngagement = (metrics.avgEngagement * (metrics.chunksDelivered - 1) + session.currentState.engagementLevel) / metrics.chunksDelivered;
+    
+    // Update concepts mastered based on chunk difficulty vs comprehension
+    if (chunk.metadata.difficulty <= session.currentState.comprehensionScore + 0.1) {
+      metrics.conceptsMastered += chunk.metadata.concepts.length;
+    }
+
+    // Calculate completion rate based on expected session progress
+    const expectedChunks = Math.max(5, metrics.timeSpent / 3); // Roughly one chunk per 3 minutes
+    metrics.completionRate = Math.min(1.0, metrics.chunksDelivered / expectedChunks);
+  }
+
+  /**
+   * Get streaming session status
+   */
+  getSessionStatus(sessionId: string): StreamingSession | null {
+    return this.sessions.get(sessionId) || null;
+  }
+
+  /**
+   * End streaming session
+   */
+  async endStreamingSession(sessionId: string): Promise<SessionMetrics | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    // Final metrics calculation
+    await this.updateSessionMetrics(session, session.chunks[session.chunks.length - 1]);
+    
+    const finalMetrics = { ...session.metrics };
+    
+    // Clean up session
+    this.sessions.delete(sessionId);
+    
+    return finalMetrics;
+  }
+
+  /**
+   * Calculate initial difficulty based on assessment
+   */
+  private calculateInitialDifficulty(assessment: AssessmentResult): number {
+    const overallScore = assessment.overallScore || 0.5;
+    
+    // Map assessment score to difficulty preference
+    if (overallScore > 0.8) return 0.7; // High performers can handle moderate-high difficulty
+    if (overallScore > 0.6) return 0.5; // Average performers get moderate difficulty
+    if (overallScore > 0.4) return 0.3; // Lower performers get easier content
+    return 0.2; // Very low performers need basic content
+  }
+
+  /**
+   * Calculate initial pace based on learning style
+   */
+  private calculateInitialPace(profile: LearningStyleProfile): number {
+    let pace = 0.5; // Default moderate pace
+    
+    // Adjust based on learning velocity
+    pace += (profile.learningVelocity - 0.5) * 0.4;
+    
+    // Adjust based on attention span
+    if (profile.attentionSpan === 'short') {
+      pace += 0.2; // Faster pace for shorter attention spans
+    } else if (profile.attentionSpan === 'long') {
+      pace -= 0.1; // Slightly slower for deeper processing
+    }
+    
+    // Adjust based on active/reflective preference
+    pace += (profile.activePreference - 0.5) * 0.2;
+    
+    return Math.max(0.1, Math.min(0.9, pace));
+  }
+
+  /**
+   * Estimate reading time for content
+   */
+  private estimateReadTime(content: string): number {
+    const wordsPerMinute = 200; // Average reading speed
+    const words = content.split(/\s+/).length;
+    return Math.max(5, Math.round((words / wordsPerMinute) * 60)); // Return seconds
+  }
+
+  /**
+   * Initialize default adaptation rules
+   */
+  private initializeAdaptationRules(): void {
+    this.adaptationRules = [
+      {
+        id: 'low-engagement-add-interaction',
+        name: 'Add Interactive Elements for Low Engagement',
+        trigger: {
+          type: 'metric',
+          condition: 'low_engagement',
+          threshold: 0.4
+        },
+        adaptation: {
+          type: 'interaction',
+          action: 'prompt_engagement',
+          parameters: { type: 'question', urgency: 'high' }
+        },
+        priority: 9,
+        confidence: 0.8
+      },
+      {
+        id: 'low-comprehension-simplify',
+        name: 'Simplify Content for Low Comprehension',
+        trigger: {
+          type: 'metric',
+          condition: 'low_comprehension',
+          threshold: 0.5
+        },
+        adaptation: {
+          type: 'difficulty',
+          action: 'decrease',
+          parameters: { amount: 0.2 }
+        },
+        priority: 10,
+        confidence: 0.9
+      },
+      {
+        id: 'struggling-concepts-reinforce',
+        name: 'Reinforce Struggling Concepts',
+        trigger: {
+          type: 'behavior',
+          condition: 'struggling_concepts',
+          threshold: 2
+        },
+        adaptation: {
+          type: 'content',
+          action: 'add_examples',
+          parameters: { focus: 'struggling_concepts' }
+        },
+        priority: 8,
+        confidence: 0.85
+      },
+      {
+        id: 'long-session-break',
+        name: 'Suggest Break for Long Sessions',
+        trigger: {
+          type: 'time',
+          condition: 'session_length',
+          threshold: 45 // minutes
+        },
+        adaptation: {
+          type: 'interaction',
+          action: 'suggest_break',
+          parameters: { type: 'gentle_reminder' }
+        },
+        priority: 6,
+        confidence: 0.7
+      },
+      {
+        id: 'low-attention-energize',
+        name: 'Energize Content for Low Attention',
+        trigger: {
+          type: 'metric',
+          condition: 'low_attention',
+          threshold: 0.4
+        },
+        adaptation: {
+          type: 'content',
+          action: 'add_interaction',
+          parameters: { type: 'engaging', variety: 'high' }
+        },
+        priority: 7,
+        confidence: 0.75
+      },
+      {
+        id: 'high-performance-challenge',
+        name: 'Increase Challenge for High Performance',
+        trigger: {
+          type: 'metric',
+          condition: 'high_difficulty',
+          threshold: 0.85
+        },
+        adaptation: {
+          type: 'difficulty',
+          action: 'increase',
+          parameters: { amount: 0.1 }
+        },
+        priority: 5,
+        confidence: 0.8
+      }
+    ];
+  }
+}
+
+// Export both default and named exports for compatibility
+export { AdaptiveContentStreamer };
+export default AdaptiveContentStreamer;

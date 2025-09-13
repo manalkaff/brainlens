@@ -1,0 +1,185 @@
+import { useState, useCallback, useEffect } from 'react';
+import { useQuery, getTopicTree, createTopic } from 'wasp/client/operations';
+export function useTopicTree(options = {}) {
+    const { autoRefresh = false, refreshInterval = 30000 } = options;
+    const [selectedTopic, setSelectedTopic] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+    // Fetch topic tree
+    const { data: topics = [], isLoading, error, refetch: refreshTree } = useQuery(getTopicTree, undefined, {
+        refetchInterval: autoRefresh ? refreshInterval : false,
+        refetchOnWindowFocus: true,
+        staleTime: 5 * 60 * 1000, // 5 minutes
+    });
+    // REMOVED: Auto-refresh when generating is complete - this was causing render loops and duplicate generation
+    // Tree refresh is now handled manually when needed to prevent unwanted re-renders
+    // useEffect(() => {
+    //   if (!isGenerating) {
+    //     const timer = setTimeout(() => {
+    //       refreshTree();
+    //     }, 1000);
+    //     return () => clearTimeout(timer);
+    //   }
+    // }, [isGenerating, refreshTree]);
+    const selectTopic = useCallback((topic) => {
+        setSelectedTopic(topic);
+    }, []);
+    const generateSubtopics = useCallback(async (topicId) => {
+        setIsGenerating(true);
+        try {
+            // Find the parent topic
+            const findTopic = (topicList, id) => {
+                for (const topic of topicList) {
+                    if (topic.id === id)
+                        return topic;
+                    const found = findTopic(topic.children || [], id);
+                    if (found)
+                        return found;
+                }
+                return null;
+            };
+            const parentTopic = findTopic(topics, topicId);
+            if (!parentTopic) {
+                throw new Error('Parent topic not found');
+            }
+            // Generate AI-powered subtopics based on the parent topic
+            const subtopicTitles = await generateIntelligentSubtopics(parentTopic);
+            // Create subtopics using the createTopic operation
+            const subtopicPromises = subtopicTitles.map((title) => createTopic({
+                title,
+                summary: `Exploring ${title.toLowerCase()} in the context of ${parentTopic.title}`,
+                parentId: topicId
+            }));
+            await Promise.all(subtopicPromises);
+            // Refresh the tree to show new subtopics
+            await refreshTree();
+        }
+        catch (error) {
+            console.error('Failed to generate subtopics:', error);
+            // You might want to show a toast notification here
+        }
+        finally {
+            setIsGenerating(false);
+        }
+    }, [topics, refreshTree]);
+    // Generate intelligent subtopics using AI
+    const generateIntelligentSubtopics = useCallback(async (parentTopic) => {
+        try {
+            const response = await fetch('/api/learning/generate-subtopics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    topicId: parentTopic.id,
+                    topicTitle: parentTopic.title,
+                    topicSummary: parentTopic.summary,
+                    depth: parentTopic.depth
+                }),
+            });
+            if (!response.ok) {
+                throw new Error('Failed to generate subtopics');
+            }
+            const result = await response.json();
+            return result.subtopics || generateSubtopicTitles(parentTopic.title);
+        }
+        catch (error) {
+            console.error('AI subtopic generation failed, using fallback:', error);
+            return generateSubtopicTitles(parentTopic.title);
+        }
+    }, []);
+    return {
+        topics,
+        isLoading,
+        error,
+        selectedTopic,
+        searchQuery,
+        isGenerating,
+        selectTopic,
+        setSearchQuery,
+        generateSubtopics,
+        refreshTree
+    };
+}
+// Helper function to generate subtopic titles
+// In a real implementation, this would use AI to generate relevant subtopics
+function generateSubtopicTitles(parentTitle) {
+    const commonPatterns = [
+        'Fundamentals',
+        'Advanced Concepts',
+        'Practical Applications',
+        'Best Practices',
+        'Common Challenges',
+        'Tools and Resources'
+    ];
+    // Generate contextual subtopics based on the parent title
+    const contextualSubtopics = [];
+    if (parentTitle.toLowerCase().includes('programming') || parentTitle.toLowerCase().includes('coding')) {
+        contextualSubtopics.push('Syntax and Structure', 'Data Types and Variables', 'Control Flow', 'Functions and Methods', 'Error Handling', 'Testing and Debugging');
+    }
+    else if (parentTitle.toLowerCase().includes('machine learning') || parentTitle.toLowerCase().includes('ai')) {
+        contextualSubtopics.push('Supervised Learning', 'Unsupervised Learning', 'Neural Networks', 'Model Training', 'Feature Engineering', 'Model Evaluation');
+    }
+    else if (parentTitle.toLowerCase().includes('web') || parentTitle.toLowerCase().includes('frontend')) {
+        contextualSubtopics.push('HTML Structure', 'CSS Styling', 'JavaScript Functionality', 'Responsive Design', 'Performance Optimization', 'Accessibility');
+    }
+    else {
+        // Generic subtopics for any topic
+        contextualSubtopics.push(`Introduction to ${parentTitle}`, `Core Principles of ${parentTitle}`, `${parentTitle} in Practice`, `Advanced ${parentTitle} Techniques`, `${parentTitle} Case Studies`, `Future of ${parentTitle}`);
+    }
+    // Return a mix of contextual and common subtopics (max 4-6)
+    const allSubtopics = [...contextualSubtopics, ...commonPatterns];
+    return allSubtopics.slice(0, Math.min(6, allSubtopics.length));
+}
+// Hook for managing topic content and bookmarks
+export function useTopicContent(topicId) {
+    const [bookmarks, setBookmarks] = useState([]);
+    const [readSections, setReadSections] = useState(new Set());
+    const addBookmark = useCallback((sectionId) => {
+        setBookmarks(prev => {
+            if (prev.includes(sectionId))
+                return prev;
+            return [...prev, sectionId];
+        });
+    }, []);
+    const removeBookmark = useCallback((sectionId) => {
+        setBookmarks(prev => prev.filter(id => id !== sectionId));
+    }, []);
+    const toggleBookmark = useCallback((sectionId) => {
+        setBookmarks(prev => {
+            if (prev.includes(sectionId)) {
+                return prev.filter(id => id !== sectionId);
+            }
+            else {
+                return [...prev, sectionId];
+            }
+        });
+    }, []);
+    const markAsRead = useCallback((sectionId) => {
+        setReadSections(prev => new Set([...prev, sectionId]));
+    }, []);
+    const isBookmarked = useCallback((sectionId) => {
+        return bookmarks.includes(sectionId);
+    }, [bookmarks]);
+    const isRead = useCallback((sectionId) => {
+        return readSections.has(sectionId);
+    }, [readSections]);
+    // Reset state when topic changes
+    useEffect(() => {
+        if (topicId) {
+            setBookmarks([]);
+            setReadSections(new Set());
+        }
+    }, [topicId]);
+    return {
+        bookmarks,
+        readSections: Array.from(readSections),
+        addBookmark,
+        removeBookmark,
+        toggleBookmark,
+        markAsRead,
+        isBookmarked,
+        isRead
+    };
+}
+//# sourceMappingURL=useTopicTree.js.map

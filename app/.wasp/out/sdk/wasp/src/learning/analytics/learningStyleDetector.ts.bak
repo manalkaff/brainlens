@@ -1,0 +1,1040 @@
+import OpenAI from 'openai';
+import { AssessmentResult, UserTopicProgress, DetailedProgressMetrics, LearningInsight } from '@src/learning/types';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface LearningStyleProfile {
+  id: string;
+  userId: string;
+  topicId: string;
+  primaryStyle: LearningStyle;
+  secondaryStyle?: LearningStyle;
+  confidence: number; // 0-1, how confident we are in this assessment
+  detectedAt: Date;
+  
+  // Style-specific preferences
+  visualPreference: number; // 0-1
+  auditoryPreference: number; // 0-1
+  kinestheticPreference: number; // 0-1
+  readingWritingPreference: number; // 0-1
+  
+  // Learning approach preferences
+  sequentialPreference: number; // Step-by-step vs overview-first
+  globalPreference: number; // Big picture vs details
+  activePreference: number; // Hands-on vs reflective
+  reflectivePreference: number; // Think-first vs try-first
+  
+  // Content preferences
+  examplePreference: number; // Concrete examples vs abstract concepts
+  theoryPreference: number; // Theory-first vs application-first
+  collaborativePreference: number; // Group vs individual learning
+  competitivePreference: number; // Competition vs cooperation
+  
+  // Pace and structure preferences
+  structuredPreference: number; // Structured vs flexible learning
+  pacingPreference: 'fast' | 'moderate' | 'slow';
+  challengePreference: 'high' | 'moderate' | 'low';
+  feedbackPreference: 'immediate' | 'periodic' | 'summary';
+  
+  // Behavioral indicators
+  attentionSpan: 'short' | 'medium' | 'long'; // Based on session duration patterns
+  peakLearningTime: 'morning' | 'afternoon' | 'evening' | 'late-night' | 'variable';
+  preferredSessionLength: number; // in minutes
+  breakFrequency: number; // breaks per hour
+  
+  // Performance patterns
+  strongestAreas: string[]; // Concept types user excels at
+  challengingAreas: string[]; // Concept types user struggles with
+  learningVelocity: number; // Rate of knowledge acquisition
+  retentionRate: number; // How well user retains information
+  
+  lastUpdated: Date;
+}
+
+export enum LearningStyle {
+  VISUAL = 'visual',
+  AUDITORY = 'auditory',
+  KINESTHETIC = 'kinesthetic',
+  READING_WRITING = 'reading_writing',
+  MULTIMODAL = 'multimodal'
+}
+
+export interface BehavioralPattern {
+  type: 'interaction' | 'performance' | 'preference' | 'temporal';
+  pattern: string;
+  confidence: number;
+  frequency: number;
+  context: string;
+  implications: string[];
+}
+
+export interface StyleDetectionContext {
+  userId: string;
+  topicId: string;
+  assessmentData: AssessmentResult[];
+  progressData: UserTopicProgress;
+  sessionHistory: any[];
+  interactionLogs: any[];
+  performanceMetrics: DetailedProgressMetrics[];
+  existingProfile?: LearningStyleProfile;
+}
+
+export interface LearningStyleInsight {
+  type: 'strength' | 'preference' | 'challenge' | 'adaptation';
+  title: string;
+  description: string;
+  confidence: number;
+  actionableRecommendations: string[];
+  relatedStyles: LearningStyle[];
+}
+
+class LearningStyleDetector {
+  private static instance: LearningStyleDetector;
+  private profiles: Map<string, LearningStyleProfile> = new Map();
+  private detectionCache: Map<string, { profile: LearningStyleProfile; timestamp: Date }> = new Map();
+  private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+  static getInstance(): LearningStyleDetector {
+    if (!LearningStyleDetector.instance) {
+      LearningStyleDetector.instance = new LearningStyleDetector();
+    }
+    return LearningStyleDetector.instance;
+  }
+
+  /**
+   * Detect learning style based on user behavior and performance
+   */
+  async detectLearningStyle(context: StyleDetectionContext): Promise<LearningStyleProfile> {
+    const cacheKey = `${context.userId}-${context.topicId}`;
+    
+    // Check cache first
+    const cached = this.detectionCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp.getTime() < this.CACHE_DURATION) {
+      return cached.profile;
+    }
+
+    try {
+      // Analyze behavioral patterns
+      const behavioralPatterns = await this.analyzeBehavioralPatterns(context);
+      
+      // Analyze performance patterns
+      const performancePatterns = await this.analyzePerformancePatterns(context);
+      
+      // Analyze interaction preferences
+      const interactionPreferences = await this.analyzeInteractionPreferences(context);
+      
+      // Analyze temporal patterns
+      const temporalPatterns = await this.analyzeTemporalPatterns(context);
+      
+      // Combine all analysis
+      const profile = await this.synthesizeLearningStyleProfile(
+        context,
+        behavioralPatterns,
+        performancePatterns,
+        interactionPreferences,
+        temporalPatterns
+      );
+      
+      // Cache the result
+      this.detectionCache.set(cacheKey, { profile, timestamp: new Date() });
+      this.profiles.set(cacheKey, profile);
+      
+      return profile;
+    } catch (error) {
+      console.error('Error detecting learning style:', error);
+      // Return default profile if detection fails
+      return this.createDefaultProfile(context.userId, context.topicId);
+    }
+  }
+
+  /**
+   * Analyze behavioral patterns from user interactions
+   */
+  private async analyzeBehavioralPatterns(context: StyleDetectionContext): Promise<BehavioralPattern[]> {
+    const patterns: BehavioralPattern[] = [];
+    
+    // Analyze interaction patterns
+    if (context.interactionLogs.length > 0) {
+      // Visual vs Text preference
+      const visualInteractions = context.interactionLogs.filter(log => 
+        log.type === 'diagram_view' || log.type === 'mindmap_interaction' || 
+        log.type === 'visual_expansion' || log.type === 'image_focus'
+      ).length;
+      
+      const textInteractions = context.interactionLogs.filter(log => 
+        log.type === 'text_highlight' || log.type === 'note_taking' || 
+        log.type === 'text_expansion' || log.type === 'reading_focus'
+      ).length;
+      
+      if (visualInteractions > textInteractions * 1.5) {
+        patterns.push({
+          type: 'interaction',
+          pattern: 'strong_visual_preference',
+          confidence: Math.min(0.9, visualInteractions / (visualInteractions + textInteractions)),
+          frequency: visualInteractions / context.interactionLogs.length,
+          context: 'User consistently chooses visual elements over text-based content',
+          implications: ['Prefers diagrams and visual representations', 'Benefits from mind maps and flowcharts', 'Visual memory stronger than verbal memory']
+        });
+      } else if (textInteractions > visualInteractions * 1.5) {
+        patterns.push({
+          type: 'interaction',
+          pattern: 'strong_textual_preference',
+          confidence: Math.min(0.9, textInteractions / (visualInteractions + textInteractions)),
+          frequency: textInteractions / context.interactionLogs.length,
+          context: 'User consistently engages with text-based content over visual elements',
+          implications: ['Prefers reading and written explanations', 'Benefits from detailed textual descriptions', 'Stronger verbal processing']
+        });
+      }
+      
+      // Sequential vs Random access pattern
+      const sequentialAccess = context.interactionLogs.filter(log => 
+        log.sequenceOrder && log.sequenceOrder === log.expectedOrder
+      ).length;
+      
+      if (sequentialAccess / context.interactionLogs.length > 0.7) {
+        patterns.push({
+          type: 'interaction',
+          pattern: 'sequential_learner',
+          confidence: sequentialAccess / context.interactionLogs.length,
+          frequency: 1.0,
+          context: 'User follows logical sequence in learning materials',
+          implications: ['Benefits from step-by-step progression', 'Prefers structured learning paths', 'May struggle with non-linear content']
+        });
+      } else {
+        patterns.push({
+          type: 'interaction',
+          pattern: 'global_learner',
+          confidence: 1 - (sequentialAccess / context.interactionLogs.length),
+          frequency: 1.0,
+          context: 'User jumps between topics and explores connections',
+          implications: ['Benefits from overview-first approach', 'Comfortable with non-linear learning', 'Enjoys exploring connections between concepts']
+        });
+      }
+      
+      // Active vs Reflective pattern
+      const immediateActions = context.interactionLogs.filter(log => 
+        log.type === 'quiz_attempt' || log.type === 'practice_exercise' || 
+        log.type === 'immediate_application' || log.actionDelay < 5000
+      ).length;
+      
+      const reflectiveActions = context.interactionLogs.filter(log => 
+        log.type === 'content_review' || log.type === 'note_reflection' || 
+        log.type === 'concept_contemplation' || log.actionDelay > 30000
+      ).length;
+      
+      if (immediateActions > reflectiveActions * 1.3) {
+        patterns.push({
+          type: 'interaction',
+          pattern: 'active_learner',
+          confidence: immediateActions / (immediateActions + reflectiveActions),
+          frequency: immediateActions / context.interactionLogs.length,
+          context: 'User prefers immediate engagement and hands-on activities',
+          implications: ['Benefits from interactive exercises', 'Learns by doing', 'May get impatient with lengthy explanations']
+        });
+      } else if (reflectiveActions > immediateActions) {
+        patterns.push({
+          type: 'interaction',
+          pattern: 'reflective_learner',
+          confidence: reflectiveActions / (immediateActions + reflectiveActions),
+          frequency: reflectiveActions / context.interactionLogs.length,
+          context: 'User takes time to process and reflect on information',
+          implications: ['Benefits from contemplation time', 'Prefers to understand before acting', 'Values deep understanding over quick application']
+        });
+      }
+    }
+    
+    return patterns;
+  }
+
+  /**
+   * Analyze performance patterns to infer learning preferences
+   */
+  private async analyzePerformancePatterns(context: StyleDetectionContext): Promise<BehavioralPattern[]> {
+    const patterns: BehavioralPattern[] = [];
+    
+    if (context.performanceMetrics.length > 0) {
+      const latestMetrics = context.performanceMetrics[context.performanceMetrics.length - 1];
+      
+      // Analyze question type performance
+      const questionTypePerformance = latestMetrics.questionTypeBreakdown || {};
+      const bestPerformingTypes = Object.entries(questionTypePerformance)
+        .sort(([,a], [,b]) => (b as any).accuracy - (a as any).accuracy)
+        .slice(0, 2)
+        .map(([type]) => type);
+      
+      if (bestPerformingTypes.includes('visual') || bestPerformingTypes.includes('diagram')) {
+        patterns.push({
+          type: 'performance',
+          pattern: 'visual_strength',
+          confidence: 0.8,
+          frequency: 1.0,
+          context: 'User performs better on visual and diagram-based questions',
+          implications: ['Strong visual processing capabilities', 'Benefits from graphical representations', 'May struggle with purely verbal content']
+        });
+      }
+      
+      if (bestPerformingTypes.includes('conceptual') || bestPerformingTypes.includes('theoretical')) {
+        patterns.push({
+          type: 'performance',
+          pattern: 'theoretical_strength',
+          confidence: 0.8,
+          frequency: 1.0,
+          context: 'User excels at theoretical and conceptual questions',
+          implications: ['Strong abstract thinking', 'Benefits from theory-first approach', 'Enjoys complex conceptual frameworks']
+        });
+      }
+      
+      if (bestPerformingTypes.includes('practical') || bestPerformingTypes.includes('application')) {
+        patterns.push({
+          type: 'performance',
+          pattern: 'practical_strength',
+          confidence: 0.8,
+          frequency: 1.0,
+          context: 'User performs well on practical application questions',
+          implications: ['Learns best through application', 'Benefits from real-world examples', 'Prefers concrete over abstract']
+        });
+      }
+      
+      // Analyze learning velocity patterns
+      const recentVelocity = latestMetrics.learningVelocity || 0;
+      if (recentVelocity > 0.8) {
+        patterns.push({
+          type: 'performance',
+          pattern: 'fast_learner',
+          confidence: Math.min(0.9, recentVelocity),
+          frequency: 1.0,
+          context: 'User demonstrates high learning velocity',
+          implications: ['Can handle accelerated pace', 'Benefits from challenging content', 'May get bored with slow progression']
+        });
+      } else if (recentVelocity < 0.4) {
+        patterns.push({
+          type: 'performance',
+          pattern: 'deliberate_learner',
+          confidence: Math.min(0.9, 1 - recentVelocity),
+          frequency: 1.0,
+          context: 'User prefers steady, deliberate learning pace',
+          implications: ['Benefits from thorough explanations', 'Needs time to process information', 'Values depth over speed']
+        });
+      }
+      
+      // Analyze retention patterns
+      const retentionRate = latestMetrics.retentionRate || 0;
+      if (retentionRate > 0.8) {
+        patterns.push({
+          type: 'performance',
+          pattern: 'strong_retention',
+          confidence: retentionRate,
+          frequency: 1.0,
+          context: 'User demonstrates excellent knowledge retention',
+          implications: ['Can build complex knowledge structures', 'Benefits from spaced repetition', 'Ready for advanced concepts']
+        });
+      }
+    }
+    
+    return patterns;
+  }
+
+  /**
+   * Analyze user interaction preferences
+   */
+  private async analyzeInteractionPreferences(context: StyleDetectionContext): Promise<BehavioralPattern[]> {
+    const patterns: BehavioralPattern[] = [];
+    
+    if (context.sessionHistory.length > 0) {
+      // Analyze tab usage patterns
+      const tabUsage = context.sessionHistory.reduce((acc, session) => {
+        session.tabInteractions?.forEach((interaction: any) => {
+          acc[interaction.tab] = (acc[interaction.tab] || 0) + interaction.duration;
+        });
+        return acc;
+      }, {} as Record<string, number>);
+      
+      const totalTime = Object.values(tabUsage).reduce((sum, time) => sum + (time as number), 0);
+      const tabPreferences = Object.entries(tabUsage).map(([tab, time]) => ({
+        tab,
+        percentage: (time as number) / totalTime
+      })).sort((a, b) => b.percentage - a.percentage);
+      
+      // Analyze primary tab preference
+      if (tabPreferences.length > 0) {
+        const primaryTab = tabPreferences[0];
+        
+        switch (primaryTab.tab) {
+          case 'learn':
+            if (primaryTab.percentage > 0.5) {
+              patterns.push({
+                type: 'preference',
+                pattern: 'guided_learning_preference',
+                confidence: primaryTab.percentage,
+                frequency: 1.0,
+                context: 'User strongly prefers guided learning experiences',
+                implications: ['Benefits from structured progression', 'Appreciates clear learning objectives', 'Prefers guided over self-directed learning']
+              });
+            }
+            break;
+          case 'explore':
+            if (primaryTab.percentage > 0.4) {
+              patterns.push({
+                type: 'preference',
+                pattern: 'exploratory_learning_preference',
+                confidence: primaryTab.percentage,
+                frequency: 1.0,
+                context: 'User enjoys self-directed exploration of content',
+                implications: ['Benefits from flexible navigation', 'Enjoys discovering connections', 'Comfortable with unstructured learning']
+              });
+            }
+            break;
+          case 'ask':
+            if (primaryTab.percentage > 0.3) {
+              patterns.push({
+                type: 'preference',
+                pattern: 'conversational_learning_preference',
+                confidence: primaryTab.percentage,
+                frequency: 1.0,
+                context: 'User prefers conversational learning approach',
+                implications: ['Benefits from interactive dialogue', 'Learns through questioning', 'Prefers clarification through conversation']
+              });
+            }
+            break;
+          case 'mindmap':
+            if (primaryTab.percentage > 0.25) {
+              patterns.push({
+                type: 'preference',
+                pattern: 'visual_mapping_preference',
+                confidence: primaryTab.percentage,
+                frequency: 1.0,
+                context: 'User values visual knowledge representation',
+                implications: ['Strong visual-spatial intelligence', 'Benefits from concept mapping', 'Prefers seeing relationships graphically']
+              });
+            }
+            break;
+          case 'quiz':
+            if (primaryTab.percentage > 0.3) {
+              patterns.push({
+                type: 'preference',
+                pattern: 'assessment_driven_preference',
+                confidence: primaryTab.percentage,
+                frequency: 1.0,
+                context: 'User is motivated by assessments and testing',
+                implications: ['Benefits from frequent testing', 'Motivated by achievement', 'Learns through self-assessment']
+              });
+            }
+            break;
+        }
+      }
+      
+      // Analyze session duration patterns
+      const sessionDurations = context.sessionHistory.map(session => session.duration || 0);
+      const avgSessionDuration = sessionDurations.reduce((sum, duration) => sum + duration, 0) / sessionDurations.length;
+      
+      if (avgSessionDuration > 45 * 60 * 1000) { // More than 45 minutes
+        patterns.push({
+          type: 'preference',
+          pattern: 'extended_session_preference',
+          confidence: 0.8,
+          frequency: 1.0,
+          context: 'User prefers longer, intensive learning sessions',
+          implications: ['High concentration ability', 'Benefits from deep-dive sessions', 'May prefer fewer but longer study periods']
+        });
+      } else if (avgSessionDuration < 15 * 60 * 1000) { // Less than 15 minutes
+        patterns.push({
+          type: 'preference',
+          pattern: 'micro_learning_preference',
+          confidence: 0.8,
+          frequency: 1.0,
+          context: 'User prefers shorter, focused learning sessions',
+          implications: ['Benefits from bite-sized content', 'Prefers frequent short sessions', 'May have attention challenges with long content']
+        });
+      }
+    }
+    
+    return patterns;
+  }
+
+  /**
+   * Analyze temporal patterns in learning behavior
+   */
+  private async analyzeTemporalPatterns(context: StyleDetectionContext): Promise<BehavioralPattern[]> {
+    const patterns: BehavioralPattern[] = [];
+    
+    if (context.sessionHistory.length > 0) {
+      // Analyze time-of-day preferences
+      const hourlyActivity = context.sessionHistory.reduce((acc, session) => {
+        const hour = new Date(session.timestamp).getHours();
+        acc[hour] = (acc[hour] || 0) + (session.duration || 0);
+        return acc;
+      }, {} as Record<number, number>);
+      
+      const totalActivity = Object.values(hourlyActivity).reduce((sum, time) => sum + (time as number), 0);
+      const peakHours = Object.entries(hourlyActivity)
+        .map(([hour, time]) => ({ hour: parseInt(hour), percentage: (time as number) / totalActivity }))
+        .sort((a, b) => b.percentage - a.percentage)
+        .slice(0, 3);
+      
+      if (peakHours.length > 0 && peakHours[0].percentage > 0.3) {
+        const peakHour = peakHours[0].hour;
+        let timePreference = 'variable';
+        
+        if (peakHour >= 6 && peakHour < 12) {
+          timePreference = 'morning';
+        } else if (peakHour >= 12 && peakHour < 17) {
+          timePreference = 'afternoon';
+        } else if (peakHour >= 17 && peakHour < 21) {
+          timePreference = 'evening';
+        } else {
+          timePreference = 'late-night';
+        }
+        
+        patterns.push({
+          type: 'temporal',
+          pattern: `${timePreference}_learner`,
+          confidence: peakHours[0].percentage,
+          frequency: 1.0,
+          context: `User shows consistent preference for ${timePreference} learning`,
+          implications: [`Peak cognitive performance in ${timePreference}`, 'Benefits from scheduling learning during peak hours', 'May struggle with learning at non-optimal times']
+        });
+      }
+      
+      // Analyze consistency patterns
+      const dailyConsistency = this.calculateConsistencyScore(context.sessionHistory);
+      if (dailyConsistency > 0.7) {
+        patterns.push({
+          type: 'temporal',
+          pattern: 'consistent_learner',
+          confidence: dailyConsistency,
+          frequency: 1.0,
+          context: 'User demonstrates consistent daily learning habits',
+          implications: ['Benefits from routine and structure', 'Builds habits effectively', 'Prefers predictable learning schedule']
+        });
+      } else if (dailyConsistency < 0.3) {
+        patterns.push({
+          type: 'temporal',
+          pattern: 'flexible_learner',
+          confidence: 1 - dailyConsistency,
+          frequency: 1.0,
+          context: 'User has flexible, variable learning patterns',
+          implications: ['Adapts to changing schedules', 'May prefer burst learning periods', 'Benefits from flexible deadlines']
+        });
+      }
+    }
+    
+    return patterns;
+  }
+
+  /**
+   * Synthesize all patterns into a comprehensive learning style profile
+   */
+  private async synthesizeLearningStyleProfile(
+    context: StyleDetectionContext,
+    behavioralPatterns: BehavioralPattern[],
+    performancePatterns: BehavioralPattern[],
+    interactionPreferences: BehavioralPattern[],
+    temporalPatterns: BehavioralPattern[]
+  ): Promise<LearningStyleProfile> {
+    const allPatterns = [...behavioralPatterns, ...performancePatterns, ...interactionPreferences, ...temporalPatterns];
+    
+    // Initialize profile with defaults
+    const profile: LearningStyleProfile = {
+      id: `${context.userId}-${context.topicId}-${Date.now()}`,
+      userId: context.userId,
+      topicId: context.topicId,
+      primaryStyle: LearningStyle.MULTIMODAL,
+      confidence: 0.5,
+      detectedAt: new Date(),
+      
+      // Initialize all preferences to neutral (0.5)
+      visualPreference: 0.5,
+      auditoryPreference: 0.5,
+      kinestheticPreference: 0.5,
+      readingWritingPreference: 0.5,
+      
+      sequentialPreference: 0.5,
+      globalPreference: 0.5,
+      activePreference: 0.5,
+      reflectivePreference: 0.5,
+      
+      examplePreference: 0.5,
+      theoryPreference: 0.5,
+      collaborativePreference: 0.5,
+      competitivePreference: 0.5,
+      
+      structuredPreference: 0.5,
+      pacingPreference: 'moderate',
+      challengePreference: 'moderate',
+      feedbackPreference: 'periodic',
+      
+      attentionSpan: 'medium',
+      peakLearningTime: 'variable',
+      preferredSessionLength: 30,
+      breakFrequency: 1,
+      
+      strongestAreas: [],
+      challengingAreas: [],
+      learningVelocity: 0.5,
+      retentionRate: 0.5,
+      
+      lastUpdated: new Date()
+    };
+    
+    // Apply pattern-based adjustments
+    for (const pattern of allPatterns) {
+      this.applyPatternToProfile(profile, pattern);
+    }
+    
+    // Use AI to refine and validate the profile
+    const aiRefinedProfile = await this.aiRefineProfile(profile, allPatterns, context);
+    
+    // Determine primary and secondary learning styles
+    const styleScores = {
+      [LearningStyle.VISUAL]: aiRefinedProfile.visualPreference,
+      [LearningStyle.AUDITORY]: aiRefinedProfile.auditoryPreference,
+      [LearningStyle.KINESTHETIC]: aiRefinedProfile.kinestheticPreference,
+      [LearningStyle.READING_WRITING]: aiRefinedProfile.readingWritingPreference
+    };
+    
+    const sortedStyles = Object.entries(styleScores)
+      .sort(([,a], [,b]) => b - a)
+      .map(([style]) => style as LearningStyle);
+    
+    aiRefinedProfile.primaryStyle = sortedStyles[0];
+    if (sortedStyles[1] && styleScores[sortedStyles[1]] > 0.6) {
+      aiRefinedProfile.secondaryStyle = sortedStyles[1];
+    }
+    
+    // If no clear preference, mark as multimodal
+    if (Math.max(...Object.values(styleScores)) < 0.65) {
+      aiRefinedProfile.primaryStyle = LearningStyle.MULTIMODAL;
+    }
+    
+    // Calculate overall confidence
+    const avgConfidence = allPatterns.reduce((sum, pattern) => sum + pattern.confidence, 0) / allPatterns.length;
+    aiRefinedProfile.confidence = Math.min(0.95, Math.max(0.3, avgConfidence));
+    
+    return aiRefinedProfile;
+  }
+
+  /**
+   * Apply individual pattern to profile
+   */
+  private applyPatternToProfile(profile: LearningStyleProfile, pattern: BehavioralPattern): void {
+    const weight = pattern.confidence * pattern.frequency;
+    
+    switch (pattern.pattern) {
+      case 'strong_visual_preference':
+        profile.visualPreference = Math.min(0.95, profile.visualPreference + (0.3 * weight));
+        break;
+      case 'strong_textual_preference':
+        profile.readingWritingPreference = Math.min(0.95, profile.readingWritingPreference + (0.3 * weight));
+        break;
+      case 'sequential_learner':
+        profile.sequentialPreference = Math.min(0.95, profile.sequentialPreference + (0.4 * weight));
+        profile.structuredPreference = Math.min(0.95, profile.structuredPreference + (0.2 * weight));
+        break;
+      case 'global_learner':
+        profile.globalPreference = Math.min(0.95, profile.globalPreference + (0.4 * weight));
+        break;
+      case 'active_learner':
+        profile.activePreference = Math.min(0.95, profile.activePreference + (0.4 * weight));
+        profile.kinestheticPreference = Math.min(0.95, profile.kinestheticPreference + (0.2 * weight));
+        break;
+      case 'reflective_learner':
+        profile.reflectivePreference = Math.min(0.95, profile.reflectivePreference + (0.4 * weight));
+        break;
+      case 'visual_strength':
+        profile.visualPreference = Math.min(0.95, profile.visualPreference + (0.35 * weight));
+        profile.strongestAreas.push('Visual Processing');
+        break;
+      case 'theoretical_strength':
+        profile.theoryPreference = Math.min(0.95, profile.theoryPreference + (0.3 * weight));
+        profile.strongestAreas.push('Abstract Concepts');
+        break;
+      case 'practical_strength':
+        profile.examplePreference = Math.min(0.95, profile.examplePreference + (0.3 * weight));
+        profile.activePreference = Math.min(0.95, profile.activePreference + (0.2 * weight));
+        profile.strongestAreas.push('Practical Application');
+        break;
+      case 'fast_learner':
+        profile.learningVelocity = Math.min(0.95, profile.learningVelocity + (0.3 * weight));
+        profile.pacingPreference = 'fast';
+        profile.challengePreference = 'high';
+        break;
+      case 'deliberate_learner':
+        profile.learningVelocity = Math.max(0.05, profile.learningVelocity - (0.2 * weight));
+        profile.pacingPreference = 'slow';
+        break;
+      case 'extended_session_preference':
+        profile.preferredSessionLength = Math.min(90, profile.preferredSessionLength + (30 * weight));
+        profile.attentionSpan = 'long';
+        break;
+      case 'micro_learning_preference':
+        profile.preferredSessionLength = Math.max(10, profile.preferredSessionLength - (15 * weight));
+        profile.attentionSpan = 'short';
+        profile.breakFrequency = Math.min(4, profile.breakFrequency + (2 * weight));
+        break;
+      case 'morning_learner':
+        profile.peakLearningTime = 'morning';
+        break;
+      case 'afternoon_learner':
+        profile.peakLearningTime = 'afternoon';
+        break;
+      case 'evening_learner':
+        profile.peakLearningTime = 'evening';
+        break;
+      case 'late-night_learner':
+        profile.peakLearningTime = 'late-night';
+        break;
+      case 'consistent_learner':
+        profile.structuredPreference = Math.min(0.95, profile.structuredPreference + (0.3 * weight));
+        break;
+    }
+  }
+
+  /**
+   * Use AI to refine and validate the learning style profile
+   */
+  private async aiRefineProfile(
+    profile: LearningStyleProfile,
+    patterns: BehavioralPattern[],
+    context: StyleDetectionContext
+  ): Promise<LearningStyleProfile> {
+    try {
+      const prompt = `As an expert in learning psychology and educational assessment, analyze this user's learning patterns and refine their learning style profile.
+
+Current Profile Analysis:
+- Visual Preference: ${profile.visualPreference}
+- Reading/Writing Preference: ${profile.readingWritingPreference}
+- Sequential vs Global: ${profile.sequentialPreference} vs ${profile.globalPreference}
+- Active vs Reflective: ${profile.activePreference} vs ${profile.reflectivePreference}
+- Theory vs Example preference: ${profile.theoryPreference} vs ${profile.examplePreference}
+
+Detected Behavioral Patterns:
+${patterns.map(p => `- ${p.pattern}: ${p.context} (confidence: ${p.confidence})`).join('\n')}
+
+Performance Data:
+- Sessions completed: ${context.sessionHistory.length}
+- Assessment attempts: ${context.assessmentData.length}
+- Current learning velocity: ${profile.learningVelocity}
+
+Based on this data, provide refinements to the learning style profile. Focus on:
+1. Any contradictions in the detected patterns
+2. Confidence adjustments based on data quality
+3. Recommendations for learning style preferences
+4. Identification of strongest learning modalities
+
+Respond with a JSON object containing refined preference scores (0-1) and explanations for major adjustments.`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 1000
+      });
+
+      const aiAnalysis = response.choices[0]?.message?.content;
+      if (aiAnalysis) {
+        try {
+          const refinements = JSON.parse(aiAnalysis) as any;
+          
+          // Apply AI refinements cautiously
+          if (refinements.visualPreference !== undefined) {
+            profile.visualPreference = Math.min(0.95, Math.max(0.05, 
+              (profile.visualPreference + refinements.visualPreference) / 2
+            ));
+          }
+          
+          if (refinements.readingWritingPreference !== undefined) {
+            profile.readingWritingPreference = Math.min(0.95, Math.max(0.05,
+              (profile.readingWritingPreference + refinements.readingWritingPreference) / 2
+            ));
+          }
+          
+          // Apply other refinements similarly...
+          
+        } catch (parseError) {
+          console.log('AI refinement response not parseable, using detected profile');
+        }
+      }
+    } catch (error) {
+      console.error('Error in AI profile refinement:', error);
+      // Continue with the detected profile if AI refinement fails
+    }
+    
+    return profile;
+  }
+
+  /**
+   * Get learning style insights and recommendations
+   */
+  async getLearningStyleInsights(profile: LearningStyleProfile): Promise<LearningStyleInsight[]> {
+    const insights: LearningStyleInsight[] = [];
+    
+    // Primary style insights
+    if (profile.confidence > 0.7) {
+      insights.push({
+        type: 'strength',
+        title: `${profile.primaryStyle.charAt(0).toUpperCase() + profile.primaryStyle.slice(1)} Learning Style Identified`,
+        description: `You show strong preference for ${profile.primaryStyle} learning approaches.`,
+        confidence: profile.confidence,
+        actionableRecommendations: this.getStyleRecommendations(profile.primaryStyle),
+        relatedStyles: profile.secondaryStyle ? [profile.secondaryStyle] : []
+      });
+    }
+    
+    // Pacing insights
+    if (profile.learningVelocity > 0.8) {
+      insights.push({
+        type: 'strength',
+        title: 'Fast Learning Pace',
+        description: 'You demonstrate rapid knowledge acquisition and can handle accelerated content.',
+        confidence: 0.9,
+        actionableRecommendations: [
+          'Seek challenging, advanced materials',
+          'Consider self-paced accelerated programs',
+          'Use spaced repetition to reinforce quick learning',
+          'Engage with complex, multi-layered content'
+        ],
+        relatedStyles: []
+      });
+    }
+    
+    // Session preference insights
+    if (profile.attentionSpan === 'long') {
+      insights.push({
+        type: 'preference',
+        title: 'Extended Focus Capability',
+        description: 'You can maintain concentration for extended periods and prefer deeper learning sessions.',
+        confidence: 0.8,
+        actionableRecommendations: [
+          'Schedule longer, intensive study blocks',
+          'Engage with complex, comprehensive materials',
+          'Use techniques like deep work sessions',
+          'Minimize interruptions during learning'
+        ],
+        relatedStyles: []
+      });
+    } else if (profile.attentionSpan === 'short') {
+      insights.push({
+        type: 'preference',
+        title: 'Micro-Learning Preference',
+        description: 'You benefit from shorter, focused learning sessions with frequent breaks.',
+        confidence: 0.8,
+        actionableRecommendations: [
+          'Break content into 10-15 minute chunks',
+          'Use frequent breaks and varied activities',
+          'Employ gamification and quick wins',
+          'Focus on one concept at a time'
+        ],
+        relatedStyles: []
+      });
+    }
+    
+    // Structural insights
+    if (profile.structuredPreference > 0.7) {
+      insights.push({
+        type: 'preference',
+        title: 'Structured Learning Preference',
+        description: 'You thrive with clear organization, sequences, and structured learning paths.',
+        confidence: profile.structuredPreference,
+        actionableRecommendations: [
+          'Follow sequential learning paths',
+          'Use clear objectives and milestones',
+          'Benefit from step-by-step instructions',
+          'Appreciate organized, hierarchical content'
+        ],
+        relatedStyles: []
+      });
+    }
+    
+    // Challenge level insights
+    if (profile.challengePreference === 'high' && profile.confidence > 0.6) {
+      insights.push({
+        type: 'adaptation',
+        title: 'Thrives on Challenge',
+        description: 'You perform better with challenging, complex material that pushes your capabilities.',
+        confidence: 0.85,
+        actionableRecommendations: [
+          'Seek advanced or accelerated content',
+          'Engage with complex problem-solving',
+          'Use competitive learning elements',
+          'Set ambitious learning goals'
+        ],
+        relatedStyles: []
+      });
+    }
+    
+    return insights;
+  }
+
+  /**
+   * Get style-specific recommendations
+   */
+  private getStyleRecommendations(style: LearningStyle): string[] {
+    switch (style) {
+      case LearningStyle.VISUAL:
+        return [
+          'Use diagrams, charts, and visual representations',
+          'Employ mind maps and concept mapping',
+          'Seek video content and visual demonstrations',
+          'Use color coding and visual organization',
+          'Create visual notes and summaries'
+        ];
+      case LearningStyle.AUDITORY:
+        return [
+          'Listen to audio explanations and lectures',
+          'Discuss concepts aloud or with others',
+          'Use rhythm and music for memorization',
+          'Record yourself explaining concepts',
+          'Participate in group discussions'
+        ];
+      case LearningStyle.KINESTHETIC:
+        return [
+          'Engage in hands-on activities and experiments',
+          'Use physical movement while learning',
+          'Take frequent breaks to move around',
+          'Use manipulatives and interactive tools',
+          'Practice through real-world applications'
+        ];
+      case LearningStyle.READING_WRITING:
+        return [
+          'Read comprehensive written materials',
+          'Take detailed written notes',
+          'Write summaries and explanations',
+          'Use lists, outlines, and written organization',
+          'Engage with text-based learning resources'
+        ];
+      case LearningStyle.MULTIMODAL:
+        return [
+          'Combine multiple learning approaches',
+          'Vary your learning methods regularly',
+          'Use different modes for different concepts',
+          'Adapt your approach based on content type',
+          'Experiment with various learning formats'
+        ];
+      default:
+        return ['Experiment with different learning approaches to find what works best'];
+    }
+  }
+
+  /**
+   * Calculate consistency score from session history
+   */
+  private calculateConsistencyScore(sessionHistory: any[]): number {
+    if (sessionHistory.length < 3) return 0.5;
+    
+    // Group sessions by day
+    const dailySessions = sessionHistory.reduce((acc, session) => {
+      const day = new Date(session.timestamp).toDateString();
+      acc[day] = (acc[day] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const dailyCounts = Object.values(dailySessions as Record<string, number>);
+    const avgDaily = dailyCounts.reduce((sum, count) => sum + count, 0) / dailyCounts.length;
+    const variance = dailyCounts.reduce((sum, count) => sum + Math.pow(count - avgDaily, 2), 0) / dailyCounts.length;
+    
+    // Lower variance = higher consistency
+    return Math.max(0, Math.min(1, 1 - (variance / avgDaily)));
+  }
+
+  /**
+   * Create default profile when detection fails
+   */
+  private createDefaultProfile(userId: string, topicId: string): LearningStyleProfile {
+    return {
+      id: `${userId}-${topicId}-default`,
+      userId,
+      topicId,
+      primaryStyle: LearningStyle.MULTIMODAL,
+      confidence: 0.3,
+      detectedAt: new Date(),
+      
+      visualPreference: 0.5,
+      auditoryPreference: 0.5,
+      kinestheticPreference: 0.5,
+      readingWritingPreference: 0.5,
+      
+      sequentialPreference: 0.5,
+      globalPreference: 0.5,
+      activePreference: 0.5,
+      reflectivePreference: 0.5,
+      
+      examplePreference: 0.5,
+      theoryPreference: 0.5,
+      collaborativePreference: 0.5,
+      competitivePreference: 0.5,
+      
+      structuredPreference: 0.5,
+      pacingPreference: 'moderate',
+      challengePreference: 'moderate',
+      feedbackPreference: 'periodic',
+      
+      attentionSpan: 'medium',
+      peakLearningTime: 'variable',
+      preferredSessionLength: 30,
+      breakFrequency: 1,
+      
+      strongestAreas: [],
+      challengingAreas: [],
+      learningVelocity: 0.5,
+      retentionRate: 0.5,
+      
+      lastUpdated: new Date()
+    };
+  }
+
+  /**
+   * Update existing profile with new data
+   */
+  async updateLearningStyleProfile(
+    existingProfile: LearningStyleProfile,
+    newContext: StyleDetectionContext
+  ): Promise<LearningStyleProfile> {
+    // Detect new patterns
+    const updatedProfile = await this.detectLearningStyle(newContext);
+    
+    // Merge with existing profile using weighted average
+    const weight = 0.3; // Weight for new data
+    const mergedProfile: LearningStyleProfile = {
+      ...existingProfile,
+      
+      visualPreference: (existingProfile.visualPreference * (1 - weight)) + (updatedProfile.visualPreference * weight),
+      auditoryPreference: (existingProfile.auditoryPreference * (1 - weight)) + (updatedProfile.auditoryPreference * weight),
+      kinestheticPreference: (existingProfile.kinestheticPreference * (1 - weight)) + (updatedProfile.kinestheticPreference * weight),
+      readingWritingPreference: (existingProfile.readingWritingPreference * (1 - weight)) + (updatedProfile.readingWritingPreference * weight),
+      
+      sequentialPreference: (existingProfile.sequentialPreference * (1 - weight)) + (updatedProfile.sequentialPreference * weight),
+      globalPreference: (existingProfile.globalPreference * (1 - weight)) + (updatedProfile.globalPreference * weight),
+      activePreference: (existingProfile.activePreference * (1 - weight)) + (updatedProfile.activePreference * weight),
+      reflectivePreference: (existingProfile.reflectivePreference * (1 - weight)) + (updatedProfile.reflectivePreference * weight),
+      
+      learningVelocity: (existingProfile.learningVelocity * (1 - weight)) + (updatedProfile.learningVelocity * weight),
+      retentionRate: (existingProfile.retentionRate * (1 - weight)) + (updatedProfile.retentionRate * weight),
+      
+      confidence: Math.min(0.95, existingProfile.confidence + 0.1), // Increase confidence with more data
+      lastUpdated: new Date()
+    };
+    
+    // Update primary style if confidence is high enough
+    if (mergedProfile.confidence > 0.7) {
+      const styleScores = {
+        [LearningStyle.VISUAL]: mergedProfile.visualPreference,
+        [LearningStyle.AUDITORY]: mergedProfile.auditoryPreference,
+        [LearningStyle.KINESTHETIC]: mergedProfile.kinestheticPreference,
+        [LearningStyle.READING_WRITING]: mergedProfile.readingWritingPreference
+      };
+      
+      const newPrimaryStyle = Object.entries(styleScores)
+        .sort(([,a], [,b]) => b - a)[0][0] as LearningStyle;
+      
+      if (newPrimaryStyle !== mergedProfile.primaryStyle) {
+        mergedProfile.primaryStyle = newPrimaryStyle;
+      }
+    }
+    
+    return mergedProfile;
+  }
+}
+
+// Export both default and named exports for compatibility
+export { LearningStyleDetector };
+export default LearningStyleDetector;

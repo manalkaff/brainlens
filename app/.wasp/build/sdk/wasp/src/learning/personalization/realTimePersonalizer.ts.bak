@@ -1,0 +1,965 @@
+import { AssessmentResult, UserTopicProgress, DetailedProgressMetrics, LearningInsight } from '@src/learning/types';
+import { LearningStyleProfile } from '@src/learning/analytics/learningStyleDetector';
+import LearningStyleDetector from '@src/learning/analytics/learningStyleDetector';
+import { AdvancedProgressTracker } from '@src/learning/analytics/progressTracker';
+import { NextStepsEngine } from '@src/learning/recommendations/nextStepsEngine';
+import { AdaptiveContentStreamer } from '@src/learning/streaming/adaptiveContentStreamer';
+
+export interface PersonalizationContext {
+  userId: string;
+  topicId: string;
+  sessionId: string;
+  timestamp: Date;
+  
+  // Current state
+  currentContent: {
+    id: string;
+    type: string;
+    concepts: string[];
+    difficulty: number;
+    timeSpent: number; // seconds
+  };
+  
+  // Real-time interactions
+  recentInteractions: InteractionEvent[];
+  currentEngagement: number; // 0-1
+  attentionLevel: number; // 0-1
+  comprehensionSignals: ComprehensionSignal[];
+  
+  // Learning context
+  learningStyleProfile: LearningStyleProfile;
+  progressMetrics: DetailedProgressMetrics;
+  sessionMetrics: SessionMetrics;
+  
+  // Preferences and constraints
+  timeConstraints?: {
+    maxSessionTime: number; // minutes
+    preferredBreakInterval: number; // minutes
+  };
+  learningGoals?: string[];
+  immediateNeeds?: string[];
+}
+
+export interface InteractionEvent {
+  timestamp: Date;
+  type: 'content_view' | 'scroll' | 'pause' | 'click' | 'resize' | 'tab_switch' | 'concept_expand' | 'quiz_attempt' | 'feedback' | 'navigation';
+  data: any;
+  duration: number; // milliseconds
+  engagementScore: number; // 0-1
+  focusLevel: number; // 0-1
+}
+
+export interface ComprehensionSignal {
+  timestamp: Date;
+  type: 'quick_success' | 'repeated_attempts' | 'help_seeking' | 'confident_navigation' | 'hesitation_patterns' | 'mastery_demonstration';
+  concept: string;
+  confidence: number; // 0-1, how sure we are about this signal
+  strength: number; // 0-1, how strong the signal is
+}
+
+export interface SessionMetrics {
+  startTime: Date;
+  totalTime: number; // minutes
+  activeTime: number; // minutes actually engaged
+  breakTime: number; // minutes in breaks
+  conceptsCovered: number;
+  conceptsMastered: number;
+  interactionCount: number;
+  avgEngagement: number;
+  peakEngagement: number;
+  engagementTrend: 'increasing' | 'decreasing' | 'stable';
+}
+
+export interface PersonalizationDecision {
+  id: string;
+  timestamp: Date;
+  trigger: PersonalizationTrigger;
+  adaptations: ContentAdaptation[];
+  confidence: number;
+  expectedImpact: string;
+  implementationPriority: 'immediate' | 'next_chunk' | 'next_section' | 'next_session';
+}
+
+export interface PersonalizationTrigger {
+  type: 'engagement_drop' | 'comprehension_struggle' | 'rapid_mastery' | 'attention_fatigue' | 'style_mismatch' | 'time_pressure' | 'goal_deviation';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  data: any;
+  confidence: number;
+}
+
+export interface ContentAdaptation {
+  type: 'content_modification' | 'pacing_adjustment' | 'style_change' | 'difficulty_adjustment' | 'interaction_boost' | 'break_suggestion' | 'path_redirect';
+  action: string;
+  parameters: Record<string, any>;
+  expectedOutcome: string;
+}
+
+export interface PersonalizationRule {
+  id: string;
+  name: string;
+  description: string;
+  triggers: {
+    type: string;
+    conditions: Record<string, any>;
+    timeframe: number; // seconds to look back
+  }[];
+  adaptations: ContentAdaptation[];
+  priority: number;
+  confidence: number;
+  applicableStyles: string[];
+  contextConstraints?: string[];
+}
+
+export interface RealTimePersonalizationState {
+  userId: string;
+  topicId: string;
+  sessionId: string;
+  isActive: boolean;
+  lastUpdate: Date;
+  
+  // Accumulated state
+  interactionHistory: InteractionEvent[];
+  comprehensionSignals: ComprehensionSignal[];
+  adaptationHistory: PersonalizationDecision[];
+  
+  // Current assessments
+  currentEngagement: number;
+  currentComprehension: number;
+  currentAttention: number;
+  currentStyleAlignment: number;
+  
+  // Trend analysis
+  engagementTrend: number; // -1 to 1, negative = declining
+  comprehensionTrend: number;
+  attentionTrend: number;
+  
+  // Personalization flags
+  activeAdaptations: string[];
+  pendingAdaptations: PersonalizationDecision[];
+  suppressedTriggers: string[];
+}
+
+class RealTimePersonalizer {
+  private static instance: RealTimePersonalizer;
+  private personalizationStates: Map<string, RealTimePersonalizationState> = new Map();
+  private personalizationRules: PersonalizationRule[] = [];
+  private styleDetector = LearningStyleDetector.getInstance();
+  private progressTracker = AdvancedProgressTracker.getInstance();
+  private nextStepsEngine = NextStepsEngine.getInstance();
+  private contentStreamer = AdaptiveContentStreamer.getInstance();
+
+  // Configuration
+  private readonly ENGAGEMENT_WINDOW = 60; // seconds
+  private readonly COMPREHENSION_WINDOW = 120; // seconds
+  private readonly ATTENTION_WINDOW = 45; // seconds
+  private readonly MAX_HISTORY_LENGTH = 1000;
+  private readonly MIN_CONFIDENCE_THRESHOLD = 0.6;
+
+  static getInstance(): RealTimePersonalizer {
+    if (!RealTimePersonalizer.instance) {
+      RealTimePersonalizer.instance = new RealTimePersonalizer();
+      RealTimePersonalizer.instance.initializePersonalizationRules();
+    }
+    return RealTimePersonalizer.instance;
+  }
+
+  /**
+   * Initialize personalization for a learning session
+   */
+  async initializePersonalization(context: PersonalizationContext): Promise<string> {
+    const stateKey = `${context.userId}-${context.topicId}-${context.sessionId}`;
+    
+    const state: RealTimePersonalizationState = {
+      userId: context.userId,
+      topicId: context.topicId,
+      sessionId: context.sessionId,
+      isActive: true,
+      lastUpdate: new Date(),
+      
+      interactionHistory: [],
+      comprehensionSignals: [],
+      adaptationHistory: [],
+      
+      currentEngagement: 0.7, // Start optimistic
+      currentComprehension: context.progressMetrics.averageScore || 0.5,
+      currentAttention: context.attentionLevel || 0.7,
+      currentStyleAlignment: this.calculateStyleAlignment(context),
+      
+      engagementTrend: 0,
+      comprehensionTrend: 0,
+      attentionTrend: 0,
+      
+      activeAdaptations: [],
+      pendingAdaptations: [],
+      suppressedTriggers: []
+    };
+    
+    this.personalizationStates.set(stateKey, state);
+    return stateKey;
+  }
+
+  /**
+   * Process real-time interaction event
+   */
+  async processInteraction(
+    stateKey: string,
+    interaction: InteractionEvent,
+    context: PersonalizationContext
+  ): Promise<PersonalizationDecision[]> {
+    const state = this.personalizationStates.get(stateKey);
+    if (!state || !state.isActive) {
+      return [];
+    }
+
+    try {
+      // Add interaction to history
+      state.interactionHistory.push(interaction);
+      this.trimHistory(state);
+      
+      // Update real-time metrics
+      await this.updateRealTimeMetrics(state, interaction, context);
+      
+      // Detect comprehension signals
+      const newSignals = await this.detectComprehensionSignals(state, interaction, context);
+      state.comprehensionSignals.push(...newSignals);
+      
+      // Evaluate personalization triggers
+      const triggers = await this.evaluatePersonalizationTriggers(state, context);
+      
+      // Generate personalization decisions
+      const decisions: PersonalizationDecision[] = [];
+      for (const trigger of triggers) {
+        const decision = await this.generatePersonalizationDecision(trigger, state, context);
+        if (decision && decision.confidence >= this.MIN_CONFIDENCE_THRESHOLD) {
+          decisions.push(decision);
+          state.adaptationHistory.push(decision);
+        }
+      }
+      
+      // Update trends
+      await this.updateTrends(state);
+      
+      state.lastUpdate = new Date();
+      
+      return decisions;
+    } catch (error) {
+      console.error('Error processing interaction:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get current personalization recommendations
+   */
+  async getCurrentRecommendations(
+    stateKey: string,
+    context: PersonalizationContext
+  ): Promise<{
+    immediate: PersonalizationDecision[];
+    upcoming: PersonalizationDecision[];
+    insights: PersonalizationInsight[];
+  }> {
+    const state = this.personalizationStates.get(stateKey);
+    if (!state) {
+      return { immediate: [], upcoming: [], insights: [] };
+    }
+
+    const immediate = state.pendingAdaptations.filter(
+      adaptation => adaptation.implementationPriority === 'immediate'
+    );
+    
+    const upcoming = state.pendingAdaptations.filter(
+      adaptation => ['next_chunk', 'next_section'].includes(adaptation.implementationPriority)
+    );
+    
+    const insights = await this.generatePersonalizationInsights(state, context);
+    
+    return { immediate, upcoming, insights };
+  }
+
+  /**
+   * Update real-time metrics based on interaction
+   */
+  private async updateRealTimeMetrics(
+    state: RealTimePersonalizationState,
+    interaction: InteractionEvent,
+    context: PersonalizationContext
+  ): Promise<void> {
+    const now = Date.now();
+    const recentWindow = this.ENGAGEMENT_WINDOW * 1000;
+    
+    // Filter recent interactions
+    const recentInteractions = state.interactionHistory.filter(
+      i => now - i.timestamp.getTime() <= recentWindow
+    );
+    
+    // Update engagement
+    if (recentInteractions.length > 0) {
+      const avgEngagement = recentInteractions.reduce((sum, i) => sum + i.engagementScore, 0) / recentInteractions.length;
+      state.currentEngagement = (state.currentEngagement * 0.7) + (avgEngagement * 0.3);
+    }
+    
+    // Update attention based on focus patterns
+    const avgFocus = recentInteractions.reduce((sum, i) => sum + i.focusLevel, 0) / Math.max(1, recentInteractions.length);
+    state.currentAttention = (state.currentAttention * 0.8) + (avgFocus * 0.2);
+    
+    // Update style alignment based on interaction types
+    const styleAlignment = this.calculateRealTimeStyleAlignment(recentInteractions, context.learningStyleProfile);
+    state.currentStyleAlignment = (state.currentStyleAlignment * 0.9) + (styleAlignment * 0.1);
+  }
+
+  /**
+   * Detect comprehension signals from interactions
+   */
+  private async detectComprehensionSignals(
+    state: RealTimePersonalizationState,
+    interaction: InteractionEvent,
+    context: PersonalizationContext
+  ): Promise<ComprehensionSignal[]> {
+    const signals: ComprehensionSignal[] = [];
+    
+    switch (interaction.type) {
+      case 'quiz_attempt':
+        if (interaction.data.correct && interaction.data.timeSpent < 10000) {
+          signals.push({
+            timestamp: new Date(),
+            type: 'quick_success',
+            concept: interaction.data.concept || 'unknown',
+            confidence: 0.8,
+            strength: Math.min(1.0, interaction.engagementScore * 1.2)
+          });
+        } else if (!interaction.data.correct && interaction.data.attempts > 2) {
+          signals.push({
+            timestamp: new Date(),
+            type: 'repeated_attempts',
+            concept: interaction.data.concept || 'unknown',
+            confidence: 0.9,
+            strength: Math.min(1.0, interaction.data.attempts / 3)
+          });
+        }
+        break;
+        
+      case 'concept_expand':
+        if (interaction.duration > 30000) { // 30+ seconds on concept
+          signals.push({
+            timestamp: new Date(),
+            type: 'mastery_demonstration',
+            concept: interaction.data.concept || 'unknown',
+            confidence: 0.7,
+            strength: Math.min(1.0, interaction.duration / 60000) // normalize to minutes
+          });
+        }
+        break;
+        
+      case 'navigation':
+        if (interaction.data.backTracking && interaction.data.frequency > 2) {
+          signals.push({
+            timestamp: new Date(),
+            type: 'hesitation_patterns',
+            concept: interaction.data.currentConcept || 'unknown',
+            confidence: 0.6,
+            strength: Math.min(1.0, interaction.data.frequency / 5)
+          });
+        }
+        break;
+        
+      case 'pause':
+        if (interaction.duration > 15000 && interaction.data.context === 'content') {
+          signals.push({
+            timestamp: new Date(),
+            type: 'help_seeking',
+            concept: interaction.data.concept || 'unknown',
+            confidence: 0.5,
+            strength: Math.min(1.0, interaction.duration / 30000)
+          });
+        }
+        break;
+    }
+    
+    return signals;
+  }
+
+  /**
+   * Evaluate personalization triggers
+   */
+  private async evaluatePersonalizationTriggers(
+    state: RealTimePersonalizationState,
+    context: PersonalizationContext
+  ): Promise<PersonalizationTrigger[]> {
+    const triggers: PersonalizationTrigger[] = [];
+    
+    // Engagement drop trigger
+    if (state.currentEngagement < 0.5 && state.engagementTrend < -0.1) {
+      triggers.push({
+        type: 'engagement_drop',
+        severity: state.currentEngagement < 0.3 ? 'critical' : 'high',
+        data: { 
+          currentEngagement: state.currentEngagement, 
+          trend: state.engagementTrend,
+          recentInteractions: state.interactionHistory.slice(-5)
+        },
+        confidence: 0.8
+      });
+    }
+    
+    // Comprehension struggle trigger
+    const strugglingConcepts = state.comprehensionSignals
+      .filter(s => ['repeated_attempts', 'hesitation_patterns'].includes(s.type))
+      .slice(-10);
+    
+    if (strugglingConcepts.length >= 3) {
+      triggers.push({
+        type: 'comprehension_struggle',
+        severity: strugglingConcepts.length >= 5 ? 'high' : 'medium',
+        data: { 
+          strugglingConcepts: strugglingConcepts.map(s => s.concept),
+          signalCount: strugglingConcepts.length
+        },
+        confidence: 0.85
+      });
+    }
+    
+    // Rapid mastery trigger
+    const masterySignals = state.comprehensionSignals
+      .filter(s => ['quick_success', 'mastery_demonstration'].includes(s.type))
+      .slice(-5);
+    
+    if (masterySignals.length >= 3 && state.currentComprehension > 0.8) {
+      triggers.push({
+        type: 'rapid_mastery',
+        severity: 'medium',
+        data: { 
+          masterySignals: masterySignals.length,
+          comprehensionLevel: state.currentComprehension
+        },
+        confidence: 0.7
+      });
+    }
+    
+    // Attention fatigue trigger
+    if (state.currentAttention < 0.4 || 
+        (context.sessionMetrics.totalTime > context.learningStyleProfile.preferredSessionLength && 
+         state.attentionTrend < -0.2)) {
+      triggers.push({
+        type: 'attention_fatigue',
+        severity: state.currentAttention < 0.3 ? 'critical' : 'high',
+        data: { 
+          attentionLevel: state.currentAttention,
+          sessionTime: context.sessionMetrics.totalTime,
+          preferredTime: context.learningStyleProfile.preferredSessionLength
+        },
+        confidence: 0.9
+      });
+    }
+    
+    // Style mismatch trigger
+    if (state.currentStyleAlignment < 0.5) {
+      triggers.push({
+        type: 'style_mismatch',
+        severity: 'medium',
+        data: { 
+          alignment: state.currentStyleAlignment,
+          primaryStyle: context.learningStyleProfile.primaryStyle,
+          recentInteractionTypes: state.interactionHistory.slice(-10).map(i => i.type)
+        },
+        confidence: 0.6
+      });
+    }
+    
+    return triggers;
+  }
+
+  /**
+   * Generate personalization decision for a trigger
+   */
+  private async generatePersonalizationDecision(
+    trigger: PersonalizationTrigger,
+    state: RealTimePersonalizationState,
+    context: PersonalizationContext
+  ): Promise<PersonalizationDecision | null> {
+    const applicableRules = this.personalizationRules.filter(rule => 
+      rule.triggers.some(t => t.type === trigger.type) &&
+      (rule.applicableStyles.length === 0 || rule.applicableStyles.includes(context.learningStyleProfile.primaryStyle))
+    );
+    
+    if (applicableRules.length === 0) {
+      return null;
+    }
+    
+    // Select best rule based on confidence and current context
+    const bestRule = applicableRules.reduce((best, rule) => 
+      rule.confidence > best.confidence ? rule : best
+    );
+    
+    const decision: PersonalizationDecision = {
+      id: `decision-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      trigger,
+      adaptations: bestRule.adaptations.map(adaptation => ({
+        ...adaptation,
+        parameters: this.customizeAdaptationParameters(adaptation, trigger, context)
+      })),
+      confidence: Math.min(trigger.confidence, bestRule.confidence),
+      expectedImpact: this.predictAdaptationImpact(bestRule.adaptations, trigger, context),
+      implementationPriority: this.determineImplementationPriority(trigger)
+    };
+    
+    return decision;
+  }
+
+  /**
+   * Customize adaptation parameters based on context
+   */
+  private customizeAdaptationParameters(
+    adaptation: ContentAdaptation,
+    trigger: PersonalizationTrigger,
+    context: PersonalizationContext
+  ): Record<string, any> {
+    const customParams = { ...adaptation.parameters };
+    
+    switch (adaptation.type) {
+      case 'difficulty_adjustment':
+        if (trigger.type === 'rapid_mastery') {
+          customParams.direction = 'increase';
+          customParams.amount = Math.min(0.3, trigger.data.comprehensionLevel - 0.5);
+        } else if (trigger.type === 'comprehension_struggle') {
+          customParams.direction = 'decrease';
+          customParams.amount = Math.min(0.4, 1 - trigger.data.signalCount / 10);
+        }
+        break;
+        
+      case 'pacing_adjustment':
+        if (trigger.type === 'attention_fatigue') {
+          customParams.direction = 'slow';
+          customParams.amount = Math.max(0.2, 1 - context.attentionLevel);
+        } else if (trigger.type === 'rapid_mastery') {
+          customParams.direction = 'accelerate';
+          customParams.amount = Math.min(0.5, trigger.data.comprehensionLevel - 0.6);
+        }
+        break;
+        
+      case 'interaction_boost':
+        if (trigger.type === 'engagement_drop') {
+          customParams.intensity = trigger.severity === 'critical' ? 'high' : 'medium';
+          customParams.types = context.learningStyleProfile.activePreference > 0.6 ? 
+            ['quiz', 'practice', 'exploration'] : ['reflection', 'discussion'];
+        }
+        break;
+    }
+    
+    return customParams;
+  }
+
+  /**
+   * Predict the impact of adaptations
+   */
+  private predictAdaptationImpact(
+    adaptations: ContentAdaptation[],
+    trigger: PersonalizationTrigger,
+    context: PersonalizationContext
+  ): string {
+    const impactPredictions: string[] = [];
+    
+    adaptations.forEach(adaptation => {
+      switch (adaptation.type) {
+        case 'difficulty_adjustment':
+          impactPredictions.push(
+            adaptation.parameters.direction === 'increase' ? 
+            'Increased challenge should boost engagement and prevent boredom' :
+            'Reduced difficulty should improve comprehension and reduce frustration'
+          );
+          break;
+        case 'pacing_adjustment':
+          impactPredictions.push(
+            adaptation.parameters.direction === 'slow' ?
+            'Slower pacing should improve attention and reduce cognitive overload' :
+            'Faster pacing should maintain engagement for rapid learners'
+          );
+          break;
+        case 'interaction_boost':
+          impactPredictions.push('Increased interactivity should re-engage learner and provide immediate feedback');
+          break;
+        case 'style_change':
+          impactPredictions.push('Style alignment should improve comprehension and learner satisfaction');
+          break;
+        case 'break_suggestion':
+          impactPredictions.push('Break should restore attention and prevent fatigue-related errors');
+          break;
+      }
+    });
+    
+    return impactPredictions.join('; ');
+  }
+
+  /**
+   * Determine implementation priority
+   */
+  private determineImplementationPriority(trigger: PersonalizationTrigger): PersonalizationDecision['implementationPriority'] {
+    switch (trigger.severity) {
+      case 'critical':
+        return 'immediate';
+      case 'high':
+        return trigger.type === 'attention_fatigue' ? 'immediate' : 'next_chunk';
+      case 'medium':
+        return 'next_chunk';
+      default:
+        return 'next_section';
+    }
+  }
+
+  /**
+   * Calculate style alignment based on context
+   */
+  private calculateStyleAlignment(context: PersonalizationContext): number {
+    const profile = context.learningStyleProfile;
+    let alignment = 0.5; // Start neutral
+    
+    // This would be more sophisticated in a real implementation
+    // For now, we'll use some basic heuristics
+    
+    if (profile.primaryStyle === 'visual' && context.currentContent.type.includes('visual')) {
+      alignment += 0.3;
+    }
+    
+    if (profile.activePreference > 0.6 && context.currentContent.type.includes('interactive')) {
+      alignment += 0.2;
+    }
+    
+    if (profile.sequentialPreference > 0.7 && context.currentContent.type === 'structured') {
+      alignment += 0.2;
+    }
+    
+    return Math.min(1.0, alignment);
+  }
+
+  /**
+   * Calculate real-time style alignment
+   */
+  private calculateRealTimeStyleAlignment(
+    interactions: InteractionEvent[],
+    profile: LearningStyleProfile
+  ): number {
+    if (interactions.length === 0) return 0.5;
+    
+    let alignmentScore = 0;
+    
+    const interactionTypes = interactions.map(i => i.type);
+    
+    // Visual learner alignment
+    if (profile.visualPreference > 0.6) {
+      const visualInteractions = interactionTypes.filter(type => 
+        ['concept_expand', 'scroll'].includes(type)
+      ).length;
+      alignmentScore += (visualInteractions / interactions.length) * profile.visualPreference;
+    }
+    
+    // Active learner alignment
+    if (profile.activePreference > 0.6) {
+      const activeInteractions = interactionTypes.filter(type => 
+        ['quiz_attempt', 'click', 'navigation'].includes(type)
+      ).length;
+      alignmentScore += (activeInteractions / interactions.length) * profile.activePreference;
+    }
+    
+    return Math.min(1.0, alignmentScore);
+  }
+
+  /**
+   * Update trend calculations
+   */
+  private async updateTrends(state: RealTimePersonalizationState): Promise<void> {
+    const historyLength = Math.min(10, state.interactionHistory.length);
+    if (historyLength < 3) return;
+    
+    const recentHistory = state.interactionHistory.slice(-historyLength);
+    const olderHistory = state.interactionHistory.slice(-historyLength * 2, -historyLength);
+    
+    if (olderHistory.length >= 3) {
+      // Calculate engagement trend
+      const recentAvgEngagement = recentHistory.reduce((sum, i) => sum + i.engagementScore, 0) / recentHistory.length;
+      const olderAvgEngagement = olderHistory.reduce((sum, i) => sum + i.engagementScore, 0) / olderHistory.length;
+      state.engagementTrend = (recentAvgEngagement - olderAvgEngagement) / Math.max(0.1, olderAvgEngagement);
+      
+      // Calculate attention trend
+      const recentAvgAttention = recentHistory.reduce((sum, i) => sum + i.focusLevel, 0) / recentHistory.length;
+      const olderAvgAttention = olderHistory.reduce((sum, i) => sum + i.focusLevel, 0) / olderHistory.length;
+      state.attentionTrend = (recentAvgAttention - olderAvgAttention) / Math.max(0.1, olderAvgAttention);
+    }
+  }
+
+  /**
+   * Generate personalization insights
+   */
+  private async generatePersonalizationInsights(
+    state: RealTimePersonalizationState,
+    context: PersonalizationContext
+  ): Promise<PersonalizationInsight[]> {
+    const insights: PersonalizationInsight[] = [];
+    
+    // Engagement insights
+    if (state.engagementTrend > 0.1) {
+      insights.push({
+        type: 'positive_trend',
+        title: 'Engagement Improving',
+        description: 'Your engagement has been steadily increasing. The current content style seems to be working well for you.',
+        confidence: 0.8,
+        actionSuggestion: 'Continue with similar content types and interaction patterns.'
+      });
+    } else if (state.engagementTrend < -0.1) {
+      insights.push({
+        type: 'concern',
+        title: 'Declining Engagement',
+        description: 'Your engagement has been decreasing. Consider changing the content approach or taking a short break.',
+        confidence: 0.8,
+        actionSuggestion: 'Try switching to more interactive content or a different learning modality.'
+      });
+    }
+    
+    // Learning style insights
+    if (state.currentStyleAlignment > 0.8) {
+      insights.push({
+        type: 'strength',
+        title: 'Optimal Learning Style Match',
+        description: 'The current content delivery aligns well with your learning preferences.',
+        confidence: 0.9,
+        actionSuggestion: 'Continue with this approach for optimal learning efficiency.'
+      });
+    } else if (state.currentStyleAlignment < 0.4) {
+      insights.push({
+        type: 'improvement',
+        title: 'Learning Style Mismatch',
+        description: 'The current content may not be optimally suited to your learning style.',
+        confidence: 0.7,
+        actionSuggestion: `Consider switching to ${context.learningStyleProfile.primaryStyle}-focused content.`
+      });
+    }
+    
+    // Comprehension insights
+    const recentMastery = state.comprehensionSignals
+      .filter(s => s.type === 'mastery_demonstration')
+      .slice(-5);
+    
+    if (recentMastery.length >= 3) {
+      insights.push({
+        type: 'achievement',
+        title: 'Strong Comprehension',
+        description: 'You\'re demonstrating consistent mastery of concepts.',
+        confidence: 0.85,
+        actionSuggestion: 'Ready for more advanced or challenging content.'
+      });
+    }
+    
+    return insights;
+  }
+
+  /**
+   * Trim interaction history to prevent memory issues
+   */
+  private trimHistory(state: RealTimePersonalizationState): void {
+    if (state.interactionHistory.length > this.MAX_HISTORY_LENGTH) {
+      state.interactionHistory = state.interactionHistory.slice(-this.MAX_HISTORY_LENGTH);
+    }
+    
+    if (state.comprehensionSignals.length > this.MAX_HISTORY_LENGTH / 2) {
+      state.comprehensionSignals = state.comprehensionSignals.slice(-this.MAX_HISTORY_LENGTH / 2);
+    }
+  }
+
+  /**
+   * End personalization session
+   */
+  async endPersonalizationSession(stateKey: string): Promise<SessionSummary | null> {
+    const state = this.personalizationStates.get(stateKey);
+    if (!state) {
+      return null;
+    }
+    
+    state.isActive = false;
+    
+    const summary: SessionSummary = {
+      sessionId: state.sessionId,
+      userId: state.userId,
+      topicId: state.topicId,
+      duration: Date.now() - state.interactionHistory[0]?.timestamp.getTime() || 0,
+      totalInteractions: state.interactionHistory.length,
+      adaptationsApplied: state.adaptationHistory.length,
+      finalMetrics: {
+        engagement: state.currentEngagement,
+        comprehension: state.currentComprehension,
+        attention: state.currentAttention,
+        styleAlignment: state.currentStyleAlignment
+      },
+      insights: await this.generatePersonalizationInsights(state, {} as PersonalizationContext)
+    };
+    
+    // Clean up state after a delay
+    setTimeout(() => {
+      this.personalizationStates.delete(stateKey);
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return summary;
+  }
+
+  /**
+   * Initialize default personalization rules
+   */
+  private initializePersonalizationRules(): void {
+    this.personalizationRules = [
+      {
+        id: 'engagement-drop-interaction-boost',
+        name: 'Boost Interaction for Low Engagement',
+        description: 'Increase interactivity when engagement drops significantly',
+        triggers: [
+          {
+            type: 'engagement_drop',
+            conditions: { threshold: 0.5, trend: -0.1 },
+            timeframe: 60
+          }
+        ],
+        adaptations: [
+          {
+            type: 'interaction_boost',
+            action: 'add_interactive_elements',
+            parameters: { intensity: 'high', types: ['quiz', 'exploration'] },
+            expectedOutcome: 'Increased engagement through active participation'
+          }
+        ],
+        priority: 9,
+        confidence: 0.8,
+        applicableStyles: ['kinesthetic', 'active']
+      },
+      {
+        id: 'comprehension-struggle-support',
+        name: 'Add Support for Comprehension Issues',
+        description: 'Provide additional scaffolding when learner is struggling',
+        triggers: [
+          {
+            type: 'comprehension_struggle',
+            conditions: { signalCount: 3 },
+            timeframe: 120
+          }
+        ],
+        adaptations: [
+          {
+            type: 'difficulty_adjustment',
+            action: 'decrease_difficulty',
+            parameters: { amount: 0.2 },
+            expectedOutcome: 'Improved comprehension through reduced cognitive load'
+          },
+          {
+            type: 'content_modification',
+            action: 'add_examples',
+            parameters: { type: 'concrete', count: 2 },
+            expectedOutcome: 'Better understanding through concrete examples'
+          }
+        ],
+        priority: 10,
+        confidence: 0.9,
+        applicableStyles: []
+      },
+      {
+        id: 'rapid-mastery-acceleration',
+        name: 'Accelerate for Rapid Mastery',
+        description: 'Increase pace and difficulty when learner shows mastery',
+        triggers: [
+          {
+            type: 'rapid_mastery',
+            conditions: { masterySignals: 3, comprehension: 0.8 },
+            timeframe: 180
+          }
+        ],
+        adaptations: [
+          {
+            type: 'pacing_adjustment',
+            action: 'accelerate',
+            parameters: { amount: 0.3 },
+            expectedOutcome: 'Maintained engagement through optimal challenge'
+          },
+          {
+            type: 'difficulty_adjustment',
+            action: 'increase_difficulty',
+            parameters: { amount: 0.2 },
+            expectedOutcome: 'Continued growth through appropriate challenge'
+          }
+        ],
+        priority: 7,
+        confidence: 0.75,
+        applicableStyles: []
+      },
+      {
+        id: 'attention-fatigue-break',
+        name: 'Suggest Break for Attention Fatigue',
+        description: 'Recommend breaks when attention levels drop significantly',
+        triggers: [
+          {
+            type: 'attention_fatigue',
+            conditions: { attention: 0.4, sessionTime: 45 },
+            timeframe: 300
+          }
+        ],
+        adaptations: [
+          {
+            type: 'break_suggestion',
+            action: 'suggest_timed_break',
+            parameters: { duration: 10, type: 'restorative' },
+            expectedOutcome: 'Restored attention and reduced fatigue'
+          }
+        ],
+        priority: 8,
+        confidence: 0.9,
+        applicableStyles: []
+      },
+      {
+        id: 'style-mismatch-adjustment',
+        name: 'Adjust for Learning Style Mismatch',
+        description: 'Modify content delivery when style alignment is poor',
+        triggers: [
+          {
+            type: 'style_mismatch',
+            conditions: { alignment: 0.5 },
+            timeframe: 120
+          }
+        ],
+        adaptations: [
+          {
+            type: 'style_change',
+            action: 'align_to_primary_style',
+            parameters: { emphasis: 'strong' },
+            expectedOutcome: 'Better comprehension through style alignment'
+          }
+        ],
+        priority: 6,
+        confidence: 0.7,
+        applicableStyles: []
+      }
+    ];
+  }
+}
+
+export interface PersonalizationInsight {
+  type: 'positive_trend' | 'concern' | 'strength' | 'improvement' | 'achievement';
+  title: string;
+  description: string;
+  confidence: number;
+  actionSuggestion: string;
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  userId: string;
+  topicId: string;
+  duration: number;
+  totalInteractions: number;
+  adaptationsApplied: number;
+  finalMetrics: {
+    engagement: number;
+    comprehension: number;
+    attention: number;
+    styleAlignment: number;
+  };
+  insights: PersonalizationInsight[];
+}
+
+// Export both default and named exports for compatibility
+export { RealTimePersonalizer };
+export default RealTimePersonalizer;

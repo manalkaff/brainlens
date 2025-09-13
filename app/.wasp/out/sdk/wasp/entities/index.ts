@@ -1,0 +1,77 @@
+import {
+  type User,
+  type GptResponse,
+  type Task,
+  type File,
+  type DailyStats,
+  type PageViewSource,
+  type Logs,
+  type ContactFormMessage,
+  type Topic,
+  type GeneratedContent,
+  type UserTopicProgress,
+  type ChatThread,
+  type Message,
+  type Quiz,
+  type QuizQuestion,
+  type VectorDocument,
+} from "@prisma/client"
+
+export {
+  type User,
+  type GptResponse,
+  type Task,
+  type File,
+  type DailyStats,
+  type PageViewSource,
+  type Logs,
+  type ContactFormMessage,
+  type Topic,
+  type GeneratedContent,
+  type UserTopicProgress,
+  type ChatThread,
+  type Message,
+  type Quiz,
+  type QuizQuestion,
+  type VectorDocument,
+  type Auth,
+  type AuthIdentity,
+} from "@prisma/client"
+
+export type Entity = 
+  | User
+  | GptResponse
+  | Task
+  | File
+  | DailyStats
+  | PageViewSource
+  | Logs
+  | ContactFormMessage
+  | Topic
+  | GeneratedContent
+  | UserTopicProgress
+  | ChatThread
+  | Message
+  | Quiz
+  | QuizQuestion
+  | VectorDocument
+  | never
+
+export type EntityName = 
+  | "User"
+  | "GptResponse"
+  | "Task"
+  | "File"
+  | "DailyStats"
+  | "PageViewSource"
+  | "Logs"
+  | "ContactFormMessage"
+  | "Topic"
+  | "GeneratedContent"
+  | "UserTopicProgress"
+  | "ChatThread"
+  | "Message"
+  | "Quiz"
+  | "QuizQuestion"
+  | "VectorDocument"
+  | never
