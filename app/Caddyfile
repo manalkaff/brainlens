@@ -1,5 +1,5 @@
 # HTTPS configuration with custom certificates
-brainlens.cloud {
+brainlens.cloud:1443 {
     # Use your own SSL certificates
     tls /etc/ssl/certs/fullchain.pem /etc/ssl/private/privkey.pem
     
@@ -18,6 +18,11 @@ brainlens.cloud {
     handle /auth/* {
         reverse_proxy app:3001
     }
+}
+
+# HTTP redirect to HTTPS
+brainlens.cloud:1180 {
+    redir https://brainlens.cloud:1443{uri} permanent
 }
 
 # If you want separate subdomains (optional)
