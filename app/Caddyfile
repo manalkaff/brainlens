@@ -1,5 +1,5 @@
-# Replace with your domain
-brainlens.example.com {
+# HTTP only configuration (no SSL/TLS)
+:80 {
     # Serve static frontend files
     root * /srv/client
     encode gzip
