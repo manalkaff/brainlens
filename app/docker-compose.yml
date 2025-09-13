@@ -34,7 +34,7 @@ services:
     networks:
       - brainlens-network
     ports:
-      - "127.0.0.1:3001:3001"
+      - "3001:3001"
     volumes:
       - ./logs:/app/logs
     healthcheck:
@@ -50,8 +50,8 @@ services:
     container_name: brainlens-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "1880:80"
+      - "8443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ./.wasp/build/web-app/build:/srv/client
