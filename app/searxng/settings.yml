@@ -50,7 +50,7 @@ ui:
 
 # Redis/Valkey cache configuration
 valkey:
-  url: redis://redis:6379/0
+  url: redis://:${REDIS_PASSWORD}@redis:6379/0
 
 # Engines configuration - optimized for research agents
 engines:

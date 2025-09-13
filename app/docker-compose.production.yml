@@ -104,6 +104,7 @@ services:
     environment:
       - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:18080/}
       - SEARXNG_URL=${SEARXNG_URL:-http://localhost:18080/}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     networks:
       - learning-platform
     cap_drop:
