@@ -1,4 +1,4 @@
-import { stripe } from '../payment/stripe/stripeClient';
+import { stripe, isStripeConfigured } from '../payment/stripe/stripeClient';
 import { listOrders } from '@lemonsqueezy/lemonsqueezy.js';
 import { getDailyPageViews, getSources } from './providers/plausibleAnalyticsUtils';
 // import { getDailyPageViews, getSources } from './providers/googleAnalyticsUtils';
@@ -117,6 +117,11 @@ export const calculateDailyStats = async (_args, context) => {
     }
 };
 async function fetchTotalStripeRevenue() {
+    // If Stripe is not properly configured (using dummy key), return 0 to avoid API errors
+    if (!isStripeConfigured()) {
+        console.log('Stripe not configured, returning 0 revenue');
+        return 0;
+    }
     let totalRevenue = 0;
     let params = {
         limit: 100,
