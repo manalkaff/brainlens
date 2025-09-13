@@ -38,8 +38,8 @@ app OpenSaaS {
       //   (RequestPasswordReset(Route|Page), PasswordReset(Route|Page), EmailVerification(Route|Page))
       email: {
         fromField: {
-          name: "Open SaaS App",
-          email: "me@example.com"
+          name: "BrainLens",
+          email: "noreply@brainlens.cloud"
         },
         emailVerification: {
           clientRoute: EmailVerificationRoute,
