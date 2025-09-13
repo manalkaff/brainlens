@@ -1,0 +1,1 @@
+{"root":["./src/index.tsx","./src/router.tsx","./src/utils.js","./src/vite-env.d.ts","./src/auth/pages/OAuthCallback.tsx","./src/auth/pages/createAuthRequiredPage.jsx","./src/components/DefaultRootErrorBoundary.tsx","./src/components/FullPageWrapper.tsx","./src/components/Loader.tsx","./src/components/Message.tsx","./src/test/vitest/setup.ts"],"version":"5.8.2"}
