@@ -1,14 +1,21 @@
 # Custom SearXNG image with built-in configuration
 FROM searxng/searxng:2025.8.8-5e7109c
 
-# Copy configuration files into the image
-COPY settings.yml /etc/searxng/settings.yml
-COPY limiter.toml /etc/searxng/limiter.toml
+# Set environment variables to prevent automatic config generation
+ENV SEARXNG_SETTINGS_PATH=/usr/local/searxng/searxng/settings.yml
+
+# Switch to root for file operations
+USER root
+
+# Copy our custom settings to the default location
+COPY settings.yml /usr/local/searxng/searxng/settings.yml
 
 # Set proper permissions
-RUN chown -R searxng:searxng /etc/searxng/
+RUN chown searxng:searxng /usr/local/searxng/searxng/settings.yml && \
+    chmod 644 /usr/local/searxng/searxng/settings.yml
+
+# Switch back to searxng user
+USER searxng
 
 # Expose port
 EXPOSE 8080
-
-# Use the default entrypoint from base image
