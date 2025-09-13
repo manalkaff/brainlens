@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  # Main Wasp Application
+  # Wasp Server (API only)
   app:
     build:
       context: .wasp/build
@@ -31,45 +31,25 @@ services:
       - STRIPE_API_KEY=${STRIPE_API_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - STRIPE_CUSTOMER_PORTAL_URL=${STRIPE_CUSTOMER_PORTAL_URL}
-    networks:
-      - brainlens-network
-    ports:
-      - "3001:3001"
     volumes:
       - ./logs:/app/logs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    networks:
+      - brainlens-network
 
-  # Caddy Reverse Proxy
-  caddy:
-    image: caddy:2-alpine
-    container_name: brainlens-caddy
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: brainlens-nginx
     restart: unless-stopped
     ports:
-      - "1180:80"
-      - "1443:443"
+      - "80:80"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./.wasp/build/web-app/build:/srv/client
-      - caddy_data:/data
-      - caddy_config:/config
-      # Mount your SSL certificates
-      - ./ssl/fullchain.pem:/etc/ssl/certs/fullchain.pem:ro
-      - ./ssl/privkey.pem:/etc/ssl/private/privkey.pem:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./.wasp/build/web-app/build:/usr/share/nginx/html:ro
     depends_on:
       - app
     networks:
       - brainlens-network
-
-volumes:
-  caddy_data:
-    driver: local
-  caddy_config:
-    driver: local
 
 networks:
   brainlens-network:
