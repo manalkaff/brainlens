@@ -50,13 +50,16 @@ services:
     container_name: brainlens-caddy
     restart: unless-stopped
     ports:
-      - "1880:80"
-      - "8443:443"
+      - "80:80"
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ./.wasp/build/web-app/build:/srv/client
       - caddy_data:/data
       - caddy_config:/config
+      # Mount your SSL certificates
+      - ./ssl/fullchain.pem:/etc/ssl/certs/fullchain.pem:ro
+      - ./ssl/privkey.pem:/etc/ssl/private/privkey.pem:ro
     depends_on:
       - app
     networks:

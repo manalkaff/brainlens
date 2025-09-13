@@ -1,5 +1,8 @@
-# HTTPS configuration with automatic TLS
+# HTTPS configuration with custom certificates
 brainlens.cloud {
+    # Use your own SSL certificates
+    tls /etc/ssl/certs/fullchain.pem /etc/ssl/private/privkey.pem
+    
     # Serve static frontend files
     root * /srv/client
     encode gzip
