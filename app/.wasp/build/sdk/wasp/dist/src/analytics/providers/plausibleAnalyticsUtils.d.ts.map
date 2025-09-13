@@ -1,1 +1,1 @@
-{"version":3,"file":"plausibleAnalyticsUtils.d.ts","sourceRoot":"","sources":["../../../../src/analytics/providers/plausibleAnalyticsUtils.ts"],"names":[],"mappings":"AA0BA,wBAAsB,iBAAiB;;;GAQtC;AA4DD,wBAAsB,UAAU;YA1ElB,MAAM;cACJ,MAAM;IAoFrB"}
+{"version":3,"file":"plausibleAnalyticsUtils.d.ts","sourceRoot":"","sources":["../../../../src/analytics/providers/plausibleAnalyticsUtils.ts"],"names":[],"mappings":"AAsCA,wBAAsB,iBAAiB;;;GAiBtC;AA4DD,wBAAsB,UAAU;YAnFlB,MAAM;cACJ,MAAM;IAmGrB"}
