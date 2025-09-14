@@ -2,6 +2,11 @@
 
 > AI-Powered Learning Research Platform built with Kiro IDE
 
+## 🎭 Judge/Demo Login
+
+**Email**: devpost@demo.com
+**Password**: kiroide123
+
 BrainLens is an intelligent learning platform that automatically researches any topic using multi-agent web scraping and AI aggregation, then presents information through multiple interactive learning modalities.
 
 ## 🚀 Features
