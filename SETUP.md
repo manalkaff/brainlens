@@ -10,9 +10,15 @@ All services run in Docker containers - perfect for getting started quickly.
 
 ### Prerequisites
 - Docker and Docker Compose installed
+- Wasp framework installed
 - OpenAI API key
 
 ### Setup
+
+0. **Install Wasp (if not already installed):**
+   ```bash
+   curl -sSL https://get.wasp.sh/installer.sh | sh
+   ```
 1. **Start all services:**
    ```bash
    cd app

@@ -78,22 +78,28 @@ Multi-Modal Presentation (Learn/Explore/Ask/MindMap/Quiz)
 
 ## 🚀 Quick Start
 
-1. **Clone the repository**
+1. **Install Wasp**
+   ```bash
+   curl -sSL https://get.wasp.sh/installer.sh | sh
+   ```
+
+2. **Clone the repository**
    ```bash
    git clone https://github.com/yourusername/brainlens.git
    cd brainlens
    ```
 
-2. **Setup environment**
+3. **Setup environment**
    ```bash
    cd app
-   cp .env.server.example .env.server
+   ./start-dev-services.sh
+   cp .env.development .env.server
    # Add your API keys and database URLs
    ```
 
 3. **Install dependencies**
    ```bash
-   npm install
+   wasp db migrate-dev
    ```
 
 4. **Start development server**
