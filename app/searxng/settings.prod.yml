@@ -1,0 +1,199 @@
+# SearXNG Production Configuration for BrainLens Learning Platform
+# This configuration enables specialized search engines for the 5 research agents
+
+# General settings
+general:
+  debug: false
+  instance_name: "BrainLens Research Engine"
+  contact_url: false
+  donation_url: false
+  enable_stats: false
+
+# Search settings
+search:
+  safe_search: 1 # 0=off, 1=moderate, 2=strict
+  autocomplete: ""
+  autocomplete_min: 4
+  default_lang: "en"
+  languages:
+    - en
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  suspended_times:
+    SearxEngineAccessDenied: 86400
+    SearxEngineCaptcha: 86400
+    SearxEngineTooManyRequests: 3600
+    cf_SearxEngineCaptcha: 86400
+    cf_SearxEngineAccessDenied: 86400
+
+# Server settings
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "${SEARXNG_SECRET_KEY}"
+  base_url: "${SEARXNG_BASE_URL}"
+  image_proxy: false
+  http_protocol_version: "1.0"
+  method: "POST"
+
+# UI settings
+ui:
+  static_use_hash: false
+  default_locale: "en"
+  query_in_title: true
+  infinite_scroll: false
+  center_alignment: false
+  cache_url: "https://web.archive.org/web/"
+  default_theme: simple
+  theme_args:
+    simple_style: auto
+
+# Valkey/Redis cache configuration from environment
+valkey:
+  url: "${REDIS_URL}"
+
+# Engines configuration - optimized for research agents
+engines:
+  # General Web Search Engines (General Research Agent)
+  - name: bing
+    engine: bing
+    shortcut: bi
+    categories: [general, web]
+    disabled: false
+
+  - name: google
+    engine: google
+    shortcut: go
+    categories: [general, web]
+    disabled: false
+    use_mobile_ui: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    categories: [general, web]
+    disabled: false
+
+  # Academic Search Engines (Academic Research Agent)
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    categories: [science, it]
+    disabled: false
+
+  - name: google scholar
+    engine: google_scholar
+    shortcut: gs
+    categories: [science]
+    disabled: false
+
+  - name: pubmed
+    engine: pubmed
+    shortcut: pub
+    categories: [science]
+    disabled: false
+
+  - name: semantic scholar
+    engine: semantic_scholar
+    shortcut: ss
+    categories: [science]
+    disabled: false
+
+  - name: crossref
+    engine: crossref
+    shortcut: cr
+    categories: [science]
+    disabled: false
+
+  # Computational Engines (Computational Agent)
+  # Note: WolframAlpha requires API key and is not available in this SearXNG build
+  # Using Wikipedia as fallback for computational queries
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    categories: [general]
+    disabled: false
+
+  # Video Search Engines (Video Learning Agent)
+  - name: youtube
+    engine: youtube_noapi
+    shortcut: yt
+    categories: [videos]
+    disabled: false
+
+  - name: vimeo
+    engine: vimeo
+    shortcut: vm
+    categories: [videos]
+    disabled: false
+
+  - name: dailymotion
+    engine: dailymotion
+    shortcut: dm
+    categories: [videos]
+    disabled: false
+
+  # Social/Community Engines (Community Discussion Agent)
+  - name: reddit
+    engine: reddit
+    shortcut: re
+    categories: ["social media"]
+    disabled: false
+
+  # Additional useful engines
+  - name: github
+    engine: github
+    shortcut: gh
+    categories: [it]
+    disabled: false
+
+  - name: gitlab
+    engine: gitlab
+    shortcut: gl
+    categories: [it]
+    disabled: false
+
+# Category definitions
+categories_as_tabs:
+  general:
+    - general
+    - web
+  images:
+    - images
+  videos:
+    - videos
+  news:
+    - news
+  music:
+    - music
+  it:
+    - it
+    - q&a
+  science:
+    - science
+  files:
+    - files
+  social:
+    - social media
+  map:
+    - map
+
+# DOI resolver configuration
+doi_resolvers:
+  oadoi.org: 'https://oadoi.org/'
+  doi.org: 'https://doi.org/'
+  doai.io: 'https://dissem.in/'
+  sci-hub.se: 'https://sci-hub.se/'
+  sci-hub.st: 'https://sci-hub.st/'
+  sci-hub.ru: 'https://sci-hub.ru/'
+
+default_doi_resolver: 'oadoi.org'
+
+# Outgoing requests configuration
+outgoing:
+  request_timeout: 15.0
+  useragent_suffix: "BrainLens/1.0"
+  pool_connections: 200
+  pool_maxsize: 40
+  enable_http2: true
