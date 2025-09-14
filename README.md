@@ -4,8 +4,10 @@
 
 ## 🎭 Judge/Demo Login
 
-**Email**: devpost@demo.com
-**Password**: kiroide123
+- **Live**: https://brainlens.cloud
+- **Email**: devpost@demo.com
+- **Password**: kiroide123
+
 
 BrainLens is an intelligent learning platform that automatically researches any topic using multi-agent web scraping and AI aggregation, then presents information through multiple interactive learning modalities.
 
