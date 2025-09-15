@@ -22,7 +22,7 @@ const _waspGetPasswordResetEmailContent: GetPasswordResetEmailContentFn = getPas
 
 
 const fromField: EmailFromField = {
-    name: 'Brainlens',
+    name: 'BrainLens',
     email: 'noreply@brainlens.cloud',
 };
 

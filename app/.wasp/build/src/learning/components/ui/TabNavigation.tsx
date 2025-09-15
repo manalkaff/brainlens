@@ -68,8 +68,8 @@ export function TabNavigation({ className }: TabNavigationProps) {
   const { sharedState } = useSharedTopicState();
 
   return (
-    <TabsList className={`grid w-full grid-cols-5 lg:w-auto lg:inline-flex ${className}`}>
-      {tabConfigs.filter(tab => tab.id !== 'learn').map((tab) => {
+    <TabsList className={`grid w-full grid-cols-4 lg:w-auto lg:inline-flex ${className}`}>
+      {tabConfigs.filter(tab => tab.id !== 'learn' && tab.id !== 'ask').map((tab) => {
         const isActive = activeTab === tab.id;
         const isLoaded = isTabLoaded(tab.id);
         const wasVisited = loadedTabs.has(tab.id);

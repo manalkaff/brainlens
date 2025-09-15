@@ -22,8 +22,8 @@ const _waspGetPasswordResetEmailContent: GetPasswordResetEmailContentFn = getPas
 
 
 const fromField: EmailFromField = {
-    name: 'Open SaaS App',
-    email: 'me@example.com',
+    name: 'BrainLens',
+    email: 'noreply@brainlens.cloud',
 };
 
 const config: ProviderConfig = {

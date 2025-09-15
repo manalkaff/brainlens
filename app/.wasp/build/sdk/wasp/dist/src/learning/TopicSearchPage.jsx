@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useAuth } from 'wasp/client/auth';
 import { Link as WaspRouterLink } from 'wasp/client/router';
-import { useQuery, getUserProgressStats } from 'wasp/client/operations';
+import { useQuery, getUserProgressStats, createTopic } from 'wasp/client/operations';
 import { Button } from '../components/ui/button';
-import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '../components/ui/sidebar';
 import { LearningSidebar } from './components/ui/LearningSidebar';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from '../components/ui/breadcrumb';
 import { Separator } from '../components/ui/separator';
+import { InputCard } from '../landing-page/components/InputCard';
 const exampleTopics = [
     "Machine Learning Fundamentals",
     "Quantum Computing Basics",
@@ -22,24 +22,47 @@ const exampleTopics = [
     "Digital Marketing Strategy"
 ];
 export default function TopicSearchPage() {
-    const [topicInput, setTopicInput] = useState('');
+    const [isCreating, setIsCreating] = useState(false);
     const { data: user } = useAuth();
     const { data: progressStats } = useQuery(getUserProgressStats);
-    const handleStartLearning = () => {
-        if (!topicInput.trim())
-            return;
-        // Create topic slug from input
-        const slug = topicInput
-            .toLowerCase()
-            .replace(/[^a-z0-9\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .trim();
-        // Navigate to topic page
-        window.location.href = `/learn/${slug}`;
+    const handleTopicSubmit = async (topicInput) => {
+        if (!topicInput.trim()) {
+            throw new Error('Please enter a topic to learn about');
+        }
+        setIsCreating(true);
+        try {
+            // Step 1: Create the topic
+            const topic = await createTopic({
+                title: topicInput.trim(),
+                summary: `Learn about ${topicInput.trim()}`,
+                description: `Comprehensive learning material for ${topicInput.trim()}`
+            });
+            console.log('Topic created:', topic);
+            // Navigate to topic page immediately after creation
+            console.log('Topic created successfully, redirecting to:', `/learn/${topic.slug}`);
+            window.location.href = `/learn/${topic.slug}`;
+        }
+        catch (error) {
+            console.error('Failed to create topic:', error);
+            // Provide user-friendly error messages
+            if (error instanceof Error) {
+                if (error.message.includes('credits') || error.message.includes('quota')) {
+                    throw new Error('You have reached your learning quota. Please upgrade your plan to continue.');
+                }
+                if (error.message.includes('network') || error.message.includes('fetch')) {
+                    throw new Error('Network connection failed. Please check your internet connection and try again.');
+                }
+            }
+            // Re-throw the error for InputCard to handle
+            throw error;
+        }
+        finally {
+            setIsCreating(false);
+        }
     };
     const handleExampleClick = (topic) => {
-        setTopicInput(topic);
+        // For example topics, directly submit them
+        handleTopicSubmit(topic);
     };
     return (<SidebarProvider>
       <LearningSidebar currentPath="/learn"/>
@@ -74,21 +97,9 @@ export default function TopicSearchPage() {
               </div>
 
               {/* Topic Input */}
-              <Card className="mb-8">
-                <CardContent className="p-6">
-                  <div className="relative">
-                    <Textarea placeholder="Describe what you want to learn about... (e.g., Machine Learning, Quantum Physics, Web Development)" value={topicInput} onChange={(e) => setTopicInput(e.target.value)} className="min-h-[100px] text-base resize-none pr-24" onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleStartLearning();
-            }
-        }}/>
-                    <Button onClick={handleStartLearning} disabled={!topicInput.trim()} className="absolute bottom-3 right-3" size="sm">
-                      Start Learning →
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="mb-8">
+                <InputCard onSubmit={handleTopicSubmit} isLoading={isCreating} placeholder="Describe what you want to learn about... (e.g., Machine Learning, Quantum Physics, Web Development)"/>
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Recent Topics from API */}

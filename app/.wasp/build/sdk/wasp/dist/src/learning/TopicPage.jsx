@@ -11,7 +11,6 @@ import { TopicProvider, useTopicContext } from "./context/TopicContext";
 import { TabNavigation, } from "./components/ui/TabNavigation";
 import { LearnTab } from "./components/tabs/LearnTab";
 import { ExploreTab } from "./components/tabs/ExploreTab";
-import { AskTab } from "./components/tabs/AskTab";
 import { MindMapTab } from "./components/tabs/MindMapTab";
 import { QuizTab } from "./components/tabs/QuizTab";
 import { SourcesTab } from "./components/tabs/SourcesTab";
@@ -143,15 +142,6 @@ function TopicPageContent() {
               </StreamingErrorBoundary>
             </TabsContent>
 
-            <TabsContent value="ask" className="mt-0 h-full">
-              <StreamingErrorBoundary onRetry={() => window.location.reload()} showDetails={process.env.NODE_ENV === "development"}>
-                <div className="h-full p-6">
-                  <LazyTabContent tabId="ask">
-                    <AskTab />
-                  </LazyTabContent>
-                </div>
-              </StreamingErrorBoundary>
-            </TabsContent>
 
             <TabsContent value="mindmap" className="mt-0 h-full">
               <StreamingErrorBoundary onRetry={() => window.location.reload()} showDetails={process.env.NODE_ENV === "development"}>

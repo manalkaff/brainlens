@@ -1162,33 +1162,69 @@ export function ExploreTab() {
                   <div className="mt-8 border-t pt-6">
                     <h2 className="text-xl font-semibold mb-4">Explore Further</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {researchResult.mainTopic.subtopics.map((subtopic, index) => (
-                        <Card key={index} className="cursor-pointer hover:shadow-md transition-shadow">
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <h3 className="font-medium text-sm">{subtopic.title}</h3>
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                  {subtopic.description}
-                                </p>
+                      {researchResult.mainTopic.subtopics.map((subtopic, index) => {
+                        // Find matching topic in the tree by title (case-insensitive)
+                        const findMatchingTopic = (topicList: any[], searchTitle: string): any | null => {
+                          for (const topicItem of topicList) {
+                            if (topicItem.title.toLowerCase().trim() === searchTitle.toLowerCase().trim()) {
+                              return topicItem;
+                            }
+                            if (topicItem.children) {
+                              const found = findMatchingTopic(topicItem.children, searchTitle);
+                              if (found) return found;
+                            }
+                          }
+                          return null;
+                        };
+
+                        // Try to find existing topic record for this research subtopic
+                        const existingTopic = findMatchingTopic(topics, subtopic.title);
+
+                        // Only show card if we have a corresponding topic in the tree
+                        if (!existingTopic) {
+                          return null;
+                        }
+
+                        return (
+                          <Card
+                            key={existingTopic.id}
+                            className="cursor-pointer hover:shadow-md transition-shadow"
+                            onClick={() => handleSubtopicCardClick(existingTopic)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSubtopicCardClick(existingTopic);
+                              }
+                            }}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h3 className="font-medium text-sm">{subtopic.title}</h3>
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    {subtopic.description}
+                                  </p>
+                                </div>
+                                <div className="ml-2 flex-shrink-0">
+                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                                    subtopic.complexity === 'beginner' ? 'bg-green-100 text-green-800' :
+                                    subtopic.complexity === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                  }`}>
+                                    {subtopic.complexity}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="ml-2 flex-shrink-0">
-                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
-                                  subtopic.complexity === 'beginner' ? 'bg-green-100 text-green-800' :
-                                  subtopic.complexity === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}>
-                                  {subtopic.complexity}
-                                </span>
+                              <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Priority: {subtopic.priority}</span>
+                                <span>{subtopic.estimatedReadTime}min read</span>
                               </div>
-                            </div>
-                            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Priority: {subtopic.priority}</span>
-                              <span>{subtopic.estimatedReadTime}min read</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            </CardContent>
+                          </Card>
+                        );
+                      }).filter(Boolean)}
                     </div>
                   </div>
                 )}
@@ -1356,17 +1392,53 @@ export function ExploreTab() {
                         <div className="space-y-4">
                           <h2 className="text-xl font-semibold">Explore Further</h2>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {researchResult!.mainTopic.subtopics.map((subtopic, index) => (
-                              <div key={index} className="cursor-pointer hover:shadow-md transition-shadow p-4 border rounded-lg">
-                                <h3 className="font-medium text-sm">{subtopic.title}</h3>
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                  {subtopic.description}
-                                </p>
-                                <div className="mt-2 text-xs text-muted-foreground">
-                                  {subtopic.estimatedReadTime}min read • {subtopic.complexity}
+                            {researchResult!.mainTopic.subtopics.map((subtopic, index) => {
+                              // Find matching topic in the tree by title (case-insensitive)
+                              const findMatchingTopic = (topicList: any[], searchTitle: string): any | null => {
+                                for (const topicItem of topicList) {
+                                  if (topicItem.title.toLowerCase().trim() === searchTitle.toLowerCase().trim()) {
+                                    return topicItem;
+                                  }
+                                  if (topicItem.children) {
+                                    const found = findMatchingTopic(topicItem.children, searchTitle);
+                                    if (found) return found;
+                                  }
+                                }
+                                return null;
+                              };
+
+                              // Try to find existing topic record for this research subtopic
+                              const existingTopic = findMatchingTopic(topics, subtopic.title);
+
+                              // Only show card if we have a corresponding topic in the tree
+                              if (!existingTopic) {
+                                return null;
+                              }
+
+                              return (
+                                <div
+                                  key={existingTopic.id}
+                                  className="cursor-pointer hover:shadow-md transition-shadow p-4 border rounded-lg"
+                                  onClick={() => handleSubtopicCardClick(existingTopic)}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      handleSubtopicCardClick(existingTopic);
+                                    }
+                                  }}
+                                >
+                                  <h3 className="font-medium text-sm">{subtopic.title}</h3>
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    {subtopic.description}
+                                  </p>
+                                  <div className="mt-2 text-xs text-muted-foreground">
+                                    {subtopic.estimatedReadTime}min read • {subtopic.complexity}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            }).filter(Boolean)}
                           </div>
                         </div>
                       )}

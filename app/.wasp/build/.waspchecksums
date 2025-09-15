@@ -1866,14 +1866,14 @@
             "file",
             "../out/sdk/wasp/src/learning/TopicPage.tsx"
         ],
-        "018666fd62b7af0769071ad3177b01dc5054452de4ad749aa80324f0eea55f41"
+        "697e0c6855e2da7a2c4591bde2e9f6a0575d21cf6b5c052658d37f460884c3a9"
     ],
     [
         [
             "file",
             "../out/sdk/wasp/src/learning/TopicSearchPage.tsx"
         ],
-        "68fe90c6b94015bccca8adeefd5886eae6aacb85aab3de472052affb009ce37e"
+        "21f66aa14cca9096303415c5a721229ce2fce6cf304f1c9f1fdb7e0c4b091ad3"
     ],
     [
         [
@@ -2419,7 +2419,7 @@
             "file",
             "../out/sdk/wasp/src/learning/components/tabs/ExploreTab.tsx"
         ],
-        "3460865c1ef31f985dda467a04f40e8efc006e03142c46c5474e251e490fc11c"
+        "156f5cfe8a4e1ec6ce8e8a6a19256d295dbfd8352859a503da2fc4ce24133f50"
     ],
     [
         [
@@ -2629,7 +2629,7 @@
             "file",
             "../out/sdk/wasp/src/learning/components/ui/TabNavigation.tsx"
         ],
-        "f0d0ebd12d71b66ea80e5aade4c472a1155f2fde9e2fcf9e89c7cd9677927ceb"
+        "b8cd0ecff5b35f4a785aaf3630ad5ebfda36759af2f6151305493b3c5acb6028"
     ],
     [
         [
@@ -3805,7 +3805,7 @@
             "file",
             "server/src/auth/providers/config/email.ts"
         ],
-        "d7fed103fda98610acf67d60feca935fbe3fb38d72cd7801c318af41938042ac"
+        "f270123f558641ff4b2783acff27e318b47c2b796195afebf0882c5426c8d5a0"
     ],
     [
         [
