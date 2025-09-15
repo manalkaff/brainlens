@@ -50,7 +50,7 @@ ui:
 
 # Valkey/Redis cache configuration from environment
 valkey:
-  url: $REDIS_URL
+  url: ${REDIS_URL}
 
 # Engines configuration - optimized for research agents
 engines:
