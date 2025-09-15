@@ -8,18 +8,19 @@ services:
     container_name: brainlens-searxng
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8180:8080"
     volumes:
       - ./searxng/settings.prod.yml:/etc/searxng/settings.yml:ro
       - ./searxng/limiter.toml:/etc/searxng/limiter.toml:ro
       - searxng-cache:/var/cache/searxng
     environment:
-      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL}
-      - SEARXNG_URL=${SEARXNG_URL}
-      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY}
-      - REDIS_URL=${REDIS_URL}
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_URL=http://localhost:8080/
+      - SEARXNG_REDIS_URL=redis://valkey:6379/0
     networks:
       - brainlens-searxng
+    depends_on:
+      - valkey
     cap_drop:
       - ALL
     cap_add:
@@ -33,8 +34,28 @@ services:
       retries: 3
       start_period: 30s
 
+  # Valkey Redis-compatible cache
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: brainlens-valkey
+    restart: unless-stopped
+    command: valkey-server --save 60 1 --loglevel warning
+    ports:
+      - "1379:6379"
+    volumes:
+      - valkey_data:/data
+    networks:
+      - brainlens-searxng
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   searxng-cache:
+    driver: local
+  valkey_data:
     driver: local
 
 networks:

@@ -30,8 +30,8 @@ search:
 server:
   port: 8080
   bind_address: "0.0.0.0"
-  secret_key: "${SEARXNG_SECRET_KEY}"
-  base_url: "${SEARXNG_BASE_URL}"
+  secret_key: "production_secret_key_change_this"
+  base_url: "http://localhost:8080/"
   image_proxy: false
   http_protocol_version: "1.0"
   method: "POST"
@@ -48,9 +48,10 @@ ui:
   theme_args:
     simple_style: auto
 
-# Valkey/Redis cache configuration from environment
+# Valkey/Redis cache configuration 
+# Note: SearXNG doesn't support env var substitution, so this will be overridden by SEARXNG_REDIS_URL env var
 valkey:
-  url: ${REDIS_URL}
+  url: redis://valkey:6379/0
 
 # Engines configuration - optimized for research agents
 engines:
